@@ -99,6 +99,53 @@ func CreateSymmetric(rng *rand.Rand) *cobra.Command {
 	return cmd
 }
 
+func CreateAsymmetric(rng *rand.Rand) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "asymmetric",
+		Short: "Commands to deal with encrypting asymmetric tokens",
+	}
+	generate := &cobra.Command{
+		Use:   "generate",
+		Short: "Generates a public and private key pair",
+		Args:  cobra.NoArgs,
+	}
+
+	options := struct {
+		PublicKeyFile  string
+		PrivateKeyFile string
+	}{}
+
+	generate.Flags().StringVarP(&options.PublicKeyFile, "public-key-file", "s", "", "Path where to store the public key")
+	generate.Flags().StringVarP(&options.PrivateKeyFile, "private-key-file", "f", "", "Path where to store the private key")
+
+	generate.RunE = func(cmd *cobra.Command, args []string) error {
+		pub, priv, err := token.GenerateAsymmetricKeys(rng)
+		if err != nil {
+			return err
+		}
+
+		if options.PublicKeyFile != "" {
+			if err := ioutil.WriteFile(options.PublicKeyFile, (*pub.ToByte())[:], 0400); err != nil {
+				return fmt.Errorf("couldn't save public key: %w", err)
+			}
+		} else {
+			fmt.Printf("public: %064x\n", *pub)
+		}
+
+		if options.PrivateKeyFile != "" {
+			if err := ioutil.WriteFile(options.PrivateKeyFile, (*priv.ToByte())[:], 0400); err != nil {
+				return fmt.Errorf("couldn't save private key: %w", err)
+			}
+		} else {
+			fmt.Printf("private: %064x\n", *priv)
+		}
+		return nil
+	}
+
+	cmd.AddCommand(generate)
+	return cmd
+}
+
 func main() {
 	rng := rand.New(srand.Source)
 
@@ -109,6 +156,7 @@ func main() {
 
 	root.AddCommand(CreateSymmetric(rng))
 	root.AddCommand(CreateSigning(rng))
+	root.AddCommand(CreateAsymmetric(rng))
 
 	cobra.EnablePrefixMatching = true
 	kcobra.Run(root)
