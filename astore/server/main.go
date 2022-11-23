@@ -192,7 +192,7 @@ func Start(ctx context.Context, targetURL, cookieDomain string, astoreFlags *ast
 		}, w, r)
 	})
 	// Direct download of non-published artifacts, starts immediately the download if the user is authenticated.
-	mux.HandleFunc("/g/", reqAuth.WithCredentialsOrError(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/g/", oauth.WithCredentialsOrError(reqAuth, func(w http.ResponseWriter, r *http.Request) {
 		astoreServer.DownloadArtifact("/g/", func(upath string, resp *rpc_astore.RetrieveResponse, err error, w http.ResponseWriter, r *http.Request) {
 			DownloadHandler("", upath, resp, err, w, r)
 		}, astore.AuthTypeOauth, w, r)
