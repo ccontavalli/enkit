@@ -263,7 +263,7 @@ func Start(ctx context.Context, targetURL, cookieDomain string, astoreFlags *ast
 			log.Errorf("ERROR - could not perform token exchange - %s", err)
 			return
 		}
-		if authWeb.Complete(data) {
+		if data.Complete() {
 			if key, ok := data.State.(common.Key); ok {
 				authServer.FeedToken(key, data)
 			}
