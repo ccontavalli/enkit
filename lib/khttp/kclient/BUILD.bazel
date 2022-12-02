@@ -5,7 +5,10 @@ go_library(
     srcs = ["client.go"],
     importpath = "github.com/ccontavalli/enkit/lib/khttp/kclient",
     visibility = ["//visibility:public"],
-    deps = ["//lib/kflags"],
+    deps = [
+        "//lib/kflags",
+        "//lib/khttp/ktls",
+    ],
 )
 
 alias(

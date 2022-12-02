@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "ktls",
+    srcs = ["tls.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/khttp/ktls",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":ktls",
+    visibility = ["//visibility:public"],
+)
