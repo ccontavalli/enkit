@@ -5,6 +5,7 @@ go_library(
     srcs = ["tls.go"],
     importpath = "github.com/ccontavalli/enkit/lib/khttp/ktls",
     visibility = ["//visibility:public"],
+    deps = ["//lib/kflags"],
 )
 
 alias(
