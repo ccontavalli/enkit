@@ -2,8 +2,8 @@ package kserver
 
 import (
 	"crypto/tls"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/khttp/ktls"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/khttp/ktls"
 	"golang.org/x/net/http2"
 	"net/http"
 	"time"
