@@ -1,0 +1,40 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "kgrpc",
+    srcs = ["grpc.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/khttp/kgrpc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/khttp",
+        "@com_github_improbable_eng_grpc_web//go/grpcweb",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//reflection",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":kgrpc",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "kgrpc_test",
+    srcs = ["grpc_test.go"],
+    data = glob(["testdata/**"]),
+    embed = [":kgrpc"],
+    deps = [
+        "//lib/client",
+        "//lib/grpcwebclient",
+        "//lib/khttp",
+        "//lib/khttp/kclient",
+        "//lib/khttp/kgrpc/testdata/proto:go_default_library",
+        "//lib/khttp/ktls",
+        "//lib/khttp/ktransport",
+        "//lib/khttp/protocol",
+        "@com_github_stretchr_testify//assert",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//credentials",
+    ],
+)
