@@ -28,7 +28,7 @@ import (
 //
 // import (
 // 	"embed"
-// 	"github.com/enfabrica/enkit/lib/khttp/kassets"
+// 	"github.com/ccontavalli/enkit/lib/khttp/kassets"
 // )
 //
 // //go:embed *.html

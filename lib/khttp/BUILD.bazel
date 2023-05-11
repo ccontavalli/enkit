@@ -36,5 +36,8 @@ go_test(
         "utils_test.go",
     ],
     embed = [":khttp"],
-    deps = ["@com_github_stretchr_testify//assert"],
+    deps = [
+        "//lib/kflags",
+        "@com_github_stretchr_testify//assert",
+    ],
 )
