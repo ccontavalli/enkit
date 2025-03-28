@@ -13,7 +13,7 @@ package oauth
 //      authenticate the user (with AuthHandler, PerformAuth, MakeAuthHandler), and Complete().
 //
 // In your other http handlers, you can then use WithCredentialsOrRedirect,
-// WithCredentialsOrError or WithCredentials as a moral equivalent of a middleware to 
+// WithCredentialsOrError or WithCredentials as a moral equivalent of a middleware to
 // have the credentials of the user accessible from the context of your http handler with
 // GetCredentials.
 //
@@ -198,19 +198,22 @@ var ErrorNotAuthenticated = errors.New("No authentication information found")
 // authentication process (nil error is returned), or returns an error.
 //
 // There are thus 3 possible combinations of return values:
-// - A non-nil CredentialsCookie, and a nil error - meaning that the request was
-//   successfully authenticated. The CredentialsCookie contains details of the
-//   user.
-// - A nil CredentialsCookie, and a non-nil error - meaning that the request
-//   was not authenticated, and that it was not possible to kickstart the
-//   authentication process. The error is generally non-recoverable.
-// - A nil CredentialsCookie, and a nil error - meaning that the request was
-//   not authenticated, but that the authentication process was kickstarted.
 //
-//   In this case, the caller should consider the request already handled,
-//   and just return. The Authenticate function either performed a redirect,
-//   or otherwise took care of the next step (by, for example, setting a
-//   cookie or displaying an error page).
+//   - A non-nil CredentialsCookie, and a nil error - meaning that the request was
+//     successfully authenticated. The CredentialsCookie contains details of the
+//     user.
+//
+//   - A nil CredentialsCookie, and a non-nil error - meaning that the request
+//     was not authenticated, and that it was not possible to kickstart the
+//     authentication process. The error is generally non-recoverable.
+//
+//   - A nil CredentialsCookie, and a nil error - meaning that the request was
+//     not authenticated, but that the authentication process was kickstarted.
+//
+//     In this case, the caller should consider the request already handled,
+//     and just return. The Authenticate function either performed a redirect,
+//     or otherwise took care of the next step (by, for example, setting a
+//     cookie or displaying an error page).
 //
 // An Authenticate function should always do its best to try to authenticate
 // the user, no matter what the request contains. An invalid or expired cookie
@@ -222,11 +225,11 @@ var ErrorNotAuthenticated = errors.New("No authentication information found")
 // in a crypto function, or a database error.
 //
 // Parameters are:
-// - An http.ResponseWriter, used to perform redirects, or otherwise add cookies
-//   or headers.
-// - An http.Request, parsed to look for credentials.
-// - A redirect url, a page to send the user back to in case authentication
-//   is required, and the user has to be sent to a different page.
+//   - An http.ResponseWriter, used to perform redirects, or otherwise add cookies
+//     or headers.
+//   - An http.Request, parsed to look for credentials.
+//   - A redirect url, a page to send the user back to in case authentication
+//     is required, and the user has to be sent to a different page.
 type Authenticate func(w http.ResponseWriter, r *http.Request, rurl *url.URL) (*CredentialsCookie, error)
 
 func CreateRedirectURL(r *http.Request) *url.URL {
@@ -302,13 +305,30 @@ type Authenticator struct {
 
 type Identity struct {
 	// Id is a globally unique identifier of the user.
+	//
 	// It is oauth provider specific, generally contains an integer or string
 	// uniquely identifying the user, and a domain name used to namespace the id.
 	Id string
-	// Username is the name of the user on the remote system.
+
+	// The name by which a user goes by.
+	//
+	// Note that the Username tied to a specific user may change over time.
 	Username string
-	// Organization is the domain name used to authenticate the user.
-	// For example, github.com, or the specific gsuite domain.
+
+	// An organization this username belongs to.
+	// It is generally the entity issuing the username, the namespace denoting the
+	// validity of the username.
+	//
+	// For example: with a gsuite account, the organization would be the domain name
+	// tied with the gsuite account, for example "enfabrica.net". The administrators
+	// of "enfabrica.net" can create new accounts, accounts @enfabrica.net are
+	// guaranteed unique within "enfabrica.net" only. With a github account instead,
+	// even though the account is used within an organization like "enfabrica", users
+	// register with "github.com", and the username must be unique across the entire
+	// "github.com" organization. So github.com is the Organization here.
+	//
+	// Username + "@" + Organization is guaranteed globally unique.
+	// But unlike an Id, the Username may change.
 	Organization string
 	// Groups is a list of string identifying the groups the user is part of.
 	Groups []string
@@ -319,9 +339,12 @@ type Identity struct {
 // It looks like an email, but it may or may not be a valid email address.
 //
 // For example: github users will have github.com as organization, and their login as Username.
-//              The GlobalName will be username@github.com. Not a valid email.
+//
+//	The GlobalName will be username@github.com. Not a valid email.
+//
 // On the other hand: gsuite users for enfabrica.net will have enfabrica.net as organization,
-//		and their username as Username, forming a valid email.
+//
+//	and their username as Username, forming a valid email.
 //
 // Interpret the result as meaning "user by this name" @ "organization by this name".
 func (i *Identity) GlobalName() string {
@@ -616,7 +639,6 @@ func MakeLoginHandler(a IAuthenticator, handler khttp.FuncHandler, lm ...LoginMo
 //
 // Note that this call does not allow you to carry any additional state.
 // Use session cookies for that part instead, or get parameters.
-//
 func LoginHandler(a IAuthenticator, lm ...LoginModifier) khttp.FuncHandler {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := a.PerformLogin(w, r, lm...)
@@ -641,7 +663,6 @@ func LoginHandler(a IAuthenticator, lm ...LoginModifier) khttp.FuncHandler {
 // If no, an error happens, or no redirect is performed, your handler is invoked.
 //
 // Note that auth handlers need to be registered with your oauth provider.
-//
 func MakeAuthHandler(a IAuthenticator, handler khttp.FuncHandler) khttp.FuncHandler {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := a.PerformAuth(w, r)

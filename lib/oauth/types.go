@@ -49,5 +49,5 @@ type IAuthenticator interface {
 	// login), ErrorNotAuthenticated is returned. In general, though, if an
 	// error is returned by GetCredentialsFromRequest the caller of this API
 	// should invoke PerformLogin to re-try the login process blindly.
-        GetCredentialsFromRequest(r *http.Request) (*CredentialsCookie, string, error)
+	GetCredentialsFromRequest(r *http.Request) (*CredentialsCookie, string, error)
 }

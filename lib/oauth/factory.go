@@ -576,8 +576,8 @@ func (opt *Options) NewRedirector() (*Redirector, error) {
 	}
 
 	return &Redirector{
-		Extractor: extractor,
-		AuthURL:   opt.authURL,
+		Extractor:     extractor,
+		AuthURL:       opt.authURL,
 		DefaultTarget: defaultTarget,
 	}, nil
 }
