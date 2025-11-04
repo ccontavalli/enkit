@@ -3,8 +3,8 @@ package kcerts
 import (
 	"errors"
 	"fmt"
-	"github.com/enfabrica/enkit/lib/cache"
-	"github.com/enfabrica/enkit/lib/config/marshal"
+	"github.com/ccontavalli/enkit/lib/cache"
+	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"path/filepath"
 )
 

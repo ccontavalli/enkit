@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "dict",
     srcs = ["api.go"],
-    importpath = "github.com/enfabrica/enkit/lib/dict",
+    importpath = "github.com/ccontavalli/enkit/lib/dict",
     visibility = ["//visibility:public"],
 )
 

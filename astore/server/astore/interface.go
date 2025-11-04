@@ -1,7 +1,7 @@
 package astore
 
 import (
-	"github.com/enfabrica/enkit/astore/rpc/astore"
+	"github.com/ccontavalli/enkit/astore/rpc/astore"
 	"time"
 )
 

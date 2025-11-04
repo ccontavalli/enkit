@@ -17,8 +17,8 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/logger"
 )
 
 type Modifier func(o *Options) error

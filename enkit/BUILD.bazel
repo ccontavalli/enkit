@@ -5,7 +5,7 @@ load("//bazel/astore:defs.bzl", "astore_upload")
 go_library(
     name = "enkit_lib",
     srcs = ["main.go"],
-    importpath = "github.com/enfabrica/enkit/enkit",
+    importpath = "github.com/ccontavalli/enkit/enkit",
     visibility = ["//visibility:private"],
     deps = ["//enkit/cmd"],
 )

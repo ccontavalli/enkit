@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "qtc",
     srcs = ["dummy.go"],
-    importpath = "github.com/enfabrica/enkit/bazel/qtc",
+    importpath = "github.com/ccontavalli/enkit/bazel/qtc",
     visibility = ["//visibility:public"],
     deps = [
         "@com_github_valyala_bytebufferpool//:bytebufferpool",

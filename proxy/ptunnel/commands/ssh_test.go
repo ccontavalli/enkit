@@ -4,10 +4,10 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/enfabrica/enkit/lib/client"
-	"github.com/enfabrica/enkit/lib/errdiff"
-	"github.com/enfabrica/enkit/lib/kcerts"
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/client"
+	"github.com/ccontavalli/enkit/lib/errdiff"
+	"github.com/ccontavalli/enkit/lib/kcerts"
+	"github.com/ccontavalli/enkit/lib/logger"
 
 	"github.com/stretchr/testify/assert"
 )

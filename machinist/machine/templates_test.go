@@ -2,8 +2,8 @@ package machine_test
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/machinist/machine"
-	"github.com/enfabrica/enkit/machinist/machine/assets"
+	"github.com/ccontavalli/enkit/machinist/machine"
+	"github.com/ccontavalli/enkit/machinist/machine/assets"
 	"github.com/stretchr/testify/assert"
 
 	"testing"

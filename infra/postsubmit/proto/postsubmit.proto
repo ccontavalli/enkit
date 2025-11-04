@@ -8,7 +8,7 @@ message Build {
   string name = 1;
 
   // Repository that this postsubmit builds code from. Should be one of:
-  // * `enfabrica/enkit`
+  // * `ccontavalli/enkit`
   // * `enfabrica/internal`
   string repository = 2;
 

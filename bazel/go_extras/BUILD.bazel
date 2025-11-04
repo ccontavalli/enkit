@@ -9,6 +9,6 @@ go_binary(
 go_library(
     name = "go_extras_lib",
     srcs = ["embed.go"],
-    importpath = "github.com/enfabrica/enkit/bazel/go_extras",
+    importpath = "github.com/ccontavalli/enkit/bazel/go_extras",
     visibility = ["//visibility:private"],
 )

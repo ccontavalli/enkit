@@ -2,7 +2,7 @@ package astore
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/lib/oauth"
+	"github.com/ccontavalli/enkit/lib/oauth"
 	"regexp"
 	"strings"
 )

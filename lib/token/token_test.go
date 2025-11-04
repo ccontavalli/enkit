@@ -2,7 +2,7 @@ package token
 
 import (
 	"context"
-	"github.com/enfabrica/enkit/lib/config/marshal"
+	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"testing"

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	dpb "google.golang.org/genproto/googleapis/datastore/v1"
 
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/logger"
 )
 
 // testDatastore is a mock Datastore object that captures queries made.

@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	bpb "github.com/enfabrica/enkit/lib/bazel/proto"
-	"github.com/enfabrica/enkit/lib/proto/delimited"
+	bpb "github.com/ccontavalli/enkit/lib/bazel/proto"
+	"github.com/ccontavalli/enkit/lib/proto/delimited"
 
 	"google.golang.org/protobuf/proto"
 

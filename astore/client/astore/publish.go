@@ -2,8 +2,8 @@ package astore
 
 import (
 	"context"
-	"github.com/enfabrica/enkit/astore/rpc/astore"
-	"github.com/enfabrica/enkit/lib/client"
+	"github.com/ccontavalli/enkit/astore/rpc/astore"
+	"github.com/ccontavalli/enkit/lib/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"log"

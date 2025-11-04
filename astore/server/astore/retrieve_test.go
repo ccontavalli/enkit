@@ -6,9 +6,9 @@ import (
 	"net/url"
 	"testing"
 
-	apb "github.com/enfabrica/enkit/astore/rpc/astore"
-	"github.com/enfabrica/enkit/lib/errdiff"
-	"github.com/enfabrica/enkit/lib/testutil"
+	apb "github.com/ccontavalli/enkit/astore/rpc/astore"
+	"github.com/ccontavalli/enkit/lib/errdiff"
+	"github.com/ccontavalli/enkit/lib/testutil"
 
 	"cloud.google.com/go/storage"
 	"github.com/prashantv/gostub"

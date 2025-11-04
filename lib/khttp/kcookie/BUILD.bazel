@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "kcookie",
     srcs = ["cookie.go"],
-    importpath = "github.com/enfabrica/enkit/lib/khttp/kcookie",
+    importpath = "github.com/ccontavalli/enkit/lib/khttp/kcookie",
     visibility = ["//visibility:public"],
 )
 

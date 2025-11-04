@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	bpb "github.com/enfabrica/enkit/lib/bazel/proto"
+	bpb "github.com/ccontavalli/enkit/lib/bazel/proto"
 )
 
 var (

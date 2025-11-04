@@ -2,10 +2,10 @@ package commands
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/lib/client"
-	"github.com/enfabrica/enkit/lib/kcerts"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/kflags/kcobra"
+	"github.com/ccontavalli/enkit/lib/client"
+	"github.com/ccontavalli/enkit/lib/kcerts"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/kflags/kcobra"
 	"github.com/spf13/cobra"
 	"os"
 	"os/exec"

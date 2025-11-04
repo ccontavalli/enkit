@@ -2,8 +2,8 @@ package kapt
 
 import (
 	"github.com/cybozu-go/aptutil/apt"
-	"github.com/enfabrica/enkit/lib/karchive"
-	"github.com/enfabrica/enkit/lib/khttp/protocol"
+	"github.com/ccontavalli/enkit/lib/karchive"
+	"github.com/ccontavalli/enkit/lib/khttp/protocol"
 
 	"fmt"
 	"io"

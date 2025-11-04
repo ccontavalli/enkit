@@ -6,11 +6,11 @@ import (
 	"log"
 	"testing"
 
-	"github.com/enfabrica/enkit/astore/client/astore"
-	apb "github.com/enfabrica/enkit/astore/rpc/astore"
-	"github.com/enfabrica/enkit/lib/client/ccontext"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/lib/progress"
+	"github.com/ccontavalli/enkit/astore/client/astore"
+	apb "github.com/ccontavalli/enkit/astore/rpc/astore"
+	"github.com/ccontavalli/enkit/lib/client/ccontext"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/progress"
 
 	"github.com/stretchr/testify/assert"
 )

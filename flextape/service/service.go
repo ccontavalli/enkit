@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	fpb "github.com/enfabrica/enkit/flextape/proto"
+	fpb "github.com/ccontavalli/enkit/flextape/proto"
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"

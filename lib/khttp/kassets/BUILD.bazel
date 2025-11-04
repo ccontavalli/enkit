@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "kassets",
     srcs = ["assets.go"],
-    importpath = "github.com/enfabrica/enkit/lib/khttp/kassets",
+    importpath = "github.com/ccontavalli/enkit/lib/khttp/kassets",
     visibility = ["//visibility:public"],
     deps = [
         "//lib/khttp",

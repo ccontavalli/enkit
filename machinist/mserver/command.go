@@ -1,9 +1,9 @@
 package mserver
 
 import (
-	"github.com/enfabrica/enkit/lib/client"
-	"github.com/enfabrica/enkit/lib/knetwork/kdns"
-	"github.com/enfabrica/enkit/machinist/config"
+	"github.com/ccontavalli/enkit/lib/client"
+	"github.com/ccontavalli/enkit/lib/knetwork/kdns"
+	"github.com/ccontavalli/enkit/machinist/config"
 	"github.com/spf13/cobra"
 	"net"
 	"strconv"

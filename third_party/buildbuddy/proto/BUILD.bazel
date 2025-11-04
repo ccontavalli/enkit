@@ -96,7 +96,7 @@ py_proto_library(
 
 go_proto_library(
     name = "buildbuddy_go_proto",
-    importpath = "github.com/enfabrica/enkit/third_party/buildbuddy/proto",
+    importpath = "github.com/ccontavalli/enkit/third_party/buildbuddy/proto",
     protos = [
         ":acl_proto",
         ":cache_proto",

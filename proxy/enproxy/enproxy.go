@@ -11,8 +11,8 @@
 //
 //    import (
 //        // Secure random numbers.
-//        "github.com/enfabrica/enkit/lib/srand"
-//        "github.com/enfabrica/enkit/lib/kflags"
+//        "github.com/ccontavalli/enkit/lib/srand"
+//        "github.com/ccontavalli/enkit/lib/kflags"
 //        "flag"
 //    )
 //
@@ -38,16 +38,16 @@ package enproxy
 
 import (
 	"context"
-	"github.com/enfabrica/enkit/lib/config/marshal"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/khttp"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/lib/oauth"
-	"github.com/enfabrica/enkit/proxy/amux"
-	"github.com/enfabrica/enkit/proxy/amux/amuxie"
-	"github.com/enfabrica/enkit/proxy/httpp"
-	"github.com/enfabrica/enkit/proxy/nasshp"
-	"github.com/enfabrica/enkit/proxy/utils"
+	"github.com/ccontavalli/enkit/lib/config/marshal"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/khttp"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/oauth"
+	"github.com/ccontavalli/enkit/proxy/amux"
+	"github.com/ccontavalli/enkit/proxy/amux/amuxie"
+	"github.com/ccontavalli/enkit/proxy/httpp"
+	"github.com/ccontavalli/enkit/proxy/nasshp"
+	"github.com/ccontavalli/enkit/proxy/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"

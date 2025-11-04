@@ -8,7 +8,7 @@ go_library(
         "service.go",
         "unit.go",
     ],
-    importpath = "github.com/enfabrica/enkit/allocation_manager/service",
+    importpath = "github.com/ccontavalli/enkit/allocation_manager/service",
     visibility = ["//visibility:public"],
     deps = [
         "//allocation_manager/proto:allocation_manager_go_proto",

@@ -6,7 +6,7 @@ go_library(
         "heap.go",
         "scheduler.go",
     ],
-    importpath = "github.com/enfabrica/enkit/lib/khttp/scheduler",
+    importpath = "github.com/ccontavalli/enkit/lib/khttp/scheduler",
     visibility = ["//visibility:public"],
 )
 

@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "krequest",
     srcs = ["request.go"],
-    importpath = "github.com/enfabrica/enkit/lib/khttp/krequest",
+    importpath = "github.com/ccontavalli/enkit/lib/khttp/krequest",
     visibility = ["//visibility:public"],
 )
 

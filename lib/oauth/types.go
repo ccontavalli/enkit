@@ -1,7 +1,7 @@
 package oauth
 
 import (
-	"github.com/enfabrica/enkit/lib/khttp/kcookie"
+	"github.com/ccontavalli/enkit/lib/khttp/kcookie"
 	"net/http"
 )
 

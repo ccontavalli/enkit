@@ -4,9 +4,9 @@ import (
 	"sort"
 	"time"
 
-	apb "github.com/enfabrica/enkit/allocation_manager/proto"
+	apb "github.com/ccontavalli/enkit/allocation_manager/proto"
 
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/logger"
 )
 
 // invocationQueue is a simple queue of invocations.

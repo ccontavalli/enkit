@@ -3,8 +3,8 @@ package machine
 import (
 	"bytes"
 	"errors"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/machinist/machine/assets"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/machinist/machine/assets"
 	"io/ioutil"
 	"os/exec"
 	"strings"

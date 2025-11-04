@@ -4,7 +4,7 @@ load("//bazel/astore:defs.bzl", "astore_upload")
 go_library(
     name = "faketree_lib",
     srcs = ["faketree.go"],
-    importpath = "github.com/enfabrica/enkit/faketree",
+    importpath = "github.com/ccontavalli/enkit/faketree",
     visibility = ["//visibility:private"],
     deps = [
         "//lib/multierror",

@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_binary", "go_library")
 go_library(
     name = "asset_downloader_test_util_lib",
     srcs = ["asset_dowloader_test_util.go"],
-    importpath = "github.com/enfabrica/enkit/experimental/remote_asset_service/asset_downloader_test_util",
+    importpath = "github.com/ccontavalli/enkit/experimental/remote_asset_service/asset_downloader_test_util",
     visibility = ["//visibility:private"],
     deps = [
         "//experimental/remote_asset_service/asset_service",

@@ -416,7 +416,7 @@ def kernel_tree_version(**kwargs):
 
     To create a .tar.gz suitable for this rule, you can use the kbuild tool, available at:
 
-        https://github.com/enfabrica/enkit/kbuild
+        https://github.com/ccontavalli/enkit/kbuild
     """
     kernel_package(**mconfig(kwargs, names = {"tree": "{name}"}, required = ["tree"], allowed = ["tree"]))
 

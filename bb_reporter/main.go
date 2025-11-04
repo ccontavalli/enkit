@@ -13,9 +13,9 @@ import (
 	"github.com/golang/glog"
 	"google.golang.org/grpc"
 
-	"github.com/enfabrica/enkit/bb_reporter/reporter"
-	"github.com/enfabrica/enkit/lib/metrics"
-	"github.com/enfabrica/enkit/lib/server"
+	"github.com/ccontavalli/enkit/bb_reporter/reporter"
+	"github.com/ccontavalli/enkit/lib/metrics"
+	"github.com/ccontavalli/enkit/lib/server"
 )
 
 var (

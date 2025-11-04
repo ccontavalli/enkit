@@ -7,8 +7,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/enfabrica/enkit/astore/rpc/astore"
-	"github.com/enfabrica/enkit/lib/oauth"
+	"github.com/ccontavalli/enkit/astore/rpc/astore"
+	"github.com/ccontavalli/enkit/lib/oauth"
 
 	"cloud.google.com/go/datastore"
 	"cloud.google.com/go/storage"

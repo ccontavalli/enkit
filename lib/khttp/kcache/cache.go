@@ -2,9 +2,9 @@ package kcache
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/lib/cache"
-	"github.com/enfabrica/enkit/lib/khttp/protocol"
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/cache"
+	"github.com/ccontavalli/enkit/lib/khttp/protocol"
+	"github.com/ccontavalli/enkit/lib/logger"
 	"io"
 	"io/ioutil"
 	"net/http"

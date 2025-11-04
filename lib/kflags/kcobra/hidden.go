@@ -1,7 +1,7 @@
 package kcobra
 
 import (
-	"github.com/enfabrica/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/spf13/cobra"
 	"time"
 )

@@ -13,7 +13,7 @@ go_library(
         "retrieve.go",
         "token.go",
     ],
-    importpath = "github.com/enfabrica/enkit/astore/server/astore",
+    importpath = "github.com/ccontavalli/enkit/astore/server/astore",
     visibility = ["//visibility:public"],
     deps = [
         "//astore/rpc/astore",

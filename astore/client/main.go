@@ -1,13 +1,13 @@
 package main
 
 import (
-	acommands "github.com/enfabrica/enkit/astore/client/commands"
-	bcommands "github.com/enfabrica/enkit/lib/client/commands"
+	acommands "github.com/ccontavalli/enkit/astore/client/commands"
+	bcommands "github.com/ccontavalli/enkit/lib/client/commands"
 
-	"github.com/enfabrica/enkit/lib/client"
-	"github.com/enfabrica/enkit/lib/kflags/kcobra"
+	"github.com/ccontavalli/enkit/lib/client"
+	"github.com/ccontavalli/enkit/lib/kflags/kcobra"
 
-	"github.com/enfabrica/enkit/lib/srand"
+	"github.com/ccontavalli/enkit/lib/srand"
 	"math/rand"
 )
 

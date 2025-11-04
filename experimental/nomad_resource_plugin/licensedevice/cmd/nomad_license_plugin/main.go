@@ -11,8 +11,8 @@ import (
 
 	"log/slog"
 
-	"github.com/enfabrica/enkit/experimental/nomad_resource_plugin/licensedevice"
-	"github.com/enfabrica/enkit/lib/metrics"
+	"github.com/ccontavalli/enkit/experimental/nomad_resource_plugin/licensedevice"
+	"github.com/ccontavalli/enkit/lib/metrics"
 )
 
 func main() {

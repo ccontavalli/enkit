@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/enfabrica/enkit/flextape/client"
-	fpb "github.com/enfabrica/enkit/flextape/proto"
+	"github.com/ccontavalli/enkit/flextape/client"
+	fpb "github.com/ccontavalli/enkit/flextape/proto"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"

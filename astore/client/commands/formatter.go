@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	castore "github.com/enfabrica/enkit/astore/client/astore"
-	"github.com/enfabrica/enkit/astore/rpc/astore"
-	"github.com/enfabrica/enkit/lib/config/marshal"
+	castore "github.com/ccontavalli/enkit/astore/client/astore"
+	"github.com/ccontavalli/enkit/astore/rpc/astore"
+	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/fatih/color"
 )
 

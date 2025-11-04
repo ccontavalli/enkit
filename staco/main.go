@@ -4,9 +4,9 @@ import (
 	"context"
 	"os"
 	"fmt"
-	"github.com/enfabrica/enkit/lib/github"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/kflags/kcobra"
+	"github.com/ccontavalli/enkit/lib/github"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/kflags/kcobra"
 	"github.com/josephburnett/jd/lib"
 	"github.com/spf13/cobra"
 )

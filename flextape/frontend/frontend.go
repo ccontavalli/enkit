@@ -10,8 +10,8 @@ import (
 	"io"
 	"net/http"
 
-	fpb "github.com/enfabrica/enkit/flextape/proto"
-	"github.com/enfabrica/enkit/flextape/service"
+	fpb "github.com/ccontavalli/enkit/flextape/proto"
+	"github.com/ccontavalli/enkit/flextape/service"
 )
 
 // Frontend is an HTTP handler for Flextape server-side generated pages.

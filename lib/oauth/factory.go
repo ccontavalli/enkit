@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/lib/token"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/token"
 	"golang.org/x/oauth2"
 )
 

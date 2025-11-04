@@ -2,7 +2,7 @@ package nasshp
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/proxy/utils"
+	"github.com/ccontavalli/enkit/proxy/utils"
 	"sync"
 )
 

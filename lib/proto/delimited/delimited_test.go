@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/enfabrica/enkit/lib/errdiff"
+	"github.com/ccontavalli/enkit/lib/errdiff"
 
 	"github.com/stretchr/testify/assert"
 )

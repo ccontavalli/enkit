@@ -3,8 +3,8 @@ package khttp
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/kirsle/configdir"
 	"golang.org/x/crypto/acme/autocert"
 	"net"

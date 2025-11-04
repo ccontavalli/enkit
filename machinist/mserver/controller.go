@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 	
-	"github.com/enfabrica/enkit/lib/knetwork/kdns"
-	"github.com/enfabrica/enkit/lib/logger"
-	mpb "github.com/enfabrica/enkit/machinist/rpc"
-	"github.com/enfabrica/enkit/machinist/state"
+	"github.com/ccontavalli/enkit/lib/knetwork/kdns"
+	"github.com/ccontavalli/enkit/lib/logger"
+	mpb "github.com/ccontavalli/enkit/machinist/rpc"
+	"github.com/ccontavalli/enkit/machinist/state"
 
 	"github.com/miekg/dns"
 	"google.golang.org/grpc/codes"

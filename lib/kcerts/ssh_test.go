@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/enfabrica/enkit/lib/cache"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/logger/klog"
+	"github.com/ccontavalli/enkit/lib/cache"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/logger/klog"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/ssh"
 )

@@ -18,7 +18,7 @@ go_library(
     srcs = [
         ":embedded-configs",  # keep
     ],
-    importpath = "github.com/enfabrica/enkit/astore/server/configs",  # keep
+    importpath = "github.com/ccontavalli/enkit/astore/server/configs",  # keep
     visibility = ["//visibility:public"],
 )
 

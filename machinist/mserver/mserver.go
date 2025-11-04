@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/enfabrica/enkit/lib/server"
-	"github.com/enfabrica/enkit/machinist/config"
-	mpb "github.com/enfabrica/enkit/machinist/rpc"
+	"github.com/ccontavalli/enkit/lib/server"
+	"github.com/ccontavalli/enkit/machinist/config"
+	mpb "github.com/ccontavalli/enkit/machinist/rpc"
 
 	"google.golang.org/grpc"
 )

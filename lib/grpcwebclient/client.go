@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/enfabrica/enkit/lib/khttp/kclient"
-	"github.com/enfabrica/enkit/lib/khttp/krequest"
+	"github.com/ccontavalli/enkit/lib/khttp/kclient"
+	"github.com/ccontavalli/enkit/lib/khttp/krequest"
 
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"

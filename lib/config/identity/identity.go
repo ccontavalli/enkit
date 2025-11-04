@@ -2,8 +2,8 @@
 package identity
 
 import (
-	"github.com/enfabrica/enkit/lib/config"
-	"github.com/enfabrica/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/ccontavalli/enkit/lib/kflags"
 	"strings"
 )
 

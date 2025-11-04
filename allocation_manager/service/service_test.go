@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	apb "github.com/enfabrica/enkit/allocation_manager/proto"
+	apb "github.com/ccontavalli/enkit/allocation_manager/proto"
 )
 
 func restoreTimeNow() { timeNow = time.Now }

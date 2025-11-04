@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "stamp",
     srcs = ["stamp.go"],
-    importpath = "github.com/enfabrica/enkit/lib/stamp",
+    importpath = "github.com/ccontavalli/enkit/lib/stamp",
     visibility = ["//visibility:public"],
     x_defs = {
         "BuildUser": "{STABLE_ENKIT_USER}",

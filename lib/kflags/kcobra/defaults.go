@@ -2,8 +2,8 @@ package kcobra
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/multierror"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/multierror"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

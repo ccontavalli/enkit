@@ -2,12 +2,12 @@ package machine
 
 import (
 	"fmt"
-	apb "github.com/enfabrica/enkit/auth/proto"
-	"github.com/enfabrica/enkit/lib/client"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/lib/multierror"
-	"github.com/enfabrica/enkit/lib/retry"
-	"github.com/enfabrica/enkit/machinist/config"
+	apb "github.com/ccontavalli/enkit/auth/proto"
+	"github.com/ccontavalli/enkit/lib/client"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/multierror"
+	"github.com/ccontavalli/enkit/lib/retry"
+	"github.com/ccontavalli/enkit/machinist/config"
 	"google.golang.org/grpc"
 	"log"
 	"net"

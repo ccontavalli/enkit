@@ -1,7 +1,7 @@
 package khttp
 
 import (
-	"github.com/enfabrica/enkit/lib/multierror"
+	"github.com/ccontavalli/enkit/lib/multierror"
 
 	"fmt"
 	"net/http"

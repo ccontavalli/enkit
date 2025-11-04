@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/enfabrica/enkit/lib/client"
-	"github.com/enfabrica/enkit/lib/kflags/kcobra"
-	"github.com/enfabrica/enkit/lib/srand"
-	"github.com/enfabrica/enkit/proxy/credentials"
-	"github.com/enfabrica/enkit/proxy/enproxy"
+	"github.com/ccontavalli/enkit/lib/client"
+	"github.com/ccontavalli/enkit/lib/kflags/kcobra"
+	"github.com/ccontavalli/enkit/lib/srand"
+	"github.com/ccontavalli/enkit/proxy/credentials"
+	"github.com/ccontavalli/enkit/proxy/enproxy"
 	"github.com/spf13/cobra"
 	"math/rand"
 	"fmt"

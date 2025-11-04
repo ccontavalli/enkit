@@ -1,8 +1,8 @@
 package astore_test
 
 import (
-	"github.com/enfabrica/enkit/astore/client/astore"
-	astoreServer "github.com/enfabrica/enkit/astore/server/astore"
+	"github.com/ccontavalli/enkit/astore/client/astore"
+	astoreServer "github.com/ccontavalli/enkit/astore/server/astore"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"testing"

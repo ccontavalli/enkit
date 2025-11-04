@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "ptunnel",
     srcs = ["tunnel.go"],
-    importpath = "github.com/enfabrica/enkit/proxy/ptunnel",
+    importpath = "github.com/ccontavalli/enkit/proxy/ptunnel",
     visibility = ["//visibility:public"],
     deps = [
         "//lib/kflags",

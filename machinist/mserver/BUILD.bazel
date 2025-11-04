@@ -10,7 +10,7 @@ go_library(
         "flags.go",
         "mserver.go",
     ],
-    importpath = "github.com/enfabrica/enkit/machinist/mserver",
+    importpath = "github.com/ccontavalli/enkit/machinist/mserver",
     visibility = ["//visibility:public"],
     deps = [
         "//lib/client",
@@ -43,7 +43,7 @@ go_embed_data(
 go_library(
     name = "flags",
     srcs = [":embedded-flags"],
-    importpath = "github.com/enfabrica/enkit/machinist/server/flags",
+    importpath = "github.com/ccontavalli/enkit/machinist/server/flags",
     visibility = ["//visibility:public"],
 )
 
@@ -62,7 +62,7 @@ go_embed_data(
 go_library(
     name = "assets",
     srcs = [":embedded-assets"],
-    importpath = "github.com/enfabrica/enkit/machinist/server/assets",
+    importpath = "github.com/ccontavalli/enkit/machinist/server/assets",
     visibility = ["//visibility:public"],
 )
 

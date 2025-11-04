@@ -14,13 +14,13 @@ import (
 	"net"
 	"net/http"
 
-	//	"github.com/enfabrica/enkit/allocation_manager/frontend"
-	apb "github.com/enfabrica/enkit/allocation_manager/proto"
-	"github.com/enfabrica/enkit/allocation_manager/service"
+	//	"github.com/ccontavalli/enkit/allocation_manager/frontend"
+	apb "github.com/ccontavalli/enkit/allocation_manager/proto"
+	"github.com/ccontavalli/enkit/allocation_manager/service"
 
-	//"github.com/enfabrica/enkit/lib/metrics"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/lib/server"
+	//"github.com/ccontavalli/enkit/lib/metrics"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/server"
 
 	"google.golang.org/grpc"
 
@@ -36,7 +36,7 @@ var (
 
 func exitIf(err error) {
 	if err != nil {
-		// TODO: Use enkit logging enkit/lib/logger/logger.go package logger... "github.com/enfabrica/enkit/lib/logger/logger"
+		// TODO: Use enkit logging enkit/lib/logger/logger.go package logger... "github.com/ccontavalli/enkit/lib/logger/logger"
 		log.Fatal(err)
 	}
 }

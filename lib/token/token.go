@@ -37,7 +37,7 @@ package token
 import (
 	"context"
 	"encoding/base64"
-	"github.com/enfabrica/enkit/lib/config/marshal"
+	"github.com/ccontavalli/enkit/lib/config/marshal"
 )
 
 // Used internally to define keys exported via context.

@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "ogrpc",
     srcs = ["ogrpc.go"],
-    importpath = "github.com/enfabrica/enkit/lib/oauth/ogrpc",
+    importpath = "github.com/ccontavalli/enkit/lib/oauth/ogrpc",
     visibility = ["//visibility:public"],
     deps = [
         "//lib/oauth",

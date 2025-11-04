@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/enfabrica/enkit/lib/multierror"
+	"github.com/ccontavalli/enkit/lib/multierror"
 	"math"
 	"math/rand"
 )

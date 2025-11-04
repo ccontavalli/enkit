@@ -3,8 +3,8 @@ package commands
 import (
 	"fmt"
 
-	"github.com/enfabrica/enkit/astore/client/astore"
-	"github.com/enfabrica/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/astore/client/astore"
+	"github.com/ccontavalli/enkit/lib/kflags"
 
 	"github.com/spf13/cobra"
 )

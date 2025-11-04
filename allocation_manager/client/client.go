@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	apb "github.com/enfabrica/enkit/allocation_manager/proto"
+	apb "github.com/ccontavalli/enkit/allocation_manager/proto"
 )
 
 var runCommand = func(ctx context.Context, result chan error, cmd string, args ...string) {

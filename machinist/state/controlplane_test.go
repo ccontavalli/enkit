@@ -1,8 +1,8 @@
 package state_test
 
 import (
-	"github.com/enfabrica/enkit/lib/srand"
-	"github.com/enfabrica/enkit/machinist/state"
+	"github.com/ccontavalli/enkit/lib/srand"
+	"github.com/ccontavalli/enkit/machinist/state"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"math/rand"

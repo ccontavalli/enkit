@@ -1,13 +1,13 @@
 package provider
 
 import (
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/kflags/kconfig"
-	"github.com/enfabrica/enkit/lib/khttp/downloader"
-	"github.com/enfabrica/enkit/lib/khttp/krequest"
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/kflags/kconfig"
+	"github.com/ccontavalli/enkit/lib/khttp/downloader"
+	"github.com/ccontavalli/enkit/lib/khttp/krequest"
+	"github.com/ccontavalli/enkit/lib/logger"
 
-	"github.com/enfabrica/enkit/lib/cache"
+	"github.com/ccontavalli/enkit/lib/cache"
 	"net/http"
 )
 

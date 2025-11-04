@@ -4,7 +4,7 @@ load("//bazel/astore:defs.bzl", "astore_upload")
 go_library(
     name = "flextape_client_lib",
     srcs = ["main.go"],
-    importpath = "github.com/enfabrica/enkit/flextape/client/flextape_client",
+    importpath = "github.com/ccontavalli/enkit/flextape/client/flextape_client",
     visibility = ["//visibility:private"],
     deps = [
         "//flextape/client",

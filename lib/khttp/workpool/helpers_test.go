@@ -2,8 +2,8 @@ package workpool
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/lib/khttp/scheduler"
-	"github.com/enfabrica/enkit/lib/retry"
+	"github.com/ccontavalli/enkit/lib/khttp/scheduler"
+	"github.com/ccontavalli/enkit/lib/retry"
 	"github.com/stretchr/testify/assert"
 	"log"
 	"sync"

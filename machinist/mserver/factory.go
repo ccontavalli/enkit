@@ -1,9 +1,9 @@
 package mserver
 
 import (
-	"github.com/enfabrica/enkit/lib/knetwork/kdns"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/machinist/state"
+	"github.com/ccontavalli/enkit/lib/knetwork/kdns"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/machinist/state"
 	"log"
 	"time"
 )

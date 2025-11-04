@@ -20,7 +20,7 @@ proto_library(
 go_proto_library(
     name = "allocation_manager_go_proto",
     compilers = ["@rules_go//proto:go_grpc"],
-    importpath = "github.com/enfabrica/enkit/allocation_manager/proto",
+    importpath = "github.com/ccontavalli/enkit/allocation_manager/proto",
     proto = ":proto",
     visibility = ["//visibility:public"],
 )

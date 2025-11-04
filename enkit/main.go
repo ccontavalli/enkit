@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/enfabrica/enkit/enkit/cmd"
+	"github.com/ccontavalli/enkit/enkit/cmd"
 )
 
 func main() {

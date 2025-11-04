@@ -2,8 +2,8 @@ package kauth
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/lib/cache"
-	"github.com/enfabrica/enkit/lib/kcerts"
+	"github.com/ccontavalli/enkit/lib/cache"
+	"github.com/ccontavalli/enkit/lib/kcerts"
 	"golang.org/x/crypto/ssh"
 )
 

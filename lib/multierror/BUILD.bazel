@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "multierror",
     srcs = ["multierror.go"],
-    importpath = "github.com/enfabrica/enkit/lib/multierror",
+    importpath = "github.com/ccontavalli/enkit/lib/multierror",
     visibility = ["//visibility:public"],
 )
 

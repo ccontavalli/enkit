@@ -2,11 +2,11 @@ package kconfig
 
 import (
 	"flag"
-	"github.com/enfabrica/enkit/lib/cache"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/lib/khttp/downloader"
-	"github.com/enfabrica/enkit/lib/khttp/ktest"
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/cache"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/khttp/downloader"
+	"github.com/ccontavalli/enkit/lib/khttp/ktest"
+	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"log"

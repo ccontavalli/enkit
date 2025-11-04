@@ -1,9 +1,9 @@
 package downloader
 
 import (
-	"github.com/enfabrica/enkit/lib/khttp/ktest"
-	"github.com/enfabrica/enkit/lib/khttp/protocol"
-	"github.com/enfabrica/enkit/lib/khttp/workpool"
+	"github.com/ccontavalli/enkit/lib/khttp/ktest"
+	"github.com/ccontavalli/enkit/lib/khttp/protocol"
+	"github.com/ccontavalli/enkit/lib/khttp/workpool"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

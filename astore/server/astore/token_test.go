@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/enfabrica/enkit/lib/errdiff"
+	"github.com/ccontavalli/enkit/lib/errdiff"
 )
 
 // modify returns a copy of `c` with entries in `mods` applied to it.

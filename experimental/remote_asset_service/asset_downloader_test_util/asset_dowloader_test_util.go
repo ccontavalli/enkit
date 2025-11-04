@@ -6,7 +6,7 @@ import (
 	"fmt"
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/program"
-	"github.com/enfabrica/enkit/experimental/remote_asset_service/asset_service"
+	"github.com/ccontavalli/enkit/experimental/remote_asset_service/asset_service"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"

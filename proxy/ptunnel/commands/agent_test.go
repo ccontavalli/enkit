@@ -2,10 +2,10 @@ package commands_test
 
 import (
 	"bytes"
-	"github.com/enfabrica/enkit/lib/client"
-	"github.com/enfabrica/enkit/lib/kcerts"
-	"github.com/enfabrica/enkit/lib/kflags"
-	"github.com/enfabrica/enkit/proxy/ptunnel/commands"
+	"github.com/ccontavalli/enkit/lib/client"
+	"github.com/ccontavalli/enkit/lib/kcerts"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/proxy/ptunnel/commands"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"os/exec"

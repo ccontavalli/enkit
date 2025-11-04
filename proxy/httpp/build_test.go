@@ -2,8 +2,8 @@ package httpp
 
 import (
 	"fmt"
-	"github.com/enfabrica/enkit/lib/khttp"
-	"github.com/enfabrica/enkit/proxy/amux/amuxie"
+	"github.com/ccontavalli/enkit/lib/khttp"
+	"github.com/ccontavalli/enkit/proxy/amux/amuxie"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"log"

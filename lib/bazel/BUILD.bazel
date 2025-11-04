@@ -12,7 +12,7 @@ go_library(
         "workspace.go",
         "workspace_events.go",
     ],
-    importpath = "github.com/enfabrica/enkit/lib/bazel",
+    importpath = "github.com/ccontavalli/enkit/lib/bazel",
     visibility = ["//visibility:public"],
     deps = [
         # keep

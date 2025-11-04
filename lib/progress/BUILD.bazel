@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "progress",
     srcs = ["progress.go"],
-    importpath = "github.com/enfabrica/enkit/lib/progress",
+    importpath = "github.com/ccontavalli/enkit/lib/progress",
     visibility = ["//visibility:public"],
     deps = [
         "@com_github_cheggaaa_pb_v3//:pb",

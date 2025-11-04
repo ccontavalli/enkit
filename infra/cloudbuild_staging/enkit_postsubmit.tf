@@ -125,7 +125,7 @@ resource "google_pubsub_topic" "cloud_builds" {
 resource "google_cloudbuild_trigger" "build-trigger" {
   trigger_template {
     branch_name = "master"
-    repo_name = "enfabrica/enkit"
+    repo_name = "ccontavalli/enkit"
   }
   
   name = "enkit-bazel-postsubmit"

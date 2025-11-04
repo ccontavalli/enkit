@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/enfabrica/enkit/experimental/nomad_resource_plugin/licensedevice/types"
+	"github.com/ccontavalli/enkit/experimental/nomad_resource_plugin/licensedevice/types"
 )
 
 type mockNotifier struct {

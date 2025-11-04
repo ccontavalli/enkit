@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "retry",
     srcs = ["retry.go"],
-    importpath = "github.com/enfabrica/enkit/lib/retry",
+    importpath = "github.com/ccontavalli/enkit/lib/retry",
     visibility = ["//visibility:public"],
     deps = [
         "//lib/kflags",

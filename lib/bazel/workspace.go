@@ -14,7 +14,7 @@ import (
 
 	"github.com/bazelbuild/buildtools/wspace"
 
-	"github.com/enfabrica/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/logger"
 )
 
 // Workspace corresponds to a bazel workspace on the filesystem, as defined by

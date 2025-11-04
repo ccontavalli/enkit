@@ -3,7 +3,7 @@ package kclient
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/enfabrica/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/kflags"
 	"net/http"
 	"time"
 )

@@ -13,7 +13,7 @@ import (
 	"os"
 
 	"github.com/buildbarn/bb-storage/pkg/program"
-	"github.com/enfabrica/enkit/experimental/remote_asset_service/asset_service"
+	"github.com/ccontavalli/enkit/experimental/remote_asset_service/asset_service"
 )
 
 func usage() {

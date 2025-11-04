@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_binary", "go_library")
 go_library(
     name = "remote_asset_service_lib",
     srcs = ["main.go"],
-    importpath = "github.com/enfabrica/enkit/experimental/remote_asset_service",
+    importpath = "github.com/ccontavalli/enkit/experimental/remote_asset_service",
     visibility = ["//visibility:private"],
     deps = [
         "//experimental/remote_asset_service/asset_service",

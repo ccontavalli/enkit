@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/enfabrica/enkit/lib/errdiff"
+	"github.com/ccontavalli/enkit/lib/errdiff"
 )
 
 func TestFetchUrls(t *testing.T) {

@@ -3,7 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "ogithub",
     srcs = ["github.go"],
-    importpath = "github.com/enfabrica/enkit/lib/oauth/ogithub",
+    importpath = "github.com/ccontavalli/enkit/lib/oauth/ogithub",
     visibility = ["//visibility:public"],
     deps = [
         "//lib/logger",

@@ -1,10 +1,10 @@
 package workpool
 
 import (
-	"github.com/enfabrica/enkit/lib/khttp/scheduler"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/lib/multierror"
-	"github.com/enfabrica/enkit/lib/retry"
+	"github.com/ccontavalli/enkit/lib/khttp/scheduler"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/multierror"
+	"github.com/ccontavalli/enkit/lib/retry"
 	"sync"
 )
 

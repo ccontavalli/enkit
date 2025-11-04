@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"github.com/enfabrica/enkit/proxy/amux"
-	"github.com/enfabrica/enkit/proxy/amux/amuxie"
+	"github.com/ccontavalli/enkit/proxy/amux"
+	"github.com/ccontavalli/enkit/proxy/amux/amuxie"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -1,10 +1,10 @@
 package kconfig
 
 import (
-	"github.com/enfabrica/enkit/lib/cache"
-	"github.com/enfabrica/enkit/lib/khttp/ktest"
-	"github.com/enfabrica/enkit/lib/logger"
-	"github.com/enfabrica/enkit/lib/retry"
+	"github.com/ccontavalli/enkit/lib/cache"
+	"github.com/ccontavalli/enkit/lib/khttp/ktest"
+	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/ccontavalli/enkit/lib/retry"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"testing"
