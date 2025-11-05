@@ -1,8 +1,8 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "kassets",
-    srcs = ["assets.go"],
+    srcs = ["assets.go", "embeds.go"],
     importpath = "github.com/ccontavalli/enkit/lib/khttp/kassets",
     visibility = ["//visibility:public"],
     deps = [
@@ -10,6 +10,14 @@ go_library(
         "//lib/logger",
         "@com_github_dustin_go_humanize//:go-humanize",
     ],
+)
+
+go_test(
+    name = "kassets_test",
+    srcs = ["embeds_test.go"],
+    embed = [":kassets"],
+    embedsrcs = glob(["testdata/**"]),
+    deps = ["@com_github_stretchr_testify//assert"],
 )
 
 alias(
