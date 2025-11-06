@@ -45,7 +45,8 @@ func (f *ExtractorFlags) Register(set kflags.FlagSet, prefix string) *ExtractorF
 		"Prefix to append to the cookies used for authentication")
 	set.ByteFileVar(&f.SymmetricKey, prefix+"token-encryption-key", "",
 		"Path of the file containing the symmetric key to use to encrypt/decrypt returned client tokens. "+
-			"If not supplied, a new key is generated")
+			"Mandatory for clients requiring access to token. In a server generating tokens, "+
+			"a new key is generated if not supplied")
 	set.ByteFileVar(&f.TokenVerifyingKey, prefix+"token-verifying-key", "",
 		"Path of the file containing the public key to use to verify the signature of client tokens. "+
 			"If both token-encryption-key and token-signing-key are not specified, a key is generated")
@@ -354,6 +355,10 @@ func WithExtractorFlags(fl *ExtractorFlags) Modifier {
 				return fmt.Errorf("invalid key specified with --token-verifying-key - %s", err)
 			}
 			mods = append(mods, WithSigningOptions(token.UseVerifyingKey(key)))
+		}
+
+		if len(fl.SymmetricKey) <= 0 {
+			return fmt.Errorf("--token-encryption-key must be specified for a client to access the token")
 		}
 
 		mods = append(mods, WithSymmetricOptions(token.UseSymmetricKey(fl.SymmetricKey)), WithLoginTime(fl.LoginTime), WithMaxLoginTime(fl.MaxLoginTime), WithVersion(fl.Version))
