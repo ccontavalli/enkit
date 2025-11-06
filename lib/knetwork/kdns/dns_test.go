@@ -44,7 +44,6 @@ func TestDNS(t *testing.T) {
 		},
 	}
 
-
 	tips := []string{"10.9.9.9", "10.90.80.70"}
 	var rrs []dns.RR
 	for _, i := range tips {

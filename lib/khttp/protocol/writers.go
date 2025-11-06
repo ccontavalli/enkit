@@ -219,7 +219,7 @@ func (l *limit) Write(data []byte) (int, error) {
 //
 // For example, by creating an opener like:
 //
-//   Get(..., Limit(4096, String(&data)), ...)
+//	Get(..., Limit(4096, String(&data)), ...)
 //
 // Get will stop the download and return an error if more than 4096 bytes of data are returned
 // by the remote server.

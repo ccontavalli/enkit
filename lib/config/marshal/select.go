@@ -150,7 +150,8 @@ func (fm FileMarshallers) UnmarshalFilePrefix(prefix string, value interface{}) 
 // blob of bytes into the value.
 //
 // For example:
-//     UnmarshalAsset("config", map[string][]byte{"config.yaml": ...}, &config)
+//
+//	UnmarshalAsset("config", map[string][]byte{"config.yaml": ...}, &config)
 //
 // Will look for "config.json", "config.toml", "config.yaml", in the assets dict.
 // The value of the first found will be decoded in config.

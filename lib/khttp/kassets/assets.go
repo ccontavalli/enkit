@@ -2,14 +2,14 @@
 // built into your binary with go_embed_data() in an http Mux object.
 //
 // The assets are minimally pre-processed so, for example:
-// - the MIME type is precomputed - once - and always reused.
-// - the path of the file is mangled so that modern conventions are followed
-//   (file extension from .html file is stripped, for example, and an index.html
-//   is used when a directory is requested)
-// - files are pre-compressed, so if gzip encoding by the browser is supported,
-//   those files are not re-compressed on the fly every time. The pre-compression
-//   is dropped if there is not enough saving.
-// - ...
+//   - the MIME type is precomputed - once - and always reused.
+//   - the path of the file is mangled so that modern conventions are followed
+//     (file extension from .html file is stripped, for example, and an index.html
+//     is used when a directory is requested)
+//   - files are pre-compressed, so if gzip encoding by the browser is supported,
+//     those files are not re-compressed on the fly every time. The pre-compression
+//     is dropped if there is not enough saving.
+//   - ...
 //
 // The assets preprocessing is configurable by chaining functions together in
 // different ways.

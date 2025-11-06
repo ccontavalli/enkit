@@ -81,11 +81,13 @@ type ResultWork func() interface{}
 // WithResult collects the return value of a function and makes it available through a ResultHandler.
 //
 // For example, by doing:
-//   result := ResultRetriever()
-//   workpool.Add(WithResult(func() interface{} { return "hello" }, result))
+//
+//	result := ResultRetriever()
+//	workpool.Add(WithResult(func() interface{} { return "hello" }, result))
 //
 // To retrieve the returned value, you can then run:
-//   value := result.Get().(string)
+//
+//	value := result.Get().(string)
 //
 // Get() will block until the work is completed.
 //
@@ -134,7 +136,8 @@ func ResultRetriever() *Result {
 // make sure your callback just schedules a goroutine.
 //
 // Use it like:
-//  ..., WithResult(work, ResultCallback(handler))
+//
+//	..., WithResult(work, ResultCallback(handler))
 type ResultCallback func(interface{})
 
 func (c ResultCallback) Handle(result interface{}) {
@@ -182,10 +185,11 @@ var ErrorIgnore = ErrorCallback(func(error) {})
 // ErrorResult returns an ErrorHandler that allows to retrieve the error returned by the work function.
 //
 // To use it:
-//   delayedError := ErrorRetriever()
-//   wp.Add(WithError(error, delayedError))
-//   ...
-//   err := delayedError.Get()
+//
+//	delayedError := ErrorRetriever()
+//	wp.Add(WithError(error, delayedError))
+//	...
+//	err := delayedError.Get()
 //
 // Note that the Get function will block until the error has been returned.
 func ErrorRetriever() *ErrorResult {

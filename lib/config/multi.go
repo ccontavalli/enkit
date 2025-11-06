@@ -27,8 +27,8 @@ func NewMulti(loader Loader, marshaller ...marshal.FileMarshaller) *MultiFormat 
 //
 // For example:
 //
-//   mf.Marshal("config", Config{})
-//   mf.Marshal("config.json", Config{})
+//	mf.Marshal("config", Config{})
+//	mf.Marshal("config.json", Config{})
 //
 // will results in a "config.toml" file (default preferred format) and
 // "config.json" file being created.

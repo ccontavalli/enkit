@@ -11,19 +11,19 @@
 //
 // For example, by using something like:
 //
-//     be, err := token.NewSymmetricEncoder(...)
-//     if err ...
+//	be, err := token.NewSymmetricEncoder(...)
+//	if err ...
 //
-//     encoder := token.NewTypeEncoder(token.NewChainedEncoder(
-//         token.NewTimeEncoder(nil, time.Second * 10), be, token.NewBase64URLEncoder())
+//	encoder := token.NewTypeEncoder(token.NewChainedEncoder(
+//	    token.NewTimeEncoder(nil, time.Second * 10), be, token.NewBase64URLEncoder())
 //
 // you will get an encoder that when used like:
 //
-//      uData := struct {
-//        Username, Lang string
-//      }{"myname", "english"}
+//	uData := struct {
+//	  Username, Lang string
+//	}{"myname", "english"}
 //
-//      b64string, err := encoder.Encode(uData)
+//	b64string, err := encoder.Encode(uData)
 //
 // will convert a struct into a byte array, add the time the serialization happened,
 // encrypt all with a symmetric key, and then convert to base64.
@@ -31,7 +31,6 @@
 // On Decode(), the original array will be returned after applying all the necessary
 // transformations and verifications. For example, Decode() will error out if the data
 // is older than 10 seconds, the maximum lifetime supplied to NewTimeEncoder.
-//
 package token
 
 import (

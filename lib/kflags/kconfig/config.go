@@ -316,7 +316,7 @@ func NewConfigAugmenterFromDNS(cs cache.Store, domain string, binary string, mod
 		if err != nil {
 			return nil, multierror.NewOr(errs, fmt.Errorf("no endpoints for domain '%s' could be detected - configure TXT records for %s? No connectivity?", domain, dns.Name()))
 		}
-		eps = []remote.Endpoint { ep };
+		eps = []remote.Endpoint{ep}
 	}
 
 	type Options struct {

@@ -12,26 +12,25 @@
 //
 // For example:
 //
-//   ds, err := datastore.New()
-//   if err != nil {
-//     ...
-//   }
+//	ds, err := datastore.New()
+//	if err != nil {
+//	  ...
+//	}
 //
-//   ids, err := ds.Open("myapp1", "identities")
-//   if err != nil { ...
+//	ids, err := ds.Open("myapp1", "identities")
+//	if err != nil { ...
 //
-//   err, _ := ids.Marshal("carlo@enfabrica.net", credentials)
-//   if err != nil { ...
+//	err, _ := ids.Marshal("carlo@enfabrica.net", credentials)
+//	if err != nil { ...
 //
-//   err, _ := ids.Marshal("default", credentials)
-//   if err != nil { ...
+//	err, _ := ids.Marshal("default", credentials)
+//	if err != nil { ...
 //
-//   epts, err := ds.Open("myapp1", "endpoints")
-//   if err != nil { ...
+//	epts, err := ds.Open("myapp1", "endpoints")
+//	if err != nil { ...
 //
-//   err, _ := epts.Marshal("server1", parameters)
-//   err, _ := epts.Marshal("server2", parameters)
-//
+//	err, _ := epts.Marshal("server1", parameters)
+//	err, _ := epts.Marshal("server2", parameters)
 //
 // There are two main optional parameters that can be passed to datastore.New:
 // a ContextGenerator, and a KeyInitializer.
@@ -44,12 +43,10 @@
 // to Open and Marshal. It can be used to map Marshal and Unmarshal operations
 // to arbitrary objects in the datastore tree.
 //
-//
 // To pass google options, a KeyInitializer, or ContextGenerator, you can use
 // one of the functional setters with datastore.New(). For example:
 //
-//  ds, err := datastore.New(WithGoogleOptions(opts), WithKeyInitializer(myfunc), WithContextGenerator(mybar))
-//
+//	ds, err := datastore.New(WithGoogleOptions(opts), WithKeyInitializer(myfunc), WithContextGenerator(mybar))
 package datastore
 
 import (

@@ -16,7 +16,8 @@ func WithCookie(cookie *http.Cookie) Modifier {
 // AddQuery adds a query parameter to the request.
 //
 // For example:
-//   AddQuery("q", "this is a query")
+//
+//	AddQuery("q", "this is a query")
 //
 // will add "?q=this%20is%20a%20query" to your URL.
 //

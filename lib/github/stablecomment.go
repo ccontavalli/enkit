@@ -6,15 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
+	"github.com/Masterminds/sprig/v3"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/itchyny/gojq"
 	"github.com/josephburnett/jd/lib"
-        "github.com/Masterminds/sprig/v3"
-        "github.com/itchyny/gojq"
 	"os"
 	"regexp"
 	"text/template"
+	"time"
 )
 
 // StableComment is an object to manipulate and process stable github comments.
@@ -45,7 +45,9 @@ import (
 // specifying a PATCH adding an operation to the previously posted
 // json, causing operations to be added. The PATCH could look something
 // like:
-// 	[{"op":"add","path":"/operations/-","value":"{ ... json ...}"}]
+//
+//	[{"op":"add","path":"/operations/-","value":"{ ... json ...}"}]
+//
 // Appending an element to an existing list.
 type StableComment struct {
 	marker  string
@@ -206,7 +208,7 @@ func (dt *DiffTransformer) Apply(ijson string) (string, error) {
 
 type StableCommentJqFlags struct {
 	Timeout time.Duration
-	Code string
+	Code    string
 }
 
 func DefaultStableCommentJqFlags() *StableCommentJqFlags {
@@ -222,7 +224,7 @@ func (fl *StableCommentJqFlags) Register(set kflags.FlagSet, prefix string) *Sta
 }
 
 type JqTransformer struct {
-	code *gojq.Code
+	code    *gojq.Code
 	timeout time.Duration
 }
 
@@ -286,19 +288,19 @@ type Transformer interface {
 }
 
 type StableCommentTransformerFlags struct {
-	jqFlags *StableCommentJqFlags
+	jqFlags   *StableCommentJqFlags
 	diffFlags *StableCommentDiffFlags
 }
 
 func DefaultStableCommentTransformerFlags() *StableCommentTransformerFlags {
 	return &StableCommentTransformerFlags{
-		jqFlags: DefaultStableCommentJqFlags(),
+		jqFlags:   DefaultStableCommentJqFlags(),
 		diffFlags: DefaultStableCommentDiffFlags(),
 	}
 }
 
 func (fl *StableCommentTransformerFlags) Register(
-    set kflags.FlagSet, prefix string) *StableCommentTransformerFlags {
+	set kflags.FlagSet, prefix string) *StableCommentTransformerFlags {
 	fl.jqFlags.Register(set, prefix)
 	fl.diffFlags.Register(set, prefix)
 	return fl

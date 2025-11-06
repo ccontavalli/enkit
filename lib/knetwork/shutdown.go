@@ -75,4 +75,3 @@ func (c *CleanupListener) Close() error {
 	defer os.Remove(c.Path)
 	return c.FileListener.Close()
 }
-

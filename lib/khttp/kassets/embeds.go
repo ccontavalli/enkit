@@ -16,10 +16,12 @@ import (
 // In your BUILD.bazel file:
 //
 // go_library(
-//     name = "assets",
-//     srcs = ["assets.go"],
-//     embedsrcs = glob(["*.html"]),
-//     importpath = "your/import/path/assets",
+//
+//	name = "assets",
+//	srcs = ["assets.go"],
+//	embedsrcs = glob(["*.html"]),
+//	importpath = "your/import/path/assets",
+//
 // )
 //
 // In your assets.go file:
@@ -27,16 +29,18 @@ import (
 // package assets
 //
 // import (
-// 	"embed"
-// 	"github.com/ccontavalli/enkit/lib/khttp/kassets"
+//
+//	"embed"
+//	"github.com/ccontavalli/enkit/lib/khttp/kassets"
+//
 // )
 //
 // //go:embed *.html
 // var embedded embed.FS
 //
-// func Data() map[string][]byte {
-// 	return kassets.EmbedFSToMapOrPanic(embedded)
-// }
+//	func Data() map[string][]byte {
+//		return kassets.EmbedFSToMapOrPanic(embedded)
+//	}
 func EmbedFSToMap(embedded embed.FS) (map[string][]byte, error) {
 	data := make(map[string][]byte)
 	err := fs.WalkDir(embedded, ".", func(path string, d fs.DirEntry, err error) error {

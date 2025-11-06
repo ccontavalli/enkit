@@ -106,18 +106,18 @@ func ReadOrGenerateSymmetricKey(path string, size int) SymmetricSetter {
 //
 // A typical way to use the encoder would be:
 //
-//    rng := rand.New(srand.Source)  // using github.com/enkit/lib/srand library.
-//    ...
-//    be, err := NewSymmetricEncoder(rng, ReadOrGenerateSymmetricKey("/etc/keys/connect.key", 0))
-//    if err != nil ...
+//	rng := rand.New(srand.Source)  // using github.com/enkit/lib/srand library.
+//	...
+//	be, err := NewSymmetricEncoder(rng, ReadOrGenerateSymmetricKey("/etc/keys/connect.key", 0))
+//	if err != nil ...
 //
 // Or:
 //
-//    key, err := GenerateSymmetricKey(rng, 0)
-//    if err != nil ...
+//	key, err := GenerateSymmetricKey(rng, 0)
+//	if err != nil ...
 //
-//    be, err := NewSymmetricEncoder(rng, UseSymmetricKey(key))
-//    ...
+//	be, err := NewSymmetricEncoder(rng, UseSymmetricKey(key))
+//	...
 //
 // followed by calls to Encode() and Decode().
 func NewSymmetricEncoder(rng *rand.Rand, setters ...SymmetricSetter) (*SymmetricEncoder, error) {

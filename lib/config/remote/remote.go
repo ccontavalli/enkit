@@ -112,7 +112,8 @@ func ParseDNSOptions(value string) (DNSOptions, error) {
 // or a set of options followed by |, followed by the URL.
 //
 // For example:
-//   timeout=3 retries=5|http://mydomain.com/configs/
+//
+//	timeout=3 retries=5|http://mydomain.com/configs/
 //
 // If the option needs to contain the | or any other forbidden character, the option can
 // be URL path encoded, with characters replaced by % notation. % itself needs to be escaped.

@@ -76,8 +76,9 @@ type Command struct {
 // Goal of a Config is to specify a list of defaults to apply to all the flags in a namespace.
 //
 // The Config data structure specifies:
-//   a) A list of defaults for each namespace (Namespace)
-//   b) A list of external config files to fallback to (Include)
+//
+//	a) A list of defaults for each namespace (Namespace)
+//	b) A list of external config files to fallback to (Include)
 //
 // When a flag is looked up:
 //

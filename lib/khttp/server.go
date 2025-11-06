@@ -479,4 +479,3 @@ func ListenAndServe(log logger.Printer, s *http.Server) error {
 	log("Listening on HTTP address %s", s.Addr)
 	return s.ListenAndServe()
 }
-

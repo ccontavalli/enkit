@@ -1,4 +1,6 @@
+//go:build !release
 // +build !release
+
 //
 // Package echo implements a naive echo server.
 //

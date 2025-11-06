@@ -29,12 +29,12 @@ func SaveCredentials(credentials *EnkitCredentials, store cache.Store, sshopts .
 	if err != nil {
 		return err
 	}
-        // If the agent was loaded from the environment, Close() is a noop.
-        // If the code just started an agent, we DO NOT WANT TO KILL IT!
-        // Killing it will destroy the key we just fetched.
-        //
-        // With this defer in place, login only works when `enkit agent run` was
-        // first started in the current bash session!
+	// If the agent was loaded from the environment, Close() is a noop.
+	// If the code just started an agent, we DO NOT WANT TO KILL IT!
+	// Killing it will destroy the key we just fetched.
+	//
+	// With this defer in place, login only works when `enkit agent run` was
+	// first started in the current bash session!
 	//   defer agent.Close() // WRONG!!
 
 	if err := agent.AddCertificates(credentials.PrivateKey, credentials.SSHCertificate); err != nil {

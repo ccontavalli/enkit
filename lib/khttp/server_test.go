@@ -1,10 +1,10 @@
 package khttp
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/ccontavalli/enkit/lib/kflags"
-	"os"
 	"flag"
+	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
@@ -66,7 +66,7 @@ func TestAddDefaultPort(t *testing.T) {
 
 func GetAllFlags(fs *flag.FlagSet) []string {
 	flags := []string{}
-	fs.VisitAll(func (fl *flag.Flag) {
+	fs.VisitAll(func(fl *flag.Flag) {
 		flags = append(flags, fl.Name)
 	})
 	return flags

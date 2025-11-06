@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/coreos/go-oidc"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/ccontavalli/enkit/lib/oauth"
+	"github.com/coreos/go-oidc"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/cloudidentity/v1"
@@ -93,10 +93,12 @@ func SplitUsername(email, hd string) (string, string) {
 //
 // The GetGroupsVerifier relies on the cloudidentity API, which is very poorly
 // documented here:
-//   https://pkg.go.dev/google.golang.org/api/cloudidentity/v1beta1#GroupsMembershipsService.SearchTransitiveGroups
+//
+//	https://pkg.go.dev/google.golang.org/api/cloudidentity/v1beta1#GroupsMembershipsService.SearchTransitiveGroups
 //
 // ... and was announced in this blog post:
-//   https://workspaceupdates.googleblog.com/2020/08/new-api-cloud-identity-groups-google.html
+//
+//	https://workspaceupdates.googleblog.com/2020/08/new-api-cloud-identity-groups-google.html
 //
 // The API is the only "documented" API that allows to retrieve membership
 // without having an admin key / admin privileges - relying solely on the
@@ -130,7 +132,8 @@ func SplitUsername(email, hd string) (string, string) {
 // To label a group as a security group, you can tag it via UI by visiting
 // admin.google.com (groups.google.com does not expose the feature!) or by
 // using `gcloud identity groups update --labels=...`. More details here:
-//		https://support.google.com/a/answer/10607394?hl=en
+//
+//	https://support.google.com/a/answer/10607394?hl=en
 type GetGroupsVerifier struct {
 	conf *oauth2.Config
 	// Used mostly for testing, overrides the API endpoint if not empty.

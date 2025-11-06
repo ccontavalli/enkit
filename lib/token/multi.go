@@ -34,92 +34,94 @@ type Allocator func([]byte, BinaryEncoder, []BinaryEncoder) []byte
 //
 // Just like GPG or other puplar software, It works by:
 //
-// 1) Generating a random key and encrypting data with this random key.
-//    This is the Data Encryption Key, or DEK.
+//  1. Generating a random key and encrypting data with this random key.
+//     This is the Data Encryption Key, or DEK.
 //
-// 2) Encrypting this random key multiple times, once per recipient.
-//    Each recipient provides a Key Encryption Key, or KEK.
+//  2. Encrypting this random key multiple times, once per recipient.
+//     Each recipient provides a Key Encryption Key, or KEK.
 //
 // In the implementation here:
 //
-// - data is encrypted with an arbitrary BinaryEncoder, which is instantiated
-//   through a CryptFactory, in charge of generating the key and initializing
-//   the cipher to use. CyrptoFactory generates the DEK.
+//   - data is encrypted with an arbitrary BinaryEncoder, which is instantiated
+//     through a CryptFactory, in charge of generating the key and initializing
+//     the cipher to use. CyrptoFactory generates the DEK.
 //
-// - the DEK is encrypted through one or more keyholders. Keyholders are just
-//   BinaryEncoders, symmetric or asymmetric, capable of encrypting the DEK
-//   with their own KEK.
+//   - the DEK is encrypted through one or more keyholders. Keyholders are just
+//     BinaryEncoders, symmetric or asymmetric, capable of encrypting the DEK
+//     with their own KEK.
 //
 // The use of a MultiKeyCryptoEncoder is very very simple. See the test for
 // more examples, but a basic use to encrypt data can look like:
 //
-//     keyholder1, err := NewAsymmetricEncoder(rng, UsePublicKey(recipient1))
-//     ...
-//     keyholder2, err := NewAsymmetricEncoder(rng, UsePublickKey(recipient2))
-//     ...
+//	keyholder1, err := NewAsymmetricEncoder(rng, UsePublicKey(recipient1))
+//	...
+//	keyholder2, err := NewAsymmetricEncoder(rng, UsePublickKey(recipient2))
+//	...
 //
-//     mke, err := NewMultiKeyCryptoEncoder(
-//                    rng, SymmetricCreator, WithKeyHolder(keyholder1, keyholder2))
-//     ...
-//     encoded, err := mke.Encode(data)
+//	mke, err := NewMultiKeyCryptoEncoder(
+//	               rng, SymmetricCreator, WithKeyHolder(keyholder1, keyholder2))
+//	...
+//	encoded, err := mke.Encode(data)
 //
 // While to decrypt the data, a single recipient could use something like:
 //
-//     mke, err := NewMultiKeyCryptoEncoder(
-//                    rng, SymmetricCreator, WithKeyHolder(keyholder1))
-//     ...
-//     _, decoded, err := mke.Decode(context.Background(), encoded)
+//	mke, err := NewMultiKeyCryptoEncoder(
+//	               rng, SymmetricCreator, WithKeyHolder(keyholder1))
+//	...
+//	_, decoded, err := mke.Decode(context.Background(), encoded)
 //
 // Now:
-//  - SymmetricCreator generates a random 256 bit key, and configures
-//    an AES256-GCM cipher to encrypt/decrypt the data. You can create your
-//    own factory to use any other algorithm.
 //
-//  - Keyholders are just other BinaryEncoders. You can use an AsymmetricEncoder,
-//    a Symmetric one, mix them, or even just store the DEK in cleartext if you
-//    really want to.
+//   - SymmetricCreator generates a random 256 bit key, and configures
+//     an AES256-GCM cipher to encrypt/decrypt the data. You can create your
+//     own factory to use any other algorithm.
 //
-//  - MultiKeyCryptoEncoder is really agnostic to the encoder returned by
-//    the CryptoFactory, or used as keyholder.
+//   - Keyholders are just other BinaryEncoders. You can use an AsymmetricEncoder,
+//     a Symmetric one, mix them, or even just store the DEK in cleartext if you
+//     really want to.
 //
-//  - Each call to Encode() results in a new random key (and random nonces)
-//    being computed, and in all keyholders being invoked in turn to encrypt
-//    that key and store the result as part of the Encode()d message.
+//   - MultiKeyCryptoEncoder is really agnostic to the encoder returned by
+//     the CryptoFactory, or used as keyholder.
 //
-//  - If you use a MultiKeyCryptoEncoder to encrypt the data, you MUST use a
-//    MultiKeyCryptoEncoder to decrypt it.
+//   - Each call to Encode() results in a new random key (and random nonces)
+//     being computed, and in all keyholders being invoked in turn to encrypt
+//     that key and store the result as part of the Encode()d message.
 //
-//  - A MultiKeyCryptoEncoder will be able to decrypt the message as long as it
-//    has at least one keyholder capable of decrypting one of the encrypted keys.
+//   - If you use a MultiKeyCryptoEncoder to encrypt the data, you MUST use a
+//     MultiKeyCryptoEncoder to decrypt it.
 //
-//  - Authenticated encryption for all (keyholder and data encryption) is
-//    strongly recommended.
+//   - A MultiKeyCryptoEncoder will be able to decrypt the message as long as it
+//     has at least one keyholder capable of decrypting one of the encrypted keys.
 //
-//    The MultiKeyCryptoEncoder stores very little metadata alongside each key
-//    (just the key length). When decrypting, it will try each key in turn
-//    until it finds one that (a) can be decrypted without errors, and (b) can
-//    decrypt the entire message without errors.
+//   - Authenticated encryption for all (keyholder and data encryption) is
+//     strongly recommended.
 //
-//    If neither the keyholder nor the data encryption uses authenticated
-//    encryption (or is chained with NewChainedEncoder with some form of
-//    MAC/hashing/checksumming), it is likely that a Decode() will result in
-//    garbage, as the operation will succeed even in the presence of invalid
-//    keys (same that would happen with the wrong key and a non-authenticated
-//    scheme).
+//     The MultiKeyCryptoEncoder stores very little metadata alongside each key
+//     (just the key length). When decrypting, it will try each key in turn
+//     until it finds one that (a) can be decrypted without errors, and (b) can
+//     decrypt the entire message without errors.
 //
-//  - The data returned by a MultiKeyCryptoEncoder is neither signed nor
-//    authenticated.  A receiver or MITM could modify the data and make
-//    undetectable changes to the layout by, for example, removing or adding
-//    keys, or corrupting the framing that indicates the lenght of each
-//    stored copy of the key.
+//     If neither the keyholder nor the data encryption uses authenticated
+//     encryption (or is chained with NewChainedEncoder with some form of
+//     MAC/hashing/checksumming), it is likely that a Decode() will result in
+//     garbage, as the operation will succeed even in the presence of invalid
+//     keys (same that would happen with the wrong key and a non-authenticated
+//     scheme).
 //
-//    If this is undesireable, you can chain the encoder with another signing
-//    or encrypting encoder. But assuming both KEK and DEK are used with an
-//    authenticated encryption scheme risk should be minimal if any (extra
-//    keys will be rejected, corruption in key or data will be detected).
+//   - The data returned by a MultiKeyCryptoEncoder is neither signed nor
+//     authenticated.  A receiver or MITM could modify the data and make
+//     undetectable changes to the layout by, for example, removing or adding
+//     keys, or corrupting the framing that indicates the lenght of each
+//     stored copy of the key.
+//
+//     If this is undesireable, you can chain the encoder with another signing
+//     or encrypting encoder. But assuming both KEK and DEK are used with an
+//     authenticated encryption scheme risk should be minimal if any (extra
+//     keys will be rejected, corruption in key or data will be detected).
+//
+//	https://www.cc.gatech.edu/~aboldyre/papers/bbks.pdf
 //
 // [1]: https://www.cc.gatech.edu/~aboldyre/papers/bbks.pdf
-//      https://www.cc.gatech.edu/~aboldyre/papers/bbks.pdf
 // [2]: https://en.wikipedia.org/wiki/Hybrid_cryptosystem
 type MultiKeyCryptoEncoder struct {
 	rng       *rand.Rand
@@ -186,10 +188,11 @@ func NewMultiKeyCryptoEncoder(rng *rand.Rand, creator CryptoFactory, setters ...
 // alongside the encrypted message.
 //
 // The returned byte array has the format:
-//   [varint: length of ciphertext][ciphertext]
-//   [varint: length of key encrypted with keyholder[0]][key encrypted with keyholder[0]]
-//   [varint: length of key encrypted with keyholder[1]][key encrypted with keyholder[1]]
-//   [...]
+//
+//	[varint: length of ciphertext][ciphertext]
+//	[varint: length of key encrypted with keyholder[0]][key encrypted with keyholder[0]]
+//	[varint: length of key encrypted with keyholder[1]][key encrypted with keyholder[1]]
+//	[...]
 func (mke *MultiKeyCryptoEncoder) Encode(data []byte) ([]byte, error) {
 	sc, key, err := mke.creator(mke.rng, nil)
 	if err != nil {

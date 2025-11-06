@@ -217,27 +217,26 @@ func CreateExecuteAction(packagedir string, commanddir string, argv []string, va
 // Now, when VisitCommand is called as...
 //
 // VisitCommand("enkit") for `enkit --help`
-//  - --help should show the availability of a docker command, complete with description.
-//  - ideally, it should not require the download of the "fpga" and "dev" commands.
-//  - How? Config expanding the "enkit" namespace by adding the "docker" command, defined
-//    directly in the config file.
+//   - --help should show the availability of a docker command, complete with description.
+//   - ideally, it should not require the download of the "fpga" and "dev" commands.
+//   - How? Config expanding the "enkit" namespace by adding the "docker" command, defined
+//     directly in the config file.
 //
 // VisitCommand("enkit.docker") for `enkit docker --help`
-//  - --help should show the availability of a "dev" and "fpga" containers, complete with description.
-//    Further, the syntax should allow for specifying a version / tag.
-//  - How? Config expanding the "enkit.docker" namespace, adds the ... "dev" and "fpga" commands.
-//    Ideally, without downloading them. Just based on the config file, creates the command, sets
-//    an implementation, configures some flags.
+//   - --help should show the availability of a "dev" and "fpga" containers, complete with description.
+//     Further, the syntax should allow for specifying a version / tag.
+//   - How? Config expanding the "enkit.docker" namespace, adds the ... "dev" and "fpga" commands.
+//     Ideally, without downloading them. Just based on the config file, creates the command, sets
+//     an implementation, configures some flags.
 //
 // VisitCommand("enkit.docker.dev") for `enkit docker dev --help`
-//  - --help should show the availability of run, login and upgrade.
-//  - How? dev has an implementation. It is downloaded and waited for. The inner manifest file is
-//    parsed, defining extra commands and flags.
+//   - --help should show the availability of run, login and upgrade.
+//   - How? dev has an implementation. It is downloaded and waited for. The inner manifest file is
+//     parsed, defining extra commands and flags.
 //
 // VisitCommand("enkit.docker.dev") for `enkit docker dev:latest --help`
-//  - --help should show the availability of run, login, and upgrade, with their flags.
-//  - How? dev has an implementation.
-//
+//   - --help should show the availability of run, login, and upgrade, with their flags.
+//   - How? dev has an implementation.
 func (c *NamespaceAugmenter) VisitCommand(namespace string, command kflags.Command) (found bool, err error) {
 	nsIndex, found := c.index[namespace]
 	if !found {

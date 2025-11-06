@@ -18,8 +18,9 @@ func (n *nopWriteCloser) Close() error {
 // If you need a NopCloser for read, you can use io.NopCloser.
 //
 // IMPORTANT: discarding a Close() will of course result in the file remaining
-//            open, and corresponding buffers not being flushsed. Be careful
-//            when using this.
+//
+//	open, and corresponding buffers not being flushsed. Be careful
+//	when using this.
 func NopWriteCloser(writer io.Writer) io.WriteCloser {
 	return &nopWriteCloser{writer}
 }

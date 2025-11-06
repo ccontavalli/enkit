@@ -6,28 +6,28 @@
 // For example, once you have a Store object, you can store or load a configuration
 // with:
 //
-//     config := Config{
-//         Server: "127.0.0.1",
-//         Port: 53,
-//     }
+//	config := Config{
+//	    Server: "127.0.0.1",
+//	    Port: 53,
+//	}
 //
-//     if err := store.Marshal("server-config", config); err != nil {
-//        ...
-//     }
+//	if err := store.Marshal("server-config", config); err != nil {
+//	   ...
+//	}
 //
-//     ... load it later ...
+//	... load it later ...
 //
-//     if _, err := store.Unmarshal("server-config", &config); err != nil {
-//        ...
-//     }
+//	if _, err := store.Unmarshal("server-config", &config); err != nil {
+//	   ...
+//	}
 //
 // The "server-config" string is ... just a string. A key by which the configuration
 // is known by. Different Store implementations will use it differently: they may
 // turn it into a file name, into the key of a database, ...
 //
 // Internally, a `Store` does two things:
-//   1) It converts your config object into some binary blob (marshal, unmarshal).
-//   2) It reads and writes this blob somewhere.
+//  1. It converts your config object into some binary blob (marshal, unmarshal).
+//  2. It reads and writes this blob somewhere.
 //
 // Some databases and config stores use their own marshalling mechanism, while
 // others have no built in marshalling, and rely on a standard mechanism like
@@ -39,7 +39,6 @@
 //
 // NewSimple and NewMulti wrap a store around an object capable of using one
 // of the standard encoders/decoders provided by go.
-//
 package config
 
 // Represents a file that was Unmarshalled.

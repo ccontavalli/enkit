@@ -42,11 +42,11 @@ type Command interface {
 // fileCommand buffers stdout and stderr from the underlying command to a
 // temporary file.
 type fileCommand struct {
-	cmd           *exec.Cmd
+	cmd *exec.Cmd
 	// Additional environment variables overridden by API.
-	env	      []string
-	stdoutPath    string
-	stderrPath    string
+	env        []string
+	stdoutPath string
+	stderrPath string
 }
 
 // NewCommand returns a fileCommand wrapping the provided exec.Cmd. It is
@@ -64,10 +64,10 @@ var NewCommand = func(cmd *exec.Cmd, env ...string) (Command, error) {
 	stderr.Close()
 
 	return &fileCommand{
-		cmd:           cmd,
-		env:	       env,
-		stdoutPath:    stdout.Name(),
-		stderrPath:    stderr.Name(),
+		cmd:        cmd,
+		env:        env,
+		stdoutPath: stdout.Name(),
+		stderrPath: stderr.Name(),
 	}, nil
 }
 

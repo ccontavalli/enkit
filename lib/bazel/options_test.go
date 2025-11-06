@@ -10,7 +10,7 @@ import (
 )
 
 // exitError manufactures a *exec.ExitError with a specified return code.
-func exitError(retcode int) error{
+func exitError(retcode int) error {
 	// exec.ExitError wraps os.ProcessState which is opaque, so there's no way to
 	// construct an error via the normal means.
 	// Instead, exec a script which exits with the specified code, and then return
@@ -40,32 +40,32 @@ func TestQueryOptionsArgs(t *testing.T) {
 
 func TestQueryOptionsFilterError(t *testing.T) {
 	testCases := []struct {
-		desc string
+		desc    string
 		options *queryOptions
-		err error
+		err     error
 		wantErr bool
-	} {
+	}{
 		{
-			desc: "default propagates all errors",
+			desc:    "default propagates all errors",
 			options: &queryOptions{},
-			err: errors.New("some error"),
+			err:     errors.New("some error"),
 			wantErr: true,
 		},
 		{
-			desc: "keep_going ignores exit code 3",
+			desc:    "keep_going ignores exit code 3",
 			options: &queryOptions{keepGoing: true},
-			err: exitError(3),
+			err:     exitError(3),
 			wantErr: false,
 		},
 		{
-			desc: "keep_going propagates exit code 4",
+			desc:    "keep_going propagates exit code 4",
 			options: &queryOptions{keepGoing: true},
-			err: exitError(4),
+			err:     exitError(4),
 			wantErr: true,
 		},
 	}
 	for _, tc := range testCases {
-		t.Run(tc.desc, func (t *testing.T) {
+		t.Run(tc.desc, func(t *testing.T) {
 			gotErr := tc.options.filterError(tc.err)
 
 			assert.Equalf(t, gotErr != nil, tc.wantErr, "gotErr was '%v' but wantErr was %v", gotErr, tc.wantErr)

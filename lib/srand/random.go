@@ -1,18 +1,17 @@
 // A thread safe cryptographically secure random number generator.
 //
 // This is just a tiny wrapper around crypto/rand which:
-// - performs buffering - rather than read from /dev/urandom for each
-//   random number request, it buffers entropy.
-// - uses a thread safe pool - rather than locking and one global state,
-//   it maintains a buffer of entropy per thread pool.
+//   - performs buffering - rather than read from /dev/urandom for each
+//     random number request, it buffers entropy.
+//   - uses a thread safe pool - rather than locking and one global state,
+//     it maintains a buffer of entropy per thread pool.
 //
 // If you run the included benchmark, you can see this is order of magnitudes
 // faster than just using crypto/rand.
 //
 // To use it, just create a new random number generator with it:
 //
-//   rng := rand.New(srand.Source)
-//
+//	rng := rand.New(srand.Source)
 package srand
 
 import (

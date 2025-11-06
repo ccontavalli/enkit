@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"context"
 	"io"
-	"strings"
 	"log"
+	"strings"
 )
 
 // Logger is the interface used by the enkit libraries to log messages.
@@ -52,7 +52,8 @@ func LogLines(logger Printer, buffer, indent string) {
 // DefaultLogger uses a single Printf to implement the Logger interface.
 //
 // Printer must be provided. Use log.Printf to rely on default golang logging, with:
-//    logger := &DefaultLoger{Printer: log.Printf}
+//
+//	logger := &DefaultLoger{Printer: log.Printf}
 //
 // ... or just use the pre-defined `Go` variable bleow for default Go logging.
 type DefaultLogger struct {
@@ -130,15 +131,15 @@ func (ie *IndentedError) Error() string {
 // For example, let's say you have an error err that converted with
 // fmt.Printf(... %s ...) leads to the following output:
 //
-//   An error occured in executing function, stack trace follows.
-//     Function1() ...
-//     Function2() ...
+//	An error occured in executing function, stack trace follows.
+//	  Function1() ...
+//	  Function2() ...
 //
 // Using NewIndentedError(err, "| "), would lead to:
 //
-//   | An error occured in executing function, stack trace follows.
-//   |   Function1() ...
-//   |   Function2() ...
+//	| An error occured in executing function, stack trace follows.
+//	|   Function1() ...
+//	|   Function2() ...
 //
 // Further, the error returned by NewIntendedError implements the
 // Unwrap interface, allowing programmatic access to the original error.
@@ -190,7 +191,7 @@ func IndentAndQuoteLines(buffer, indent string) string {
 
 func SetCtx(ctx context.Context, l Logger) context.Context {
 	return context.WithValue(ctx, "logger", l)
-} 
+}
 
 func GetCtx(ctx context.Context) Logger {
 	l, ok := ctx.Value("logger").(Logger)

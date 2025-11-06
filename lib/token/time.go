@@ -57,14 +57,15 @@ var ExpiredError = fmt.Errorf("signature expired")
 // while decoding the data.
 //
 // Example:
-//   te := NewTimeEncoder(...)
-//   ...
-//   ctx, data, err := te.Decode(context.Background(), original)
-//   ...
-//   etime, ok := ctx.Value(token.IssuedTimeKey).(time.Time)
-//   if !ok {
-//     ...
-//   }
+//
+//	te := NewTimeEncoder(...)
+//	...
+//	ctx, data, err := te.Decode(context.Background(), original)
+//	...
+//	etime, ok := ctx.Value(token.IssuedTimeKey).(time.Time)
+//	if !ok {
+//	  ...
+//	}
 var IssuedTimeKey = contextKey("issued")
 
 // MaxTimeKey allows to access the maximum validity of the data.
