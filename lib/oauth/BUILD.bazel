@@ -3,10 +3,16 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "oauth",
     srcs = [
+        "authenticator.go",
+        "extractor.go",
         "factory.go",
+        "handlers.go",
         "multi.go",
         "oauth.go",
+        "redirector.go",
         "types.go",
+        "utils.go",
+        "verifier.go",
     ],
     importpath = "github.com/ccontavalli/enkit/lib/oauth",
     visibility = ["//visibility:public"],

@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/ccontavalli/enkit/lib/kcerts"
@@ -9,113 +10,36 @@ import (
 	"golang.org/x/oauth2"
 )
 
+var ErrorLoops = errors.New("You have been redirected back to this url - but you still don't have an authentication token.\n" +
+	"As a sentinent web server, I've decided that you human don't deserve any further redirect, as that would cause a loop\n" +
+	"which would be bad for the future of the internet, my load, and your bandwidth. Hit refresh if you want, but there's likely\n" +
+	"something wrong in your cookies, or your setup")
+var ErrorCannotAuthenticate = errors.New("Who are you? Sorry, you have no authentication cookie, and there is no authentication service configured")
+var ErrorStateUnsupported = errors.New("Incorrect API usage - the authentication method does not support propagating state")
+var ErrorNotAuthenticated = errors.New("No authentication information found")
+
 // An IAuthenticator is any object capable of performing authentication for a web server.
 type IAuthenticator interface {
-	// PerformLogin initiates the login process.
-	//
-	// PerformLogin will redirect the user to the oauth IdP login page, after
-	// generating encrypted cookies containing enough information to verify success
-	// at the end of the process and to carry application state.
-	//
-	// PerformLogin will initiate the process even if the user is already logged in.
-	//
-	// The PerformLogin may not support all the login modifiers. Specifically,
-	// WithCookieOptions may be silently ignored if no cookie is used by the
-	// specific implementation. If state is supplied with WithState and the
-	// underlying implementation cannot propagate state, the error
-	// ErrorStateUnsupported will be returned instead.
 	PerformLogin(w http.ResponseWriter, r *http.Request, lm ...LoginModifier) error
-
-	// PerformAuth turns the credentials received into AuthData (and a cookie).
-	//
-	// PerformAuth is invoked at the END of the authentication process. The URL
-	// of the code invoking PerformAuth is typically configured as the oauth
-	// endpoint.
-	//
-	// If no error is returned:
-	// * AuthData is guaranteed to be usable, although the Complete() method in
-	//   AuthData can be used to verify that the process returned valid
-	//   credentials.
-	// * A cookie is guaranteed to have been set with the client, allowing for
-	//   GetCredentialsFromRequest to be usable. This function can either set
-	//   the cookie directly, or assume the cookie was already set by a 3rd party
-	//   (for example, at the end of a redirect based authentication).
-	//
-	// If the error returned is ErrorNotAuthenticated, it means that
-	// authentication data was not found at all, meaning that a Login process
-	// probably needs to be started. This is useful to create handlers that
-	// can act both as Login and Auth handlers, or to write handlers that
-	// conditionally start the login process.
 	PerformAuth(w http.ResponseWriter, r *http.Request, mods ...kcookie.Modifier) (AuthData, error)
-
-	// GetCredentialsFromRequest extracts the credentials from an http request.
-	//
-	// This is useful to check if - for example - a user already authenticated
-	// before invoking PerformLogin, or to verify that a credential cookie has
-	// been supplied in a gRPC or headless application.
-	//
-	// If no authentication cookie is found (eg, user has not ever attempted
-	// login), ErrorNotAuthenticated is returned. In general, though, if an
-	// error is returned by GetCredentialsFromRequest the caller of this API
-	// should invoke PerformLogin to re-try the login process blindly.
 	GetCredentialsFromRequest(r *http.Request) (*CredentialsCookie, string, error)
 }
 
 type Identity struct {
-	// Id is a globally unique identifier of the user.
-	//
-	// It is oauth provider specific, generally contains an integer or string
-	// uniquely identifying the user, and a domain name used to namespace the id.
-	Id string
-
-	// The name by which a user goes by.
-	//
-	// Note that the Username tied to a specific user may change over time.
-	Username string
-
-	// An organization this username belongs to.
-	// It is generally the entity issuing the username, the namespace denoting the
-	// validity of the username.
-	//
-	// For example: with a gsuite account, the organization would be the domain name
-	// tied with the gsuite account, for example "enfabrica.net". The administrators
-	// of "enfabrica.net" can create new accounts, accounts @enfabrica.net are
-	// guaranteed unique within "enfabrica.net" only. With a github account instead,
-	// even though the account is used within an organization like "enfabrica", users
-	// register with "github.com", and the username must be unique across the entire
-	// "github.com" organization. So github.com is the Organization here.
-	//
-	// Username + "@" + Organization is guaranteed globally unique.
-	// But unlike an Id, the Username may change.
+	Id           string
+	Username     string
 	Organization string
-	// Groups is a list of string identifying the groups the user is part of.
-	Groups []string
+	Groups       []string
 }
 
-// GlobalName returns a human friendly string identifying the user.
-//
-// It looks like an email, but it may or may not be a valid email address.
-//
-// For example: github users will have github.com as organization, and their login as Username.
-//
-//	The GlobalName will be username@github.com. Not a valid email.
-//
-// On the other hand: gsuite users for enfabrica.net will have enfabrica.net as organization,
-//
-//	and their username as Username, forming a valid email.
-//
-// Interpret the result as meaning "user by this name" @ "organization by this name".
 func (i *Identity) GlobalName() string {
 	return i.Username + "@" + i.Organization
 }
 
-// Valid returns true if the identity has been initialized.
 func (i *Identity) Valid() bool {
 	return i.Id != "" && i.Username != "" && i.Organization != ""
 }
 
-// Based on the kind of identity obtained, returns a modifier able to generate
-// certificates to support that specific identity type.
 func (i *Identity) CertMod() kcerts.CertMod {
 	if i.Organization == "github.com" {
 		return func(certificate *ssh.Certificate) *ssh.Certificate {
@@ -126,13 +50,67 @@ func (i *Identity) CertMod() kcerts.CertMod {
 	return kcerts.NoOp
 }
 
-// CredentialsCookie is what is encrypted within the authentication cookie returned
-// to the browser or client.
 type CredentialsCookie struct {
-	// An abstract representation of the identity of the user.
-	// This is independent of the authentication provider.
 	Identity Identity
 	Token    oauth2.Token
 }
 
+type LoginState struct {
+	Secret []byte
+	Target string
+	State  interface{}
+}
 
+type LoginOptions struct {
+	CookieOptions kcookie.Modifiers
+	Target        string
+	State         interface{}
+}
+
+type LoginModifier func(*LoginOptions)
+
+func WithCookieOptions(mod ...kcookie.Modifier) LoginModifier {
+	return func(lo *LoginOptions) {
+		lo.CookieOptions = append(lo.CookieOptions, mod...)
+	}
+}
+func WithTarget(target string) LoginModifier {
+	return func(lo *LoginOptions) {
+		lo.Target = target
+	}
+}
+func WithState(state interface{}) LoginModifier {
+	return func(lo *LoginOptions) {
+		lo.State = state
+	}
+}
+
+type LoginModifiers []LoginModifier
+
+func (lm LoginModifiers) Apply(lo *LoginOptions) *LoginOptions {
+	for _, m := range lm {
+		m(lo)
+	}
+	return lo
+}
+
+type AuthData struct {
+	Creds      *CredentialsCookie
+	Identities []Identity
+	Cookie     string
+	Target     string
+	State      interface{}
+}
+
+func (a *AuthData) Complete() bool {
+	if a.Creds == nil {
+		return false
+	}
+	if !a.Creds.Identity.Valid() {
+		return false
+	}
+	if !a.Creds.Token.Valid() {
+		return false
+	}
+	return true
+}
