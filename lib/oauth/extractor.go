@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ccontavalli/enkit/lib/khttp/kcookie"
 	"github.com/ccontavalli/enkit/lib/oauth/cookie"
 	"github.com/ccontavalli/enkit/lib/token"
 )
@@ -112,6 +113,15 @@ func (a *Extractor) GetCredentialsFromRequest(r *http.Request) (*CredentialsCook
 		return nil, "", fmt.Errorf("invalid nil credentials")
 	}
 	return credentials, cookie.Value, nil
+}
+
+func (a *Extractor) SetCredentialsOnResponse(ad AuthData, w http.ResponseWriter, co ...kcookie.Modifier) (AuthData, error) {
+	ccookie, err := a.EncodeCredentials(*ad.Creds)
+	if err != nil {
+		return AuthData{}, err
+	}
+	http.SetCookie(w, cookie.CredentialsCookie(a.baseCookie, ccookie, co...))
+	return AuthData{Creds: ad.Creds, Cookie: ccookie, Target: ad.Target, State: ad.State}, nil
 }
 
 // CredentialsCookieName returns the name of the cookie maintaing the set of user credentials.

@@ -129,13 +129,9 @@ func (a *Authenticator) ExtractAuth(w http.ResponseWriter, r *http.Request) (Aut
 	return AuthData{Creds: &creds, Target: received.Target, State: received.State}, nil
 }
 
+// Legacy method for SetCredentialsOnResponse.
 func (a *Authenticator) SetAuthCookie(ad AuthData, w http.ResponseWriter, co ...kcookie.Modifier) (AuthData, error) {
-	ccookie, err := a.EncodeCredentials(*ad.Creds)
-	if err != nil {
-		return AuthData{}, err
-	}
-	http.SetCookie(w, a.CredentialsCookie(ccookie, co...))
-	return AuthData{Creds: ad.Creds, Cookie: ccookie, Target: ad.Target, State: ad.State}, nil
+	return a.SetCredentialsOnResponse(ad, w, co...)
 }
 
 // CredentialsCookie will create an http.Cookie object containing the user credentials.
