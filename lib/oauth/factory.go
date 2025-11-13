@@ -488,6 +488,21 @@ type Options struct {
 	log logger.Logger
 }
 
+func (o *Options) GetLoginTime() time.Duration {
+	return o.loginTime
+}
+
+func (o *Options) GetCallbackURL() *url.URL {
+	if o.conf.RedirectURL == "" {
+		return nil
+	}
+	u, err := url.Parse(o.conf.RedirectURL)
+	if err != nil {
+		return nil
+	}
+	return u
+}
+
 func DefaultOptions(rng *rand.Rand) Options {
 	return Options{
 		rng:          rng,

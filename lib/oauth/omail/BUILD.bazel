@@ -1,0 +1,42 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "omail",
+    srcs = [
+        "authenticator.go",
+        "emailer.go",
+        "test_utils.go",
+    ],
+    importpath = "github.com/ccontavalli/enkit/lib/oauth/omail",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/kflags",
+        "//lib/khttp/kcookie",
+        "//lib/oauth",
+        "//lib/token",
+        "@in_gopkg_gomail_v2//:gomail_v2",
+        "@org_golang_x_oauth2//:oauth2",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":omail",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "omail_test",
+    srcs = [
+        "authenticator_test.go",
+        "emailer_test.go",
+    ],
+    embed = [":omail"],
+    deps = [
+        "//lib/oauth",
+        "//lib/srand",
+        "//lib/token",
+        "@com_github_stretchr_testify//assert",
+        "@in_gopkg_gomail_v2//:gomail_v2",
+    ],
+)
