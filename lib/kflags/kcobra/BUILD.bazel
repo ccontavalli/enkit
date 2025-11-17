@@ -18,6 +18,12 @@ go_library(
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":kcobra",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
     name = "kcobra_test",
     srcs = ["defaults_test.go"],
@@ -28,10 +34,4 @@ go_test(
         "@com_github_spf13_pflag//:pflag",
         "@com_github_stretchr_testify//assert",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":kcobra",
-    visibility = ["//visibility:public"],
 )

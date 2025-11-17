@@ -17,10 +17,7 @@ go_library(
 
 go_test(
     name = "kassets_test",
-    srcs = [
-        "assets_test.go",
-        "embeds_test.go",
-    ],
+    srcs = ["embeds_test.go"],
     data = glob(["testdata/**"]),
     embed = [":kassets"],
     embedsrcs = [
