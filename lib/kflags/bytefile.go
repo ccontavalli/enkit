@@ -27,6 +27,12 @@ func WithFilename(filename *string) ByteFileModifier {
 	}
 }
 
+func WithContent(content []byte) ByteFileModifier {
+	return func(bff *ByteFileFlag) {
+	  (*bff.result) = content
+	}
+}
+
 // NewByteFileFlag creates a flag that reads a file into a byte array.
 //
 // The flag value specified by the user on the command line is a path, a string.
