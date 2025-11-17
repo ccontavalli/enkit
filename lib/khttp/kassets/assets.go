@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"sort"
 
 	"github.com/ccontavalli/enkit/lib/khttp"
 	"github.com/ccontavalli/enkit/lib/logger"
@@ -267,7 +268,13 @@ func (as AssetStats) Log(p logger.Printer) {
 
 	if len(as.Mapped) > 0 {
 		p("  Mapped:")
-		for _, res := range as.Mapped {
+		mapped := make([]AssetResource, len(as.Mapped))
+		copy(mapped, as.Mapped)
+		sort.Slice(mapped, func(i, j int) bool {
+			return mapped[i].Name < mapped[j].Name
+		})
+
+		for _, res := range mapped {
 			base := ""
 			if res.Base != "" {
 				base = res.Base + ": "
@@ -282,6 +289,23 @@ func (as AssetStats) Log(p logger.Printer) {
 					p("    - re-mapped as %s", path)
 				}
 			}
+		}
+	}
+
+	if len(as.Mapped) > 0 {
+		p("  Top 5 largest assets:")
+		largest := make([]AssetResource, len(as.Mapped))
+		copy(largest, as.Mapped)
+		sort.Slice(largest, func(i, j int) bool {
+			return largest[i].Size < largest[j].Size
+		})
+
+		count := 5
+		if len(largest) < count {
+			count = len(largest)
+		}
+		for _, res := range largest[len(largest)-count:] {
+			p("  - %s - %s", res.Name, humanize.Bytes(uint64(res.Size)))
 		}
 	}
 
