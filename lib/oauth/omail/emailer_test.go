@@ -68,7 +68,7 @@ func TestEmailer(t *testing.T) {
 	payload, err := emailer.ValidateEmailToken(tokenStr)
 	assert.NoError(t, err)
 	assert.NotNil(t, payload)
-	assert.Equal(t, "test@example.com", payload.Email)
+	assert.Equal(t, "email:test@example.com", payload.Creds.Identity.Id)
 	assert.Equal(t, "/return-here", payload.Target)
 	assert.Equal(t, "my-state", payload.State)
 

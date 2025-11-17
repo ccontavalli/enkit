@@ -5,13 +5,10 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
-	"strings"
-	"time"
 
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/khttp/kcookie"
 	"github.com/ccontavalli/enkit/lib/oauth"
-	"golang.org/x/oauth2"
 )
 
 // Authenticator implements the full IAuthenticator interface for email-based authentication.
@@ -19,7 +16,6 @@ type Authenticator struct {
 	*Emailer
 	extractor            *oauth.Extractor
 	emailSentRedirectURL *url.URL
-	loginTime            time.Duration
 }
 
 // AuthenticatorFlags combines flags for the Emailer and the oauth.Extractor.
@@ -118,7 +114,6 @@ func NewAuthenticator(rng *rand.Rand, mods ...AuthenticatorModifier) (*Authentic
 		Emailer:              emailer,
 		extractor:            extractor,
 		emailSentRedirectURL: emailSentRedirectURL,
-		loginTime:            opts.oauthOptions.GetLoginTime(),
 	}, nil
 }
 
@@ -149,33 +144,15 @@ func (a *Authenticator) PerformAuth(w http.ResponseWriter, r *http.Request, co .
 		return oauth.AuthData{}, fmt.Errorf("token parameter is required")
 	}
 
-	payload, err := a.ValidateEmailToken(encodedToken)
+	authData, err := a.ValidateEmailToken(encodedToken)
 	if err != nil {
-		return oauth.AuthData{}, err
+		return oauth.AuthData{}, fmt.Errorf("invalid email token - %w", err)
 	}
-
-	if payload.Email == "" {
-		return oauth.AuthData{}, fmt.Errorf("invalid token: empty email")
-	}
-
-	parts := strings.Split(payload.Email, "@")
-	if len(parts) != 2 {
-		return oauth.AuthData{}, fmt.Errorf("invalid email address: %s", payload.Email)
-	}
-
-	identity := oauth.Identity{
-		Id:           "email:" + payload.Email,
-		Username:     parts[0],
-		Organization: parts[1],
-	}
-
-	creds := &oauth.CredentialsCookie{
-		Identity: identity,
-		Token:    oauth2.Token{AccessToken: "email-token", Expiry: time.Now().Add(a.loginTime)},
-	}
-
-	authData := oauth.AuthData{Creds: creds, Target: payload.Target, State: payload.State}
 	return a.extractor.SetCredentialsOnResponse(authData, w, co...)
+}
+
+func (a *Authenticator) PrepareCredentialsCookie(ad oauth.AuthData, co ...kcookie.Modifier) (oauth.AuthData, *http.Cookie, error) {
+	return a.extractor.PrepareCredentialsCookie(ad, co...)
 }
 
 // GetCredentialsFromRequest validates the session cookie.

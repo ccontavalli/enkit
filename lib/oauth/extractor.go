@@ -115,13 +115,22 @@ func (a *Extractor) GetCredentialsFromRequest(r *http.Request) (*CredentialsCook
 	return credentials, cookie.Value, nil
 }
 
-func (a *Extractor) SetCredentialsOnResponse(ad AuthData, w http.ResponseWriter, co ...kcookie.Modifier) (AuthData, error) {
+func (a *Extractor) PrepareCredentialsCookie(ad AuthData, co ...kcookie.Modifier) (AuthData, *http.Cookie, error) {
 	ccookie, err := a.EncodeCredentials(*ad.Creds)
+	if err != nil {
+		return AuthData{}, nil, err
+	}
+
+	return AuthData{Creds: ad.Creds, Cookie: ccookie, Target: ad.Target, State: ad.State}, cookie.CredentialsCookie(a.baseCookie, ccookie, co...), nil
+}
+
+func (a *Extractor) SetCredentialsOnResponse(ad AuthData, w http.ResponseWriter, co ...kcookie.Modifier) (AuthData, error) {
+	ad, cookieVal, err := a.PrepareCredentialsCookie(ad, co...)
 	if err != nil {
 		return AuthData{}, err
 	}
-	http.SetCookie(w, cookie.CredentialsCookie(a.baseCookie, ccookie, co...))
-	return AuthData{Creds: ad.Creds, Cookie: ccookie, Target: ad.Target, State: ad.State}, nil
+	http.SetCookie(w, cookieVal)
+	return ad, nil
 }
 
 // CredentialsCookieName returns the name of the cookie maintaing the set of user credentials.

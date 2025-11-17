@@ -50,6 +50,12 @@ func (i *Identity) CertMod() kcerts.CertMod {
 	return kcerts.NoOp
 }
 
+// CredentialsCookie is what is encrypted/decrypted in the cookie itself.
+// Identity represents the identity of the user.
+// Token represents the data that was obtained through oauth authentication.
+// 
+// Note that Token could be empty/undefined if the credentials were not certificate
+// via oauth - by using, for example, email authentication.
 type CredentialsCookie struct {
 	Identity Identity
 	Token    oauth2.Token

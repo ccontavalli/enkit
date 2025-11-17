@@ -7,8 +7,8 @@ import (
 	"html/template"
 	"math/rand"
 	"net/url"
-	"strings"
 	"time"
+	"strings"
 
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/oauth"
@@ -292,11 +292,36 @@ func (e *Emailer) SendLoginEmail(params url.Values, lm ...oauth.LoginModifier) e
 }
 
 // ValidateEmailToken validates the given token and returns the payload.
-func (e *Emailer) ValidateEmailToken(tokenStr string) (*EmailTokenPayload, error) {
+func (e *Emailer) DecodeEmailToken(tokenStr string) (*EmailTokenPayload, error) {
 	var payload EmailTokenPayload
 	_, err := e.tokenEncoder.Decode(context.Background(), []byte(tokenStr), &payload)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding token: %w", err)
 	}
 	return &payload, nil
+}
+
+func (e *Emailer) ValidateEmailToken(token string) (oauth.AuthData, error) {
+	payload, err := e.DecodeEmailToken(token)
+	if err != nil {
+		return oauth.AuthData{}, err
+	}
+
+	if payload.Email == "" {
+		return oauth.AuthData{}, fmt.Errorf("invalid token: empty email")
+	}
+
+	parts := strings.Split(payload.Email, "@")
+	if len(parts) != 2 {
+		return oauth.AuthData{}, fmt.Errorf("invalid email address: %s", payload.Email)
+	}
+
+	identity := oauth.Identity{
+		Id:           "email:" + payload.Email,
+		Username:     parts[0],
+		Organization: parts[1],
+	}
+
+	creds := &oauth.CredentialsCookie{Identity: identity}
+	return oauth.AuthData{Creds: creds, Target: payload.Target, State: payload.State}, nil
 }
