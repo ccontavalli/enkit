@@ -2,13 +2,18 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "kgrpc",
-    srcs = ["grpc.go"],
+    srcs = [
+        "grpc.go",
+        "origin.go",
+    ],
     importpath = "github.com/ccontavalli/enkit/lib/khttp/kgrpc",
     visibility = ["//visibility:public"],
     deps = [
         "//lib/khttp",
         "@com_github_improbable_eng_grpc_web//go/grpcweb",
         "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//peer",
         "@org_golang_google_grpc//reflection",
     ],
 )

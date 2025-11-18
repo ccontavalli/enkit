@@ -117,7 +117,7 @@ func (a *Authenticator) PerformLogin(w http.ResponseWriter, r *http.Request, lm 
 		return err
 	}
 
-	if err := a.SendLoginEmail(r.Form, khttp.RemoteIP(r), lm...); err != nil {
+	if err := a.SendLoginEmail(r.Form, khttp.ClientOrigin(r), lm...); err != nil {
 		return err
 	}
 
@@ -137,7 +137,7 @@ func (a *Authenticator) PerformAuth(w http.ResponseWriter, r *http.Request, co .
 	if err != nil {
 		return oauth.AuthData{}, fmt.Errorf("invalid email token - %w", err)
 	}
-	a.log.Infof("Issuing credential cookie to %s from %s", authData.Creds.Identity.GlobalName(), khttp.RemoteIP(r))
+	a.log.Infof("Issuing credential cookie to %s from %s", authData.Creds.Identity.GlobalName(), khttp.ClientOrigin(r))
 	return a.extractor.SetCredentialsOnResponse(authData, w, co...)
 }
 

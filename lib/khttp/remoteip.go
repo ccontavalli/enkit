@@ -1,31 +1,29 @@
 package khttp
 
 import (
-	"net"
+	"fmt"
 	"net/http"
 	"strings"
 )
 
-// RemoteIP returns the remote client IP address from a request.
+// ClientOrigin returns a string identifying the origin of a request.
 //
-// It gives precedence to the X-Forwarded-For header to work correctly
-// behind proxies.
-func RemoteIP(r *http.Request) string {
+// It includes the direct remote address and any proxy headers like
+// X-Forwarded-For and X-Real-IP to provide full context for debugging and logging.
+func ClientOrigin(r *http.Request) string {
+	var parts []string
+
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		// X-Forwarded-For can be a comma-separated list of IPs.
-		// The first one is the original client.
-		if parts := strings.Split(fwd, ","); len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
+		parts = append(parts, fmt.Sprintf("X-Forwarded-For: %q", fwd))
 	}
 
 	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
-		return realIP
+		parts = append(parts, fmt.Sprintf("X-Real-IP: %q", realIP))
 	}
 
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
+	if len(parts) == 0 {
 		return r.RemoteAddr
 	}
-	return ip
+
+	return fmt.Sprintf("%s (%s)", r.RemoteAddr, strings.Join(parts, ", "))
 }
