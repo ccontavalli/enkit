@@ -369,31 +369,38 @@ func WithExtractorFlags(fl *ExtractorFlags) Modifier {
 func WithSigningExtractorFlags(fl *SigningExtractorFlags) Modifier {
 	return func(o *Options) error {
 		mods := []Modifier{}
-		if len(fl.TokenSigningKey) != 0 {
-			key, err := token.SigningKeyFromSlice(fl.TokenSigningKey)
-			if err != nil {
-				return fmt.Errorf("invalid key specified with --token-signing-key - %s", err)
-			}
-			mods = append(mods, WithSigningOptions(token.UseSigningKey(key)))
-		}
-
-		if len(fl.TokenSigningKey) <= 0 && len(fl.TokenVerifyingKey) <= 0 {
-			verify, sign, err := token.GenerateSigningKey(o.rng)
-			if err != nil {
-				return fmt.Errorf("no key specified with --token-signing-key and --token-verifying-key, and generating one failed with - %s", err)
-			}
-			fl.TokenSigningKey = (*sign.ToBytes())[:]
-			fl.TokenVerifyingKey = (*verify.ToBytes())[:]
-		}
-
-		if len(fl.SymmetricKey) <= 0 {
+		if len(fl.SymmetricKey) == 0 {
+			o.log.Infof("Extractor symmetric key not provided, generating a new one.")
 			key, err := token.GenerateSymmetricKey(o.rng, 0)
 			if err != nil {
-				return fmt.Errorf("no key specified with --token-encryption-key, and generating one failed with - %w", err)
+				return fmt.Errorf("failed to generate symmetric key: %w", err)
 			}
 			fl.SymmetricKey = key
 		}
 
+		if len(fl.TokenSigningKey) != 0 && len(fl.TokenVerifyingKey) == 0 {
+			return fmt.Errorf("a token-verifying-key must be provided if a token-signing-key is")
+		}
+		if len(fl.TokenSigningKey) == 0 && len(fl.TokenVerifyingKey) != 0 {
+			// This is a valid use case, where the extractor can only verify tokens.
+		}
+
+		if len(fl.TokenSigningKey) == 0 && len(fl.TokenVerifyingKey) == 0 {
+			o.log.Infof("Extractor signing and verifying keys not provided, generating a new pair.")
+			verify, sign, err := token.GenerateSigningKey(o.rng)
+			if err != nil {
+				return fmt.Errorf("failed to generate signing keys: %w", err)
+			}
+			mods = append(mods, WithSigningOptions(token.UseSigningKey(sign), token.UseVerifyingKey(verify)))
+		} else {
+			if len(fl.TokenSigningKey) != 0 {
+				key, err := token.SigningKeyFromSlice(fl.TokenSigningKey)
+				if err != nil {
+					return fmt.Errorf("invalid key specified with --token-signing-key - %s", err)
+				}
+				mods = append(mods, WithSigningOptions(token.UseSigningKey(key)))
+			}
+		}
 		mods = append(mods, WithExtractorFlags(fl.ExtractorFlags))
 		return Modifiers(mods).Apply(o)
 	}
