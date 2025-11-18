@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/ccontavalli/enkit/lib/oauth"
 	"github.com/ccontavalli/enkit/lib/token"
 	"gopkg.in/gomail.v2"
@@ -23,6 +24,7 @@ type Dialer interface {
 
 // Emailer handles the sending of authentication emails.
 type Emailer struct {
+	log             logger.Logger
 	bodyTemplate    *template.Template
 	subjectTemplate *template.Template
 	tokenEncoder    *token.TypeEncoder
@@ -41,6 +43,7 @@ type EmailTokenPayload struct {
 // emailerOptions holds the internal configuration for the email authenticator.
 type emailerOptions struct {
 	rng             *rand.Rand
+	log             logger.Logger
 	SmtpHost        string
 	SmtpPort        int
 	SmtpUser        string
@@ -179,9 +182,18 @@ func WithCallbackURL(u *url.URL) EmailerModifier {
 	}
 }
 
+// WithEmailerLogger sets the logger for the emailer.
+func WithEmailerLogger(log logger.Logger) EmailerModifier {
+	return func(o *emailerOptions) error {
+		o.log = log
+		return nil
+	}
+}
+
 func defaultEmailerOptions(rng *rand.Rand) *emailerOptions {
 	return &emailerOptions{
 		rng: rng,
+		log: logger.Go,
 	}
 }
 
@@ -211,6 +223,7 @@ func NewEmailer(rng *rand.Rand, mods ...EmailerModifier) (*Emailer, error) {
 	))
 
 	return &Emailer{
+		log:             opts.log,
 		fromAddress:     opts.FromAddress,
 		subjectTemplate: opts.SubjectTemplate,
 		bodyTemplate:    opts.BodyTemplate,
@@ -244,7 +257,7 @@ func (e *Emailer) CreateEmailToken(params url.Values, lm ...oauth.LoginModifier)
 }
 
 // SendLoginEmail generates and sends a login email to the user.
-func (e *Emailer) SendLoginEmail(params url.Values, lm ...oauth.LoginModifier) error {
+func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth.LoginModifier) error {
 	email := params.Get("email")
 	if email == "" {
 		return fmt.Errorf("email parameter is required")
@@ -287,6 +300,8 @@ func (e *Emailer) SendLoginEmail(params url.Values, lm ...oauth.LoginModifier) e
 	if err := e.dialer.DialAndSend(m); err != nil {
 		return fmt.Errorf("error sending email: %w", err)
 	}
+
+	e.log.Infof("Login email sent to %s from %s", email, location)
 
 	return nil
 }

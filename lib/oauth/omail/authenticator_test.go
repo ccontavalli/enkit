@@ -50,7 +50,6 @@ func TestAuthenticator(t *testing.T) {
 			},
 			TokenSigningKey: (*sign.ToBytes())[:],
 		},
-		EmailSentRedirectURL: "https://example.com/email-sent",
 	}
 
 	callbackURL, err := url.Parse("https://example.com/auth/callback")
@@ -77,8 +76,10 @@ func TestAuthenticator(t *testing.T) {
 
 	err = auth.PerformLogin(loginRR, loginReq)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusFound, loginRR.Code)
-	assert.Equal(t, "https://example.com/email-sent", loginRR.Header().Get("Location"))
+	assert.Equal(t, http.StatusOK, loginRR.Code)
+	bodyBytes, err := ioutil.ReadAll(loginRR.Body)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bodyBytes), "Login email sent")
 	assert.NotNil(t, sentMessage)
 
 	// Extract token from email

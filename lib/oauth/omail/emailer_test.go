@@ -73,7 +73,7 @@ func TestEmailer(t *testing.T) {
 	assert.Equal(t, "my-state", payload.State)
 
 	// Test SendLoginEmail
-	err = emailer.SendLoginEmail(params, oauth.WithTarget("/return-here"), oauth.WithState("my-state"))
+	err = emailer.SendLoginEmail(params, "test-location", oauth.WithTarget("/return-here"), oauth.WithState("my-state"))
 	assert.NoError(t, err)
 
 	assert.NotNil(t, sentMessage)

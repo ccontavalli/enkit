@@ -4,51 +4,44 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
-	"net/url"
 
 	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/khttp"
 	"github.com/ccontavalli/enkit/lib/khttp/kcookie"
+	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/ccontavalli/enkit/lib/oauth"
 )
 
 // Authenticator implements the full IAuthenticator interface for email-based authentication.
 type Authenticator struct {
+	log logger.Logger
 	*Emailer
 	extractor            *oauth.Extractor
-	emailSentRedirectURL *url.URL
 }
 
 // AuthenticatorFlags combines flags for the Emailer and the oauth.Extractor.
 type AuthenticatorFlags struct {
 	EmailerFlags
 	oauth.SigningExtractorFlags
-	EmailSentRedirectURL string
 }
 
 // Register registers the flags for the Authenticator on the given FlagSet.
 func (f *AuthenticatorFlags) Register(fs kflags.FlagSet, prefix string) *AuthenticatorFlags {
 	f.EmailerFlags.Register(fs, prefix+"email-auth-")
 	f.SigningExtractorFlags.Register(fs, prefix+"email-auth-")
-
-	fs.StringVar(&f.EmailSentRedirectURL, prefix+"email-auth-sent-redirect-url", "", "URL to redirect to after the login email has been sent.")
 	return f
-}
-
-func (f *AuthenticatorFlags) GetEmailSentRedirectURL() (*url.URL, error) {
-	if f.EmailSentRedirectURL == "" {
-		return nil, nil
-	}
-	return url.Parse(f.EmailSentRedirectURL)
 }
 
 type authenticatorOptions struct {
 	flags            *AuthenticatorFlags
+	log              logger.Logger
 	oauthOptions     oauth.Options
 	emailerModifiers []EmailerModifier
 }
 
 func newAuthenticatorOptions(rng *rand.Rand) *authenticatorOptions {
 	return &authenticatorOptions{
+		log:          logger.Go,
 		oauthOptions: oauth.DefaultOptions(rng),
 	}
 }
@@ -83,6 +76,14 @@ func WithEmailerModifiers(mods ...EmailerModifier) AuthenticatorModifier {
 	}
 }
 
+// WithAuthenticatorLogger sets the logger for the authenticator.
+func WithAuthenticatorLogger(log logger.Logger) AuthenticatorModifier {
+	return func(o *authenticatorOptions) error {
+		o.log = log
+		return nil
+	}
+}
+
 // NewAuthenticator creates a new email-based authenticator.
 func NewAuthenticator(rng *rand.Rand, mods ...AuthenticatorModifier) (*Authenticator, error) {
 	opts := newAuthenticatorOptions(rng)
@@ -97,23 +98,16 @@ func NewAuthenticator(rng *rand.Rand, mods ...AuthenticatorModifier) (*Authentic
 		return nil, fmt.Errorf("failed to create extractor: %w", err)
 	}
 
+	opts.emailerModifiers = append(opts.emailerModifiers, WithEmailerLogger(opts.log))
 	emailer, err := NewEmailer(rng, opts.emailerModifiers...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create emailer: %w", err)
 	}
 
-	var emailSentRedirectURL *url.URL
-	if opts.flags != nil {
-		emailSentRedirectURL, err = opts.flags.GetEmailSentRedirectURL()
-		if err != nil {
-			return nil, kflags.NewUsageErrorf("invalid email-sent-redirect-url: %w", err)
-		}
-	}
-
 	return &Authenticator{
+		log:                  opts.log,
 		Emailer:              emailer,
 		extractor:            extractor,
-		emailSentRedirectURL: emailSentRedirectURL,
 	}, nil
 }
 
@@ -123,17 +117,12 @@ func (a *Authenticator) PerformLogin(w http.ResponseWriter, r *http.Request, lm 
 		return err
 	}
 
-	if err := a.SendLoginEmail(r.Form, lm...); err != nil {
+	if err := a.SendLoginEmail(r.Form, khttp.RemoteIP(r), lm...); err != nil {
 		return err
 	}
 
-	if a.emailSentRedirectURL != nil {
-		http.Redirect(w, r, a.emailSentRedirectURL.String(), http.StatusFound)
-	} else {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "Login email sent. Please check your inbox.")
-	}
-
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "Login email sent. Please check your inbox.")
 	return nil
 }
 
@@ -148,6 +137,7 @@ func (a *Authenticator) PerformAuth(w http.ResponseWriter, r *http.Request, co .
 	if err != nil {
 		return oauth.AuthData{}, fmt.Errorf("invalid email token - %w", err)
 	}
+	a.log.Infof("Issuing credential cookie to %s from %s", authData.Creds.Identity.GlobalName(), khttp.RemoteIP(r))
 	return a.extractor.SetCredentialsOnResponse(authData, w, co...)
 }
 

@@ -376,6 +376,24 @@ func WithSigningExtractorFlags(fl *SigningExtractorFlags) Modifier {
 			}
 			mods = append(mods, WithSigningOptions(token.UseSigningKey(key)))
 		}
+
+		if len(fl.TokenSigningKey) <= 0 && len(fl.TokenVerifyingKey) <= 0 {
+			verify, sign, err := token.GenerateSigningKey(o.rng)
+			if err != nil {
+				return fmt.Errorf("no key specified with --token-signing-key and --token-verifying-key, and generating one failed with - %s", err)
+			}
+			fl.TokenSigningKey = (*sign.ToBytes())[:]
+			fl.TokenVerifyingKey = (*verify.ToBytes())[:]
+		}
+
+		if len(fl.SymmetricKey) <= 0 {
+			key, err := token.GenerateSymmetricKey(o.rng, 0)
+			if err != nil {
+				return fmt.Errorf("no key specified with --token-encryption-key, and generating one failed with - %w", err)
+			}
+			fl.SymmetricKey = key
+		}
+
 		mods = append(mods, WithExtractorFlags(fl.ExtractorFlags))
 		return Modifiers(mods).Apply(o)
 	}

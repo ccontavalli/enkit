@@ -4,6 +4,7 @@ go_library(
     name = "khttp",
     srcs = [
         "dispatch.go",
+        "remoteip.go",
         "server.go",
         "utils.go",
     ],
