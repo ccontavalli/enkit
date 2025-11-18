@@ -426,6 +426,7 @@ func WithFlags(fl *Flags) Modifier {
 
 		if len(fl.SymmetricKey) == 0 {
 			// 0 is the key length, causes the default length to be used.
+			o.log.Infof("Extractor symmetric key not provided, generating a new one.")
 			key, err := token.GenerateSymmetricKey(o.rng, 0)
 			if err != nil {
 				return fmt.Errorf("no key specified with --token-encryption-key, and generating one failed with - %w", err)
@@ -434,6 +435,7 @@ func WithFlags(fl *Flags) Modifier {
 		}
 
 		if len(fl.TokenSigningKey) == 0 && len(fl.TokenVerifyingKey) == 0 {
+			o.log.Infof("Extractor signing and verifying keys not provided, generating a new pair.")
 			verify, sign, err := token.GenerateSigningKey(o.rng)
 			if err != nil {
 				return fmt.Errorf("no key specified with --token-signing-key and --token-verifying-key, and generating one failed with - %s", err)
@@ -580,6 +582,9 @@ func (opt *Options) NewAuthenticator() (*Authenticator, error) {
 // A SigningExtractor is just like an extractor, except it is also capable
 // of generating new signing cookies.
 func (opt *Options) NewExtractor() (*Extractor, error) {
+	opt.log.Infof("NewExtractor configured with: BaseCookie=%s, LoginTime=%s, MaxLoginTime=%s, Version=%d",
+		opt.baseCookie, opt.loginTime, opt.maxLoginTime, opt.version)
+
 	be, err := token.NewSymmetricEncoder(opt.rng, opt.symmetricSetters...)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up symmetric cipher: %w", err)

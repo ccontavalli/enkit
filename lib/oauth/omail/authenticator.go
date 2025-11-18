@@ -32,6 +32,13 @@ func (f *AuthenticatorFlags) Register(fs kflags.FlagSet, prefix string) *Authent
 	return f
 }
 
+func DefaultAuthenticatorFlags() *AuthenticatorFlags {
+	return &AuthenticatorFlags{
+		EmailerFlags:          *EmailerDefaultFlags(),
+		SigningExtractorFlags: *oauth.DefaultSigningExtractorFlags(),
+	}
+}
+
 type authenticatorOptions struct {
 	flags            *AuthenticatorFlags
 	log              logger.Logger

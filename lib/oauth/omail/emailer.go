@@ -89,11 +89,11 @@ const kDefaultTemplateSubject = "Your login link"
 const kDefaultTemplateBody = "Click here to login: {{.URL}}"
 
 func EmailerDefaultFlags() *EmailerFlags {
-	return  &EmailerFlags {
-		SmtpPort: 587,
+	return &EmailerFlags{
+		SmtpPort:        587,
 		SubjectTemplate: []byte(kDefaultTemplateSubject),
-		BodyTemplate: []byte(kDefaultTemplateBody),
-		TokenLifetime: 30 * time.Minute,
+		BodyTemplate:    []byte(kDefaultTemplateBody),
+		TokenLifetime:   1 * time.Hour,
 	}
 }
 
@@ -147,6 +147,7 @@ func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 
 		key := f.SymmetricKey
 		if len(key) == 0 {
+			o.log.Infof("Emailer symmetric key not provided, generating a new one.")
 			key, err = token.GenerateSymmetricKey(o.rng, 256)
 			if err != nil {
 				return fmt.Errorf("failed to generate symmetric key: %w", err)
@@ -221,6 +222,13 @@ func NewEmailer(rng *rand.Rand, mods ...EmailerModifier) (*Emailer, error) {
 		symmetricEncoder,
 		token.NewBase64UrlEncoder(),
 	))
+
+	smtpPasswordStatus := "(not set)"
+	if opts.SmtpPassword != "" {
+		smtpPasswordStatus = "(set)"
+	}
+	opts.log.Infof("NewEmailer configured with: SmtpHost=%s, SmtpPort=%d, SmtpUser=%s, SmtpPassword=%s, FromAddress=%s, TokenLifetime=%s",
+		opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, smtpPasswordStatus, opts.FromAddress, opts.TokenLifetime)
 
 	return &Emailer{
 		log:             opts.log,
