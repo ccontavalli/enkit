@@ -7,8 +7,9 @@ import (
 	"html/template"
 	"math/rand"
 	"net/url"
-	"time"
 	"strings"
+	texttemplate "text/template"
+	"time"
 
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/logger"
@@ -25,7 +26,8 @@ type Dialer interface {
 // Emailer handles the sending of authentication emails.
 type Emailer struct {
 	log             logger.Logger
-	bodyTemplate    *template.Template
+	bodyHTMLTemplate    *template.Template
+	bodyTextTemplate *texttemplate.Template
 	subjectTemplate *template.Template
 	tokenEncoder    *token.TypeEncoder
 	dialer          Dialer
@@ -50,7 +52,8 @@ type emailerOptions struct {
 	SmtpPassword    string
 	FromAddress     string
 	SubjectTemplate *template.Template
-	BodyTemplate    *template.Template
+	BodyHTMLTemplate    *template.Template
+	BodyTextTemplate *texttemplate.Template
 	TokenLifetime   time.Duration
 	SymmetricKey    []byte
 	CallbackURL     *url.URL
@@ -80,19 +83,46 @@ type EmailerFlags struct {
 	SmtpPassword    string
 	FromAddress     string
 	SubjectTemplate []byte
-	BodyTemplate    []byte
+	BodyHTMLTemplate    []byte
+	BodyTextTemplate []byte
 	TokenLifetime   time.Duration
 	SymmetricKey    []byte
 }
 
 const kDefaultTemplateSubject = "Your login link"
-const kDefaultTemplateBody = "Click here to login: {{.URL}}"
+const kDefaultTemplateHTMLBody = `<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+    <h2 style="color: #333; margin-top: 0;">Login Request</h2>
+    <p>Hello,</p>
+    <p>We received a request to log in using this email address. To proceed, please click the button below:</p>
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="{{.URL}}" style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">Log In</a>
+    </div>
+    <p style="margin-bottom: 5px;">Or copy and paste this link into your browser:</p>
+    <p style="word-break: break-all; margin-top: 0;"><a href="{{.URL}}" style="color: #007bff;">{{.URL}}</a></p>
+    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+    <p style="font-size: 0.85em; color: #777;">If you did not request this login link, please ignore this email.</p>
+  </div>
+</body>
+</html>`
+const kDefaultTemplateTextBody = `Login Request
+
+Hello,
+
+We received a request to log in using this email address. To proceed, please open the following link in your browser:
+
+{{.URL}}
+
+If you did not request this login link, please ignore this email.`
 
 func EmailerDefaultFlags() *EmailerFlags {
 	return &EmailerFlags{
 		SmtpPort:        587,
 		SubjectTemplate: []byte(kDefaultTemplateSubject),
-		BodyTemplate:    []byte(kDefaultTemplateBody),
+		BodyHTMLTemplate: []byte(kDefaultTemplateHTMLBody),
+		BodyTextTemplate: []byte(kDefaultTemplateTextBody),
 		TokenLifetime:   1 * time.Hour,
 	}
 }
@@ -106,7 +136,8 @@ func (f *EmailerFlags) Register(fs kflags.FlagSet, prefix string) {
 	fs.DurationVar(&f.TokenLifetime, prefix+"token-lifetime", f.TokenLifetime, "How long the login token is valid for.")
 
 	fs.ByteFileVar(&f.SubjectTemplate, prefix+"subject-template-file", "", "Path to a Go template file for the login email subject. If not set, a default subject is used.", kflags.WithContent(f.SubjectTemplate))
-	fs.ByteFileVar(&f.BodyTemplate, prefix+"body-template-file", "", "Path to a Go template file for the login email body. Must contain {{.URL}}. If not set, a default email body is used.", kflags.WithContent(f.BodyTemplate))
+	fs.ByteFileVar(&f.BodyHTMLTemplate, prefix+"body-html-template-file", "", "Path to a Go template file for the login email body (HTML). Must contain {{.URL}}. If not set, a default email body is used.", kflags.WithContent(f.BodyHTMLTemplate))
+	fs.ByteFileVar(&f.BodyTextTemplate, prefix+"body-text-template-file", "", "Path to a Go template file for the login email body (Text). Must contain {{.URL}}. If not set, a default email body is used.", kflags.WithContent(f.BodyTextTemplate))
 	fs.ByteFileVar(&f.SymmetricKey, prefix+"symmetric-key-file", "", "Path to a file containing the symmetric key for token encryption. If not set, a new key is generated.", kflags.WithContent(f.SymmetricKey))
 }
 
@@ -123,16 +154,28 @@ func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 			return kflags.NewUsageErrorf("smtp-port must be a valid port number (1-65535)")
 		}
 
-		bodyTemplateStr := string(f.BodyTemplate)
+		bodyTemplateStr := string(f.BodyHTMLTemplate)
 		if bodyTemplateStr == "" {
-			bodyTemplateStr = kDefaultTemplateBody
+			bodyTemplateStr = kDefaultTemplateHTMLBody
 		}
 		if !strings.Contains(bodyTemplateStr, "{{.URL}}") {
-			return fmt.Errorf("body template must contain {{.URL}}")
+			return fmt.Errorf("body html template must contain {{.URL}}")
 		}
-		bodyTemplate, err := template.New("body").Parse(bodyTemplateStr)
+		bodyHTMLTemplate, err := template.New("body_html").Parse(bodyTemplateStr)
 		if err != nil {
-		  return err
+			return err
+		}
+
+		bodyTextTemplateStr := string(f.BodyTextTemplate)
+		if bodyTextTemplateStr == "" {
+			bodyTextTemplateStr = kDefaultTemplateTextBody
+		}
+		if !strings.Contains(bodyTextTemplateStr, "{{.URL}}") {
+			return fmt.Errorf("body text template must contain {{.URL}}")
+		}
+		bodyTextTemplate, err := texttemplate.New("body_text").Parse(bodyTextTemplateStr)
+		if err != nil {
+			return err
 		}
 
 		subjectTemplateStr := string(f.SubjectTemplate)
@@ -143,7 +186,6 @@ func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 		if err != nil {
 			return err
 		}
-
 
 		key := f.SymmetricKey
 		if len(key) == 0 {
@@ -161,7 +203,8 @@ func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 		o.FromAddress = f.FromAddress
 		o.TokenLifetime = f.TokenLifetime
 		o.SubjectTemplate = subjectTemplate
-		o.BodyTemplate = bodyTemplate
+		o.BodyHTMLTemplate = bodyHTMLTemplate
+		o.BodyTextTemplate = bodyTextTemplate
 		o.SymmetricKey = key
 		return nil
 	}
@@ -234,7 +277,8 @@ func NewEmailer(rng *rand.Rand, mods ...EmailerModifier) (*Emailer, error) {
 		log:             opts.log,
 		fromAddress:     opts.FromAddress,
 		subjectTemplate: opts.SubjectTemplate,
-		bodyTemplate:    opts.BodyTemplate,
+		bodyHTMLTemplate:    opts.BodyHTMLTemplate,
+		bodyTextTemplate: opts.BodyTextTemplate,
 		tokenEncoder:    tokenEncoder,
 		dialer:          gomail.NewDialer(opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, opts.SmtpPassword),
 		callbackURL:     opts.CallbackURL,
@@ -276,6 +320,8 @@ func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth
 		return err
 	}
 
+	loginOptions := oauth.LoginModifiers(lm).Apply(&oauth.LoginOptions{})
+
 	destinationURL := *e.callbackURL
 	q := destinationURL.Query()
 	q.Set("token", encodedToken)
@@ -289,9 +335,18 @@ func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth
 		}
 	}
 
+	for k, v := range loginOptions.TemplateData {
+		templateData[k] = v
+	}
+
 	var body bytes.Buffer
-	if err := e.bodyTemplate.Execute(&body, templateData); err != nil {
-		return fmt.Errorf("error executing body template: %w", err)
+	if err := e.bodyHTMLTemplate.Execute(&body, templateData); err != nil {
+		return fmt.Errorf("error executing body html template: %w", err)
+	}
+
+	var textBody bytes.Buffer
+	if err := e.bodyTextTemplate.Execute(&textBody, templateData); err != nil {
+		return fmt.Errorf("error executing body text template: %w", err)
 	}
 
 	var subject bytes.Buffer
@@ -303,7 +358,9 @@ func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth
 	m.SetHeader("From", e.fromAddress)
 	m.SetHeader("To", email)
 	m.SetHeader("Subject", subject.String())
-	m.SetBody("text/html", body.String())
+
+	m.SetBody("text/plain", textBody.String())
+	m.AddAlternative("text/html", body.String())
 
 	if err := e.dialer.DialAndSend(m); err != nil {
 		return fmt.Errorf("error sending email: %w", err)

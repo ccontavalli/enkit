@@ -71,6 +71,7 @@ type LoginOptions struct {
 	CookieOptions kcookie.Modifiers
 	Target        string
 	State         interface{}
+	TemplateData  map[string]interface{}
 }
 
 type LoginModifier func(*LoginOptions)
@@ -88,6 +89,11 @@ func WithTarget(target string) LoginModifier {
 func WithState(state interface{}) LoginModifier {
 	return func(lo *LoginOptions) {
 		lo.State = state
+	}
+}
+func WithTemplateData(data map[string]interface{}) LoginModifier {
+	return func(lo *LoginOptions) {
+		lo.TemplateData = data
 	}
 }
 

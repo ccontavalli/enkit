@@ -41,6 +41,8 @@ func TestAuthenticator(t *testing.T) {
 			FromAddress:   "noreply@example.com",
 			TokenLifetime: 15 * time.Minute,
 			SymmetricKey:  key,
+			BodyHTMLTemplate: []byte(kDefaultTemplateHTMLBody),
+			BodyTextTemplate: []byte(kDefaultTemplateTextBody),
 		},
 		SigningExtractorFlags: oauth.SigningExtractorFlags{
 			ExtractorFlags: &oauth.ExtractorFlags{
@@ -86,12 +88,34 @@ func TestAuthenticator(t *testing.T) {
 	body := &bodyWriter{}
 	_, err = sentMessage.WriteTo(body)
 	assert.NoError(t, err)
-	bodyStr, err := decodeQuotedPrintable(body.String())
+	bodyStr := body.String()
+
+	// Find the text part by its unique content
+	marker := "open the following link in your browser"
+	idx := strings.Index(bodyStr, marker)
+	if !assert.True(t, idx > 0, "text part marker '%s' not found in email body.\nBody:\n%s", marker, bodyStr) {
+		return
+	}
+
+	// Extract from marker until the next boundary (which starts with --)
+	chunk := bodyStr[idx+len(marker):]
+	endIdx := strings.Index(chunk, "--")
+	if endIdx > 0 {
+		chunk = chunk[:endIdx]
+	}
+
+	// Decode QP
+	decoded, err := decodeQuotedPrintable(chunk)
 	assert.NoError(t, err)
 
-	urlIndex := strings.Index(bodyStr, "https://example.com/auth/callback?token=")
-	assert.True(t, urlIndex > 0)
-	tokenStr := strings.TrimSpace(bodyStr[urlIndex+len("https://example.com/auth/callback?token="):])
+	// Now decoded should contain the URL: https://example.com/auth/callback?token=...
+	tokenPrefix := "token="
+	idx = strings.Index(decoded, tokenPrefix)
+	assert.True(t, idx > 0, "token parameter not found in decoded text")
+
+	tokenPart := decoded[idx+len(tokenPrefix):]
+	// Token ends at the next whitespace (or end of string)
+	tokenStr := strings.Fields(tokenPart)[0]
 	t.Logf("Extracted token: %s", tokenStr)
 
 	// Test PerformAuth
