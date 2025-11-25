@@ -38,6 +38,12 @@ func WithSameSite(same http.SameSite) Modifier {
 	}
 }
 
+func WithHttpOnly(value bool) Modifier {
+	return func(cookie *http.Cookie) {
+		cookie.HttpOnly = value
+	}
+}
+
 type Modifiers []Modifier
 
 func (cg Modifiers) Apply(base *http.Cookie) *http.Cookie {
