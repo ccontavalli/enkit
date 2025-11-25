@@ -14,9 +14,9 @@ import (
 
 // Authenticator implements the full IAuthenticator interface for email-based authentication.
 type Authenticator struct {
-	log logger.Logger
+	log       logger.Logger
 	*Emailer
-	extractor            *oauth.Extractor
+	Extractor *oauth.Extractor
 }
 
 // AuthenticatorFlags combines flags for the Emailer and the oauth.Extractor.
@@ -112,9 +112,9 @@ func NewAuthenticator(rng *rand.Rand, mods ...AuthenticatorModifier) (*Authentic
 	}
 
 	return &Authenticator{
-		log:                  opts.log,
-		Emailer:              emailer,
-		extractor:            extractor,
+		log:       opts.log,
+		Emailer:   emailer,
+		Extractor: extractor,
 	}, nil
 }
 
@@ -145,14 +145,14 @@ func (a *Authenticator) PerformAuth(w http.ResponseWriter, r *http.Request, co .
 		return oauth.AuthData{}, fmt.Errorf("invalid email token - %w", err)
 	}
 	a.log.Infof("Issuing credential cookie to %s from %s", authData.Creds.Identity.GlobalName(), khttp.ClientOrigin(r))
-	return a.extractor.SetCredentialsOnResponse(authData, w, co...)
+	return a.Extractor.SetCredentialsOnResponse(authData, w, co...)
 }
 
 func (a *Authenticator) PrepareCredentialsCookie(ad oauth.AuthData, co ...kcookie.Modifier) (oauth.AuthData, *http.Cookie, error) {
-	return a.extractor.PrepareCredentialsCookie(ad, co...)
+	return a.Extractor.PrepareCredentialsCookie(ad, co...)
 }
 
 // GetCredentialsFromRequest validates the session cookie.
 func (a *Authenticator) GetCredentialsFromRequest(r *http.Request) (*oauth.CredentialsCookie, string, error) {
-	return a.extractor.GetCredentialsFromRequest(r)
+	return a.Extractor.GetCredentialsFromRequest(r)
 }
