@@ -25,14 +25,14 @@ type Dialer interface {
 
 // Emailer handles the sending of authentication emails.
 type Emailer struct {
-	log             logger.Logger
-	bodyHTMLTemplate    *template.Template
+	log              logger.Logger
+	bodyHTMLTemplate *template.Template
 	bodyTextTemplate *texttemplate.Template
-	subjectTemplate *template.Template
-	tokenEncoder    *token.TypeEncoder
-	dialer          Dialer
-	fromAddress     string
-	callbackURL     *url.URL
+	subjectTemplate  *template.Template
+	tokenEncoder     *token.TypeEncoder
+	dialer           Dialer
+	fromAddress      string
+	callbackURL      *url.URL
 }
 
 // EmailTokenPayload is the data encoded in the secure email token.
@@ -44,19 +44,19 @@ type EmailTokenPayload struct {
 
 // emailerOptions holds the internal configuration for the email authenticator.
 type emailerOptions struct {
-	rng             *rand.Rand
-	log             logger.Logger
-	SmtpHost        string
-	SmtpPort        int
-	SmtpUser        string
-	SmtpPassword    string
-	FromAddress     string
-	SubjectTemplate *template.Template
-	BodyHTMLTemplate    *template.Template
+	rng              *rand.Rand
+	log              logger.Logger
+	SmtpHost         string
+	SmtpPort         int
+	SmtpUser         string
+	SmtpPassword     string
+	FromAddress      string
+	SubjectTemplate  *template.Template
+	BodyHTMLTemplate *template.Template
 	BodyTextTemplate *texttemplate.Template
-	TokenLifetime   time.Duration
-	SymmetricKey    []byte
-	CallbackURL     *url.URL
+	TokenLifetime    time.Duration
+	SymmetricKey     []byte
+	CallbackURL      *url.URL
 }
 
 // EmailerModifier is a function that applies a configuration change to the authenticator options.
@@ -77,16 +77,16 @@ func (mods EmailerModifiers) Apply(o *emailerOptions) error {
 
 // EmailerFlags defines the command-line flags for the email authenticator.
 type EmailerFlags struct {
-	SmtpHost        string
-	SmtpPort        int
-	SmtpUser        string
-	SmtpPassword    string
-	FromAddress     string
-	SubjectTemplate []byte
-	BodyHTMLTemplate    []byte
+	SmtpHost         string
+	SmtpPort         int
+	SmtpUser         string
+	SmtpPassword     string
+	FromAddress      string
+	SubjectTemplate  []byte
+	BodyHTMLTemplate []byte
 	BodyTextTemplate []byte
-	TokenLifetime   time.Duration
-	SymmetricKey    []byte
+	TokenLifetime    time.Duration
+	SymmetricKey     []byte
 }
 
 const kDefaultTemplateSubject = "Your login link"
@@ -119,11 +119,11 @@ If you did not request this login link, please ignore this email.`
 
 func EmailerDefaultFlags() *EmailerFlags {
 	return &EmailerFlags{
-		SmtpPort:        587,
-		SubjectTemplate: []byte(kDefaultTemplateSubject),
+		SmtpPort:         587,
+		SubjectTemplate:  []byte(kDefaultTemplateSubject),
 		BodyHTMLTemplate: []byte(kDefaultTemplateHTMLBody),
 		BodyTextTemplate: []byte(kDefaultTemplateTextBody),
-		TokenLifetime:   1 * time.Hour,
+		TokenLifetime:    1 * time.Hour,
 	}
 }
 
@@ -274,14 +274,14 @@ func NewEmailer(rng *rand.Rand, mods ...EmailerModifier) (*Emailer, error) {
 		opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, smtpPasswordStatus, opts.FromAddress, opts.TokenLifetime)
 
 	return &Emailer{
-		log:             opts.log,
-		fromAddress:     opts.FromAddress,
-		subjectTemplate: opts.SubjectTemplate,
-		bodyHTMLTemplate:    opts.BodyHTMLTemplate,
+		log:              opts.log,
+		fromAddress:      opts.FromAddress,
+		subjectTemplate:  opts.SubjectTemplate,
+		bodyHTMLTemplate: opts.BodyHTMLTemplate,
 		bodyTextTemplate: opts.BodyTextTemplate,
-		tokenEncoder:    tokenEncoder,
-		dialer:          gomail.NewDialer(opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, opts.SmtpPassword),
-		callbackURL:     opts.CallbackURL,
+		tokenEncoder:     tokenEncoder,
+		dialer:           gomail.NewDialer(opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, opts.SmtpPassword),
+		callbackURL:      opts.CallbackURL,
 	}, nil
 }
 

@@ -14,7 +14,7 @@ import (
 
 // Authenticator implements the full IAuthenticator interface for email-based authentication.
 type Authenticator struct {
-	log       logger.Logger
+	log logger.Logger
 	*Emailer
 	Extractor *oauth.Extractor
 }

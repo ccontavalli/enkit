@@ -38,13 +38,13 @@ func TestEmailer(t *testing.T) {
 	assert.NoError(t, err)
 
 	flags := &EmailerFlags{
-		SmtpHost:        "smtp.example.com",
-		SmtpPort:        587,
-		FromAddress:     "noreply@example.com",
-		SymmetricKey:    key,
-		TokenLifetime:   15 * time.Minute,
-		SubjectTemplate: []byte("Welcome {{.name}}!"),
-		BodyHTMLTemplate:    []byte("HTML Token for {{.email}}: {{.URL}} Key: {{.custom_key}}"),
+		SmtpHost:         "smtp.example.com",
+		SmtpPort:         587,
+		FromAddress:      "noreply@example.com",
+		SymmetricKey:     key,
+		TokenLifetime:    15 * time.Minute,
+		SubjectTemplate:  []byte("Welcome {{.name}}!"),
+		BodyHTMLTemplate: []byte("HTML Token for {{.email}}: {{.URL}} Key: {{.custom_key}}"),
 		BodyTextTemplate: []byte("Text Token for {{.email}}: {{.URL}} Key: {{.custom_key}}"),
 	}
 
@@ -93,7 +93,7 @@ func TestEmailer(t *testing.T) {
 	// Check Text part
 	assert.Contains(t, bodyStr, "Text Token for test@example.com:")
 	assert.Contains(t, bodyStr, `https://example.com/my/callback?token=`)
-	
+
 	// Check Content-Type is multipart/alternative
 	assert.Contains(t, bodyStr, "Content-Type: multipart/alternative")
 }
@@ -124,7 +124,7 @@ func TestFlagsValidation(t *testing.T) {
 	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: []byte("{{.URL}} {{.Invalid")}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unclosed action")
-	
+
 	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: validBody, BodyTextTemplate: []byte("{{.URL}} {{.Invalid")}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unclosed action")
@@ -132,7 +132,7 @@ func TestFlagsValidation(t *testing.T) {
 	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: []byte("no url")}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "body html template must contain {{.URL}}")
-	
+
 	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: validBody, BodyTextTemplate: []byte("no url")}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "body text template must contain {{.URL}}")

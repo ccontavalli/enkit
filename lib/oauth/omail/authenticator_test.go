@@ -36,11 +36,11 @@ func TestAuthenticator(t *testing.T) {
 
 	authFlags := &AuthenticatorFlags{
 		EmailerFlags: EmailerFlags{
-			SmtpHost:      "smtp.example.com",
-			SmtpPort:      587,
-			FromAddress:   "noreply@example.com",
-			TokenLifetime: 15 * time.Minute,
-			SymmetricKey:  key,
+			SmtpHost:         "smtp.example.com",
+			SmtpPort:         587,
+			FromAddress:      "noreply@example.com",
+			TokenLifetime:    15 * time.Minute,
+			SymmetricKey:     key,
 			BodyHTMLTemplate: []byte(kDefaultTemplateHTMLBody),
 			BodyTextTemplate: []byte(kDefaultTemplateTextBody),
 		},
