@@ -189,7 +189,7 @@ func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 
 		key := f.SymmetricKey
 		if len(key) == 0 {
-			o.log.Infof("Emailer symmetric key not provided, generating a new one.")
+			o.log.Infof("Emailer symmetric key not provided, generating a new one (use --symmetric-key-file to supply it).")
 			key, err = token.GenerateSymmetricKey(o.rng, 256)
 			if err != nil {
 				return fmt.Errorf("failed to generate symmetric key: %w", err)

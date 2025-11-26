@@ -370,7 +370,7 @@ func WithSigningExtractorFlags(fl *SigningExtractorFlags) Modifier {
 	return func(o *Options) error {
 		mods := []Modifier{}
 		if len(fl.SymmetricKey) == 0 {
-			o.log.Infof("Extractor symmetric key not provided, generating a new one.")
+			o.log.Infof("Extractor symmetric key not provided, generating a new one (use --token-encryption-key to supply it).")
 			key, err := token.GenerateSymmetricKey(o.rng, 0)
 			if err != nil {
 				return fmt.Errorf("failed to generate symmetric key: %w", err)
@@ -386,7 +386,7 @@ func WithSigningExtractorFlags(fl *SigningExtractorFlags) Modifier {
 		}
 
 		if len(fl.TokenSigningKey) == 0 && len(fl.TokenVerifyingKey) == 0 {
-			o.log.Infof("Extractor signing and verifying keys not provided, generating a new pair.")
+			o.log.Infof("Extractor signing and verifying keys not provided, generating a new pair (use --token-signing-key and --token-verifying-key to supply them).")
 			verify, sign, err := token.GenerateSigningKey(o.rng)
 			if err != nil {
 				return fmt.Errorf("failed to generate signing keys: %w", err)
@@ -433,7 +433,7 @@ func WithFlags(fl *Flags) Modifier {
 
 		if len(fl.SymmetricKey) == 0 {
 			// 0 is the key length, causes the default length to be used.
-			o.log.Infof("Extractor symmetric key not provided, generating a new one.")
+			o.log.Infof("Extractor symmetric key not provided, generating a new one (use --token-encryption-key to supply it).")
 			key, err := token.GenerateSymmetricKey(o.rng, 0)
 			if err != nil {
 				return fmt.Errorf("no key specified with --token-encryption-key, and generating one failed with - %w", err)
@@ -442,7 +442,7 @@ func WithFlags(fl *Flags) Modifier {
 		}
 
 		if len(fl.TokenSigningKey) == 0 && len(fl.TokenVerifyingKey) == 0 {
-			o.log.Infof("Extractor signing and verifying keys not provided, generating a new pair.")
+			o.log.Infof("Extractor signing and verifying keys not provided, generating a new pair (use --token-signing-key and --token-verifying-key to supply them).")
 			verify, sign, err := token.GenerateSigningKey(o.rng)
 			if err != nil {
 				return fmt.Errorf("no key specified with --token-signing-key and --token-verifying-key, and generating one failed with - %s", err)
