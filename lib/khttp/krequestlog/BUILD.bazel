@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "krequestlog",
@@ -12,10 +12,23 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//lib/kflags",
+        "//lib/khttp",
+        "//lib/khttp/kgrpc",
         "//lib/logger",
-        "@com_github_ccontavalli_enkit//lib/khttp/kgrpc",
         "@org_golang_google_grpc//:grpc",
-        "@org_golang_google_grpc//peer",
         "@org_golang_google_grpc//status",
     ],
 )
+
+alias(
+    name = "go_default_library",
+    actual = ":krequestlog",
+    visibility = ["//visibility:public"],
+)
+
+# go_test(
+#     name = "krequestlog_test",
+#     srcs = ["krequestlog_test.go"],
+#     embed = [":krequestlog"],
+#     deps = ["//lib/logger"],
+# )
