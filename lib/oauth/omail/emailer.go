@@ -32,6 +32,7 @@ type Emailer struct {
 	tokenEncoder     *token.TypeEncoder
 	dialer           Dialer
 	fromAddress      string
+	tokenLifetime    time.Duration
 	callbackURL      *url.URL
 }
 
@@ -102,6 +103,7 @@ const kDefaultTemplateHTMLBody = `<!DOCTYPE html>
     </div>
     <p style="margin-bottom: 5px;">Or copy and paste this link into your browser:</p>
     <p style="word-break: break-all; margin-top: 0;"><a href="{{.URL}}" style="color: #007bff;">{{.URL}}</a></p>
+    <p style="font-size: 0.9em; color: #555;">This link will expire in {{.TokenLifetime}} (at {{.TokenExpiration}}).</p>
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
     <p style="font-size: 0.85em; color: #777;">If you did not request this login link, please ignore this email.</p>
   </div>
@@ -114,6 +116,8 @@ Hello,
 We received a request to log in using this email address. To proceed, please open the following link in your browser:
 
 {{.URL}}
+
+This link will expire in {{.TokenLifetime}} (at {{.TokenExpiration}}).
 
 If you did not request this login link, please ignore this email.`
 
@@ -281,6 +285,7 @@ func NewEmailer(rng *rand.Rand, mods ...EmailerModifier) (*Emailer, error) {
 		bodyTextTemplate: opts.BodyTextTemplate,
 		tokenEncoder:     tokenEncoder,
 		dialer:           gomail.NewDialer(opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, opts.SmtpPassword),
+		tokenLifetime:    opts.TokenLifetime,
 		callbackURL:      opts.CallbackURL,
 	}, nil
 }
@@ -329,6 +334,8 @@ func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth
 
 	templateData := make(map[string]interface{})
 	templateData["URL"] = destinationURL.String()
+	templateData["TokenLifetime"] = e.tokenLifetime.String()
+	templateData["TokenExpiration"] = time.Now().Add(e.tokenLifetime).Format(time.RFC1123)
 	for k, v := range params {
 		if len(v) > 0 {
 			templateData[k] = v[0]
