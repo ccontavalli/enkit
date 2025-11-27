@@ -78,7 +78,6 @@ func (ar *AssetAugmenter) VisitFlag(reqns string, fl Flag) (bool, error) {
 
 	asset, found := ar.index[fl.Name()]
 	if !found {
-		ar.log.Debugf("%s flag %s: not found among assets - not in index", ar.forns, fl.Name())
 		return false, nil
 	}
 

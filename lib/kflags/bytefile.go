@@ -29,7 +29,7 @@ func WithFilename(filename *string) ByteFileModifier {
 
 func WithContent(content []byte) ByteFileModifier {
 	return func(bff *ByteFileFlag) {
-	  (*bff.result) = content
+		(*bff.result) = content
 	}
 }
 
