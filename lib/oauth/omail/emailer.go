@@ -363,6 +363,7 @@ func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth
 	m.AddAlternative("text/html", body.String())
 
 	if err := e.dialer.DialAndSend(m); err != nil {
+		e.log.Errorf("Failed to send login email to %s: %v", email, err)
 		return fmt.Errorf("error sending email: %w", err)
 	}
 
