@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "krequestlog",
+    srcs = [
+        "grpc.go",
+        "http.go",
+        "logger.go",
+        "writer.go",
+    ],
+    importpath = "github.com/ccontavalli/enkit/lib/khttp/krequestlog",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/kflags",
+        "//lib/logger",
+        "@com_github_ccontavalli_enkit//lib/khttp/kgrpc",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//peer",
+        "@org_golang_google_grpc//status",
+    ],
+)
