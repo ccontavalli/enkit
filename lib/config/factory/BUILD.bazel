@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "factory",
+    srcs = ["factory.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/config/factory",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/config",
+        "//lib/config/datastore",
+        "//lib/config/directory",
+        "//lib/config/marshal",
+        "//lib/kflags",
+    ],
+)
+
+go_test(
+    name = "factory_test",
+    srcs = ["factory_test.go"],
+    embed = [":factory"],
+    deps = [
+        "//lib/config",
+        "@com_github_stretchr_testify//assert",
+    ],
+)
