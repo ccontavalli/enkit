@@ -45,6 +45,7 @@ go_test(
     embed = [":oauth"],
     deps = [
         "//lib/srand",
+        "//lib/token",
         "@com_github_stretchr_testify//assert",
     ],
 )
