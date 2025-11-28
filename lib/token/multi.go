@@ -119,7 +119,7 @@ type Allocator func([]byte, BinaryEncoder, []BinaryEncoder) []byte
 //     authenticated encryption scheme risk should be minimal if any (extra
 //     keys will be rejected, corruption in key or data will be detected).
 //
-//	https://www.cc.gatech.edu/~aboldyre/papers/bbks.pdf
+//     https://www.cc.gatech.edu/~aboldyre/papers/bbks.pdf
 //
 // [1]: https://www.cc.gatech.edu/~aboldyre/papers/bbks.pdf
 // [2]: https://en.wikipedia.org/wiki/Hybrid_cryptosystem
