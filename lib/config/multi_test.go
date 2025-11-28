@@ -90,25 +90,25 @@ func TestMulti(t *testing.T) {
 	err = m.Marshal("quote.yaml", data2)
 	assert.Nil(t, err)
 
-	found, err = m.List()
-	assert.Nil(t, err)
-	assert.Equal(t, []string{"quote.json", "quote.toml", "quote.yaml"}, found)
-
-	// Let's delete a specific file.
-	err = m.Delete(desc)
-	assert.Nil(t, err)
-
-	// Check that only one file was deleted.
-	found, err = m.List()
-	assert.Nil(t, err)
-	assert.Equal(t, []string{"quote.toml", "quote.yaml"}, found)
-
-	// Let's delete the whole key.
-	err = m.Delete("quote")
-	assert.Nil(t, err)
-
-	// No quote anymore.
-	found, err = m.List()
-	assert.Nil(t, err)
-	assert.Equal(t, []string{}, found)
-}
+	        found, err = m.List()
+	        assert.Nil(t, err)
+	        assert.Equal(t, []Descriptor{"quote.json", "quote.toml", "quote.yaml"}, found)
+	
+	        // Let's delete a specific file.
+	        err = m.Delete(desc)
+	        assert.Nil(t, err)
+	
+	        // Check that only one file was deleted.
+	        found, err = m.List()
+	        assert.Nil(t, err)
+	        assert.Equal(t, []Descriptor{"quote.toml", "quote.yaml"}, found)
+	
+	        // Let's delete the whole key.
+	        err = m.Delete("quote")
+	        assert.Nil(t, err)
+	
+	        // No quote anymore.
+	        found, err = m.List()
+	        assert.Nil(t, err)
+	        assert.Equal(t, []Descriptor{}, found)
+	}

@@ -41,8 +41,16 @@ func NewMulti(loader Loader, marshaller ...marshal.FileMarshaller) *MultiFormat 
 //
 // In general, the value returned by List is guaranteed to be usable with
 // Unmarshal, but may not match the value that was passed to Marshal before.
-func (ss *MultiFormat) List() ([]string, error) {
-	return ss.loader.List()
+func (ss *MultiFormat) List() ([]Descriptor, error) {
+	list, err := ss.loader.List()
+	if err != nil {
+		return nil, err
+	}
+	descs := make([]Descriptor, len(list))
+	for i, name := range list {
+		descs[i] = name
+	}
+	return descs, nil
 }
 
 func (ss *MultiFormat) Marshal(desc Descriptor, value interface{}) error {

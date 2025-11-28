@@ -14,8 +14,16 @@ func NewSimple(loader Loader, marshaller marshal.Marshaller) *SimpleStore {
 	return &SimpleStore{loader: loader, marshaller: marshaller}
 }
 
-func (ss *SimpleStore) List() ([]string, error) {
-	return ss.List()
+func (ss *SimpleStore) List() ([]Descriptor, error) {
+	list, err := ss.loader.List()
+	if err != nil {
+		return nil, err
+	}
+	descs := make([]Descriptor, len(list))
+	for i, name := range list {
+		descs[i] = name
+	}
+	return descs, nil
 }
 
 func (ss *SimpleStore) Marshal(desc Descriptor, value interface{}) error {

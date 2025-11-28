@@ -182,7 +182,7 @@ type Storer struct {
 	GenerateContext ContextGenerator
 }
 
-func (s *Storer) List() ([]string, error) {
+func (s *Storer) List() ([]config.Descriptor, error) {
 	key, err := s.GenerateKey("")
 	if err != nil {
 		return nil, err
@@ -194,13 +194,12 @@ func (s *Storer) List() ([]string, error) {
 		return nil, err
 	}
 
-	result := []string{}
+	result := []config.Descriptor{}
 	for _, key := range keys {
 		result = append(result, key.Name)
 	}
 	return result, nil
 }
-
 func (s *Storer) Marshal(descriptor config.Descriptor, value interface{}) error {
 	if reflect.ValueOf(value).Kind() != reflect.Ptr {
 		vp := reflect.New(reflect.TypeOf(value))
