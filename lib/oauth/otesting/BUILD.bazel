@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "otesting",
+    srcs = ["assume_auth.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/oauth/otesting",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/oauth",
+        "//lib/oauth/ogrpc",
+        "@org_golang_google_grpc//:grpc",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":otesting",
+    visibility = ["//visibility:public"],
+)
