@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "trace",
+    srcs = ["trace.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/config/trace",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/config",
+        "//lib/kflags",
+        "//lib/logger",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":trace",
+    visibility = ["//visibility:public"],
+)
