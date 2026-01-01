@@ -11,7 +11,6 @@ package trace
 import (
 	"fmt"
 	"path"
-	"reflect"
 	"strings"
 
 	"github.com/ccontavalli/enkit/lib/config"
@@ -22,6 +21,7 @@ import (
 // Flags configures tracing for config stores.
 type Flags struct {
 	Enabled      bool
+	LogRequests  bool
 	LogResponses bool
 	Include      []string
 	Exclude      []string
@@ -34,8 +34,9 @@ func DefaultFlags() *Flags {
 
 // Register registers tracing flags with the provided FlagSet.
 func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
-	set.BoolVar(&f.Enabled, prefix+"config-store-trace", f.Enabled, "Enable config store tracing.")
-	set.BoolVar(&f.LogResponses, prefix+"config-store-trace-responses", f.LogResponses, "Log config store responses as well as lookups.")
+	set.BoolVar(&f.Enabled, prefix+"config-store-trace", f.Enabled, "Log one completion/error line per store operation.")
+	set.BoolVar(&f.LogRequests, prefix+"config-store-trace-requests", f.LogRequests, "Log request start lines (in addition to completion/error).")
+	set.BoolVar(&f.LogResponses, prefix+"config-store-trace-responses", f.LogResponses, "Log completion/error lines with response payloads when available.")
 	set.StringArrayVar(&f.Include, prefix+"config-store-trace-include", f.Include, "Trace only stores with this prefix (repeatable).")
 	set.StringArrayVar(&f.Exclude, prefix+"config-store-trace-exclude", f.Exclude, "Do not trace stores with this prefix (repeatable).")
 	return f
@@ -51,6 +52,7 @@ type Tracer struct {
 type Options struct {
 	Log          logger.Logger
 	Enabled      bool
+	LogRequests  bool
 	LogResponses bool
 	Include      []string
 	Exclude      []string
@@ -73,6 +75,7 @@ func FromFlags(flags *Flags) Modifier {
 			return
 		}
 		o.Enabled = flags.Enabled
+		o.LogRequests = flags.LogRequests
 		o.LogResponses = flags.LogResponses
 		o.Include = append([]string{}, flags.Include...)
 		o.Exclude = append([]string{}, flags.Exclude...)
@@ -90,6 +93,13 @@ func WithEnabled(enabled bool) Modifier {
 func WithLogResponses(enabled bool) Modifier {
 	return func(o *Options) {
 		o.LogResponses = enabled
+	}
+}
+
+// WithLogRequests overrides request-start logging.
+func WithLogRequests(enabled bool) Modifier {
+	return func(o *Options) {
+		o.LogRequests = enabled
 	}
 }
 
@@ -120,6 +130,7 @@ func New(mods ...Modifier) *Tracer {
 	}
 	return &Tracer{flags: Flags{
 		Enabled:      opts.Enabled,
+		LogRequests:  opts.LogRequests,
 		LogResponses: opts.LogResponses,
 		Include:      append([]string{}, opts.Include...),
 		Exclude:      append([]string{}, opts.Exclude...),
@@ -145,11 +156,18 @@ func (t *Tracer) WrapStore(name string, store config.Store) config.Store {
 	if store == nil || !t.enabledFor(name) {
 		return store
 	}
-	return &tracedStore{name: name, store: store, log: t.log, logResponses: t.flags.LogResponses}
+	return &tracedStore{
+		name:         name,
+		store:        store,
+		log:          t.log,
+		logEnabled:   t.flags.Enabled,
+		logRequests:  t.flags.LogRequests,
+		logResponses: t.flags.LogResponses,
+	}
 }
 
 func (t *Tracer) enabledFor(name string) bool {
-	if !t.flags.Enabled && !t.flags.LogResponses {
+	if !t.flags.Enabled && !t.flags.LogRequests && !t.flags.LogResponses {
 		return false
 	}
 	for _, exclude := range t.flags.Exclude {
@@ -172,65 +190,79 @@ type tracedStore struct {
 	name         string
 	store        config.Store
 	log          logger.Logger
+	logEnabled   bool
+	logRequests  bool
 	logResponses bool
 }
 
 func (t *tracedStore) List() ([]config.Descriptor, error) {
-	t.log.Infof("config store %s: List()", t.name)
+	t.logStart("List", "")
 	descs, err := t.store.List()
-	if err != nil {
-		t.log.Infof("config store %s: List() error: %v", t.name, err)
-		return nil, err
-	}
-	if t.logResponses {
-		t.log.Infof("config store %s: List() -> %v", t.name, descs)
-	}
-	return descs, nil
+	t.logEnd("List", "", err, descs)
+	return descs, err
 }
 
 func (t *tracedStore) Marshal(desc config.Descriptor, value interface{}) error {
-	t.log.Infof("config store %s: Marshal(%v)", t.name, desc)
-	if t.logResponses {
-		t.log.Infof("config store %s: Marshal(%v) value=%s", t.name, desc, formatValue(value))
-	}
+	key := fmt.Sprint(desc)
+	t.logStart("Marshal", key)
 	err := t.store.Marshal(desc, value)
-	if err != nil {
-		t.log.Infof("config store %s: Marshal(%v) error: %v", t.name, desc, err)
-	}
+	t.logEnd("Marshal", key, err, nil)
 	return err
 }
 
 func (t *tracedStore) Unmarshal(name string, value interface{}) (config.Descriptor, error) {
-	t.log.Infof("config store %s: Unmarshal(%q)", t.name, name)
+	t.logStart("Unmarshal", name)
 	desc, err := t.store.Unmarshal(name, value)
-	if err != nil {
-		t.log.Infof("config store %s: Unmarshal(%q) error: %v", t.name, name, err)
-		return desc, err
-	}
-	if t.logResponses {
-		t.log.Infof("config store %s: Unmarshal(%q) -> %s", t.name, name, formatValue(value))
-	}
-	return desc, nil
+	t.logEnd("Unmarshal", name, err, value)
+	return desc, err
 }
 
 func (t *tracedStore) Delete(desc config.Descriptor) error {
-	t.log.Infof("config store %s: Delete(%v)", t.name, desc)
+	key := fmt.Sprint(desc)
+	t.logStart("Delete", key)
 	err := t.store.Delete(desc)
-	if err != nil {
-		t.log.Infof("config store %s: Delete(%v) error: %v", t.name, desc, err)
-	}
+	t.logEnd("Delete", key, err, nil)
 	return err
 }
 
-func formatValue(value interface{}) string {
-	if value == nil {
-		return "<nil>"
+func (t *tracedStore) logStart(operation string, key string) {
+	if !t.logRequests {
+		return
 	}
-	rv := reflect.ValueOf(value)
-	if rv.Kind() == reflect.Ptr && !rv.IsNil() {
-		return fmt.Sprintf("%+v", rv.Elem().Interface())
+	t.logLine(operation, key, "start", nil, nil)
+}
+
+func (t *tracedStore) logEnd(operation string, key string, err error, value interface{}) {
+	if !t.logEnabled && !t.logResponses && err == nil {
+		return
 	}
-	return fmt.Sprintf("%+v", value)
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	if err != nil {
+		t.logLine(operation, key, status, nil, err)
+		return
+	}
+	if t.logResponses && value != nil {
+		t.logLine(operation, key, status, value, nil)
+		return
+	}
+	t.logLine(operation, key, status, nil, nil)
+}
+
+func (t *tracedStore) logLine(operation string, key string, status string, value interface{}, err error) {
+	msg := "store namespace=" + t.name + " operation=" + operation + " status=" + status
+	if key != "" {
+		msg += " key=" + key
+	}
+	if err != nil {
+		msg += fmt.Sprintf(" error=%v", err)
+	}
+	if value != nil {
+		msg += fmt.Sprintf(" response=%+v", value)
+	}
+	t.log.Infof("%s", msg)
 }
 
 func storeName(app string, namespace []string) string {
