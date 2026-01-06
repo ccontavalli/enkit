@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ccontavalli/enkit/lib/config/sqlite"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -68,8 +69,10 @@ func TestNewSQLiteStore(t *testing.T) {
 
 	dbPath := filepath.Join(tmpDir, "config.db")
 	flags := &Flags{
-		StoreType:  "sqlite",
-		SQLitePath: dbPath,
+		StoreType: "sqlite",
+		SQLite: &sqlite.Flags{
+			Path: dbPath,
+		},
 	}
 
 	opener, err := New(FromFlags(flags))

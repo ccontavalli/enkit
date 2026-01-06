@@ -19,6 +19,7 @@ go_library(
 go_test(
     name = "config_test",
     srcs = [
+        "bench_test.go",
         "multi_test.go",
         "store_test.go",
     ],
@@ -26,6 +27,7 @@ go_test(
     deps = [
         "//lib/config/directory",
         "//lib/config/marshal",
+        "//lib/config/sqlite",
         "@com_github_stretchr_testify//assert",
     ],
 )

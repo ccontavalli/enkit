@@ -35,9 +35,8 @@ type Flags struct {
 	// DirectoryPath specifies a custom root directory for the "directory" backend.
 	// If empty, the user's default configuration directory (e.g., ~/.config/appname) is used.
 	DirectoryPath string
-	// SQLitePath specifies a custom database file for the "sqlite" backend.
-	// If empty, defaults to a config directory database under ~/.config/appname.
-	SQLitePath string
+	// SQLite holds SQLite-specific configuration.
+	SQLite *sqlite.Flags
 }
 
 // DefaultFlags returns a new Flags struct with sensible default values.
@@ -47,6 +46,7 @@ func DefaultFlags() *Flags {
 	storeType := "directory"
 	return &Flags{
 		StoreType: storeType,
+		SQLite:    sqlite.DefaultFlags(),
 	}
 }
 
@@ -58,7 +58,7 @@ func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
 	set.StringVar(&f.StoreType, prefix+"config-store", f.StoreType, "Type of config store to use (datastore, directory, sqlite)")
 	set.StringVar(&f.DatastoreProject, prefix+"config-store-datastore-project", f.DatastoreProject, "Project ID for Datastore config backend (optional, defaults to auto-detect)")
 	set.StringVar(&f.DirectoryPath, prefix+"config-store-directory-path", f.DirectoryPath, "Custom path for Directory config backend (optional, defaults to user config dir)")
-	set.StringVar(&f.SQLitePath, prefix+"config-store-sqlite-path", f.SQLitePath, "Custom path for SQLite config backend (optional, defaults to user config dir)")
+	f.SQLite.Register(set, prefix)
 	return f
 }
 
@@ -124,7 +124,11 @@ func New(mods ...Modifier) (config.Opener, error) {
 
 	case "sqlite":
 		return func(name string, namespace ...string) (config.Store, error) {
-			return sqlite.OpenStore(opts.Flags.SQLitePath, name, namespace...)
+			db, err := sqlite.New(sqlite.FromFlags(opts.Flags.SQLite, name, namespace...))
+			if err != nil {
+				return nil, err
+			}
+			return db.Open(name, namespace...)
 		}, nil
 
 	default:

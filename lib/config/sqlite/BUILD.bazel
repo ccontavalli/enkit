@@ -9,6 +9,7 @@ go_library(
         "//lib/config",
         "//lib/config/directory",
         "//lib/config/marshal",
+        "//lib/kflags",
         "@org_modernc_sqlite//:sqlite",
     ],
 )
