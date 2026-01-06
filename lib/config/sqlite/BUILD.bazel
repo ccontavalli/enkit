@@ -1,0 +1,30 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "sqlite",
+    srcs = ["sqlite.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/config/sqlite",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/config",
+        "//lib/config/directory",
+        "//lib/config/marshal",
+        "@org_modernc_sqlite//:sqlite",
+    ],
+)
+
+go_test(
+    name = "sqlite_test",
+    srcs = ["sqlite_test.go"],
+    embed = [":sqlite"],
+    deps = [
+        "//lib/config",
+        "@com_github_stretchr_testify//assert",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":sqlite",
+    visibility = ["//visibility:public"],
+)

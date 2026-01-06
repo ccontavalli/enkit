@@ -10,6 +10,7 @@ go_library(
         "//lib/config/datastore",
         "//lib/config/directory",
         "//lib/config/marshal",
+        "//lib/config/sqlite",
         "//lib/kflags",
     ],
 )
@@ -18,8 +19,11 @@ go_test(
     name = "factory_test",
     srcs = ["factory_test.go"],
     embed = [":factory"],
-    deps = [
-        "//lib/config",
-        "@com_github_stretchr_testify//assert",
-    ],
+    deps = ["@com_github_stretchr_testify//assert"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":factory",
+    visibility = ["//visibility:public"],
 )

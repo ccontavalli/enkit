@@ -20,13 +20,14 @@ import (
 	"github.com/ccontavalli/enkit/lib/config/datastore"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
+	"github.com/ccontavalli/enkit/lib/config/sqlite"
 	"github.com/ccontavalli/enkit/lib/kflags"
 )
 
 // Flags holds the configuration options for creating a config store.
 // These are typically populated from command-line flags.
 type Flags struct {
-	// StoreType determines the backend to use. Supported values: "directory", "datastore".
+	// StoreType determines the backend to use. Supported values: "directory", "datastore", "sqlite".
 	StoreType string
 	// DatastoreProject specifies the Google Cloud Project ID when using the "datastore" backend.
 	// If empty, the library attempts to detect the project ID from the environment.
@@ -34,6 +35,9 @@ type Flags struct {
 	// DirectoryPath specifies a custom root directory for the "directory" backend.
 	// If empty, the user's default configuration directory (e.g., ~/.config/appname) is used.
 	DirectoryPath string
+	// SQLitePath specifies a custom database file for the "sqlite" backend.
+	// If empty, defaults to a config directory database under ~/.config/appname.
+	SQLitePath string
 }
 
 // DefaultFlags returns a new Flags struct with sensible default values.
@@ -51,9 +55,10 @@ func DefaultFlags() *Flags {
 // The flags will be prefixed with the given string.
 // For example, if prefix is "server-", the flags will be "--server-config-store", etc.
 func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
-	set.StringVar(&f.StoreType, prefix+"config-store", f.StoreType, "Type of config store to use (datastore, directory)")
+	set.StringVar(&f.StoreType, prefix+"config-store", f.StoreType, "Type of config store to use (datastore, directory, sqlite)")
 	set.StringVar(&f.DatastoreProject, prefix+"config-store-datastore-project", f.DatastoreProject, "Project ID for Datastore config backend (optional, defaults to auto-detect)")
 	set.StringVar(&f.DirectoryPath, prefix+"config-store-directory-path", f.DirectoryPath, "Custom path for Directory config backend (optional, defaults to user config dir)")
+	set.StringVar(&f.SQLitePath, prefix+"config-store-sqlite-path", f.SQLitePath, "Custom path for SQLite config backend (optional, defaults to user config dir)")
 	return f
 }
 
@@ -115,6 +120,11 @@ func New(mods ...Modifier) (config.Opener, error) {
 			}
 			// Use MultiFormat store which handles marshalling/unmarshalling (JSON, TOML, YAML)
 			return config.NewMulti(loader, marshal.Known...), nil
+		}, nil
+
+	case "sqlite":
+		return func(name string, namespace ...string) (config.Store, error) {
+			return sqlite.OpenStore(opts.Flags.SQLitePath, name, namespace...)
 		}, nil
 
 	default:

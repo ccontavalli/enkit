@@ -60,3 +60,34 @@ func TestNewUnknownStore(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown config store type")
 }
+
+func TestNewSQLiteStore(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "config-factory-sqlite-test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	dbPath := filepath.Join(tmpDir, "config.db")
+	flags := &Flags{
+		StoreType:  "sqlite",
+		SQLitePath: dbPath,
+	}
+
+	opener, err := New(FromFlags(flags))
+	assert.NoError(t, err)
+	assert.NotNil(t, opener)
+
+	store, err := opener("myapp", "testns")
+	assert.NoError(t, err)
+	assert.NotNil(t, store)
+
+	type TestConfig struct {
+		Value string
+	}
+	err = store.Marshal("test-key", &TestConfig{Value: "bar"})
+	assert.NoError(t, err)
+
+	var loaded TestConfig
+	_, err = store.Unmarshal("test-key", &loaded)
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", loaded.Value)
+}
