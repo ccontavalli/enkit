@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/config/sqlite"
 	"github.com/stretchr/testify/assert"
 )
@@ -37,7 +38,7 @@ func TestNewDirectoryStore(t *testing.T) {
 	type TestConfig struct {
 		Value string
 	}
-	err = store.Marshal("test-key", &TestConfig{Value: "foo"})
+	err = store.Marshal(config.Key("test-key"), &TestConfig{Value: "foo"})
 	assert.Nil(t, err)
 
 	// Check file exists
@@ -86,7 +87,7 @@ func TestNewSQLiteStore(t *testing.T) {
 	type TestConfig struct {
 		Value string
 	}
-	err = store.Marshal("test-key", &TestConfig{Value: "bar"})
+	err = store.Marshal(config.Key("test-key"), &TestConfig{Value: "bar"})
 	assert.NoError(t, err)
 
 	var loaded TestConfig

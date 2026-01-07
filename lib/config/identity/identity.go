@@ -124,10 +124,10 @@ func NewStore(configName string, opener config.Opener) (*ConfigIdentityStore, er
 }
 
 func (id *ConfigIdentityStore) Save(identity string, token string) error {
-	return id.store.Marshal(identity, Token{Token: token})
+	return id.store.Marshal(config.Key(identity), Token{Token: token})
 }
 func (id *ConfigIdentityStore) SetDefault(identity string) error {
-	return id.store.Marshal("default", Default{Identity: identity})
+	return id.store.Marshal(config.Key("default"), Default{Identity: identity})
 }
 
 // Loads an identity from disk.

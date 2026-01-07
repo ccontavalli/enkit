@@ -21,16 +21,16 @@ func (ss *SimpleStore) List() ([]Descriptor, error) {
 	}
 	descs := make([]Descriptor, len(list))
 	for i, name := range list {
-		descs[i] = name
+		descs[i] = Key(name)
 	}
 	return descs, nil
 }
 
 func (ss *SimpleStore) Marshal(desc Descriptor, value interface{}) error {
-	name, ok := desc.(string)
-	if !ok {
-		return fmt.Errorf("API Usage Error - SimpleStore.Marshal must be passed a string as descriptor")
+	if desc == nil {
+		return fmt.Errorf("API Usage Error - SimpleStore.Marshal must be passed a non-nil descriptor")
 	}
+	name := desc.Key()
 	data, err := ss.marshaller.Marshal(value)
 	if err != nil {
 		return err
@@ -41,18 +41,18 @@ func (ss *SimpleStore) Marshal(desc Descriptor, value interface{}) error {
 func (ss *SimpleStore) Unmarshal(name string, value interface{}) (Descriptor, error) {
 	data, err := ss.loader.Read(name)
 	if err != nil {
-		return name, err
+		return Key(name), err
 	}
 	if len(data) <= 0 {
-		return name, nil
+		return Key(name), nil
 	}
-	return name, ss.marshaller.Unmarshal(data, value)
+	return Key(name), ss.marshaller.Unmarshal(data, value)
 }
 
 func (ss *SimpleStore) Delete(desc Descriptor) error {
-	name, ok := desc.(string)
-	if !ok {
-		return fmt.Errorf("API Usage Error - SimpleStore.Delete must be passed a string as descriptor")
+	if desc == nil {
+		return fmt.Errorf("API Usage Error - SimpleStore.Delete must be passed a non-nil descriptor")
 	}
+	name := desc.Key()
 	return ss.loader.Delete(name)
 }

@@ -27,7 +27,7 @@ func TestBoltStoreRoundTrip(t *testing.T) {
 		Value string
 	}
 
-	err = store.Marshal("config", &TestConfig{Value: "hello"})
+	err = store.Marshal(config.Key("config"), &TestConfig{Value: "hello"})
 	assert.NoError(t, err)
 
 	var loaded TestConfig
@@ -39,7 +39,7 @@ func TestBoltStoreRoundTrip(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, descriptorListContains(descs, "config"))
 
-	err = store.Delete("config")
+	err = store.Delete(config.Key("config"))
 	assert.NoError(t, err)
 
 	_, err = store.Unmarshal("config", &loaded)
@@ -65,7 +65,7 @@ func TestBoltStoreJSON(t *testing.T) {
 		Value string `json:"value"`
 	}
 
-	err = store.Marshal("config", TestConfig{Value: "hello"})
+	err = store.Marshal(config.Key("config"), TestConfig{Value: "hello"})
 	assert.NoError(t, err)
 
 	boltStore, ok := store.(*BoltStore)
@@ -88,7 +88,7 @@ func TestBoltStoreJSON(t *testing.T) {
 
 func descriptorListContains(descs []config.Descriptor, name string) bool {
 	for _, desc := range descs {
-		if value, ok := desc.(string); ok && value == name {
+		if desc != nil && desc.Key() == name {
 			return true
 		}
 	}

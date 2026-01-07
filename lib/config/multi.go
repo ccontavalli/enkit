@@ -2,9 +2,11 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/multierror"
-	"os"
 )
 
 type MultiFormat struct {
@@ -48,7 +50,7 @@ func (ss *MultiFormat) List() ([]Descriptor, error) {
 	}
 	descs := make([]Descriptor, len(list))
 	for i, name := range list {
-		descs[i] = name
+		descs[i] = newMultiDescriptorFromPath(name, ss.marshaller)
 	}
 	return descs, nil
 }
@@ -74,8 +76,8 @@ func (ss *MultiFormat) parseDesc(desc Descriptor) (string, marshal.FileMarshalle
 	var name string
 	var marshaller marshal.FileMarshaller
 	switch t := desc.(type) {
-	case string:
-		name = t
+	case Key:
+		name = string(t)
 		marshaller = marshal.FileMarshallers(ss.marshaller).ByExtension(name)
 	case *multiDescriptor:
 		name = t.p
@@ -123,6 +125,11 @@ func (ss *MultiFormat) Delete(desc Descriptor) error {
 type multiDescriptor struct {
 	m marshal.FileMarshaller
 	p string
+	k string
+}
+
+func (d *multiDescriptor) Key() string {
+	return d.k
 }
 
 func (ss *MultiFormat) Unmarshal(name string, value interface{}) (Descriptor, error) {
@@ -131,7 +138,7 @@ func (ss *MultiFormat) Unmarshal(name string, value interface{}) (Descriptor, er
 		if err != nil {
 			return nil, err
 		}
-		descriptor := &multiDescriptor{m: m, p: path}
+		descriptor := newMultiDescriptor(path, m)
 		if len(data) <= 0 {
 			return descriptor, nil
 		}
@@ -153,4 +160,20 @@ func (ss *MultiFormat) Unmarshal(name string, value interface{}) (Descriptor, er
 		}
 	}
 	return desc, err
+}
+
+func newMultiDescriptorFromPath(path string, marshaller []marshal.FileMarshaller) *multiDescriptor {
+	m := marshal.FileMarshallers(marshaller).ByExtension(path)
+	return newMultiDescriptor(path, m)
+}
+
+func newMultiDescriptor(path string, m marshal.FileMarshaller) *multiDescriptor {
+	key := path
+	if m != nil {
+		suffix := "." + m.Extension()
+		if strings.HasSuffix(path, suffix) {
+			key = strings.TrimSuffix(path, suffix)
+		}
+	}
+	return &multiDescriptor{m: m, p: path, k: key}
 }

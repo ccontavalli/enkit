@@ -11,7 +11,7 @@
 //	    Port: 53,
 //	}
 //
-//	if err := store.Marshal("server-config", config); err != nil {
+//	if err := store.Marshal(Key("server-config"), config); err != nil {
 //	   ...
 //	}
 //
@@ -44,7 +44,16 @@ package config
 // Represents a file that was Unmarshalled.
 //
 // Use descriptors to guarantee that a file is saved in the same location it was read from.
-type Descriptor interface{}
+type Descriptor interface {
+	Key() string
+}
+
+// Key is a simple Descriptor implementation for string identifiers.
+type Key string
+
+func (k Key) Key() string {
+	return string(k)
+}
 
 // Opener is any function that is capable of opening a store.
 type Opener func(name string, namespace ...string) (Store, error)
@@ -58,7 +67,7 @@ type Store interface {
 
 	// Marshal saves an object, specified by value, under the name specified in descriptor.
 	//
-	// descriptor is either a string, indicating the desired unique name to store the
+	// descriptor is either a Key, indicating the desired unique name to store the
 	// object as, or an object returned by Unmarshal.
 	//
 	// Using a descriptor returned by Unmarshal guarantees that the object is written
@@ -76,10 +85,10 @@ type Store interface {
 
 	// Deletes an object.
 	//
-	// descriptor is either a string, indicating the desired unique name of the object
+	// descriptor is either a Key, indicating the desired unique name of the object
 	// to delete, or an object returned by Unmarshal.
 	//
-	// When specifying a string, Delete guarantees that all copies of the object known
+	// When specifying a Key, Delete guarantees that all copies of the object known
 	// by that string are deleted.
 	//
 	// When specifying a Descriptor, Delete will only delete that one instance of the object.

@@ -2,12 +2,12 @@ package config
 
 type Binding interface {
 	Marshal(value interface{}) error
-        Unmarshal(value interface{}) error
+	Unmarshal(value interface{}) error
 }
 
 type StoreBinding struct {
 	store Store
-	key string
+	key   string
 }
 
 func Bind(store Store, key string) *StoreBinding {
@@ -15,7 +15,7 @@ func Bind(store Store, key string) *StoreBinding {
 }
 
 func (b *StoreBinding) Marshal(value interface{}) error {
-	return b.store.Marshal(b.key, value)
+	return b.store.Marshal(Key(b.key), value)
 }
 
 func (b *StoreBinding) Unmarshal(value interface{}) error {

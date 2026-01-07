@@ -154,7 +154,7 @@ func (s *BoltStore) List() ([]config.Descriptor, error) {
 	}
 	descs := make([]config.Descriptor, len(names))
 	for i, name := range names {
-		descs[i] = name
+		descs[i] = config.Key(name)
 	}
 	return descs, nil
 }
@@ -177,9 +177,9 @@ func (s *BoltStore) Unmarshal(name string, value interface{}) (config.Descriptor
 		return nil, err
 	}
 	if len(data) == 0 {
-		return name, nil
+		return config.Key(name), nil
 	}
-	return name, json.Unmarshal(data, value)
+	return config.Key(name), json.Unmarshal(data, value)
 }
 
 func (s *BoltStore) Delete(desc config.Descriptor) error {
@@ -191,12 +191,10 @@ func (s *BoltStore) Delete(desc config.Descriptor) error {
 }
 
 func descriptorName(desc config.Descriptor) (string, error) {
-	switch value := desc.(type) {
-	case string:
-		return value, nil
-	default:
-		return "", fmt.Errorf("bbolt store expects string descriptor, got %T", desc)
+	if desc == nil {
+		return "", fmt.Errorf("bbolt store expects non-nil descriptor")
 	}
+	return desc.Key(), nil
 }
 
 func openDB(mods ...Modifier) (*bolt.DB, error) {

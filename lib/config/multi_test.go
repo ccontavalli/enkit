@@ -44,12 +44,12 @@ func TestMulti(t *testing.T) {
 	_, err = m.Unmarshal("quote", &read)
 	assert.True(t, os.IsNotExist(err))
 
-	err = m.Delete("quote")
+	err = m.Delete(Key("quote"))
 	assert.True(t, os.IsNotExist(err), "%v", err)
-	err = m.Delete("quote.toml")
+	err = m.Delete(Key("quote.toml"))
 	assert.True(t, os.IsNotExist(err))
 
-	err = m.Marshal("quote", data)
+	err = m.Marshal(Key("quote"), data)
 	assert.Nil(t, err)
 
 	desc, err := m.Unmarshal("quote", &read)
@@ -64,7 +64,7 @@ func TestMulti(t *testing.T) {
 		Key: "If you assume that there is no hope, you guarantee that there will be no hope.",
 	}
 
-	err = m.Marshal("quote.json", data2)
+	err = m.Marshal(Key("quote.json"), data2)
 	assert.Nil(t, err)
 
 	// Despite writing a quote.json file, the preferred quote is the toml one.
@@ -74,7 +74,7 @@ func TestMulti(t *testing.T) {
 	assert.Equal(t, data, read)
 
 	// And writing it affects the toml, but not the json.
-	err = m.Marshal("quote", data3)
+	err = m.Marshal(Key("quote"), data3)
 	assert.Nil(t, err)
 
 	desc, err = m.Unmarshal("quote.json", &read)
@@ -87,28 +87,38 @@ func TestMulti(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Now we add a 3rd format, just so we can delete a file later.
-	err = m.Marshal("quote.yaml", data2)
+	err = m.Marshal(Key("quote.yaml"), data2)
 	assert.Nil(t, err)
 
-	        found, err = m.List()
-	        assert.Nil(t, err)
-	        assert.Equal(t, []Descriptor{"quote.json", "quote.toml", "quote.yaml"}, found)
-	
-	        // Let's delete a specific file.
-	        err = m.Delete(desc)
-	        assert.Nil(t, err)
-	
-	        // Check that only one file was deleted.
-	        found, err = m.List()
-	        assert.Nil(t, err)
-	        assert.Equal(t, []Descriptor{"quote.toml", "quote.yaml"}, found)
-	
-	        // Let's delete the whole key.
-	        err = m.Delete("quote")
-	        assert.Nil(t, err)
-	
-	        // No quote anymore.
-	        found, err = m.List()
-	        assert.Nil(t, err)
-	        assert.Equal(t, []Descriptor{}, found)
+	found, err = m.List()
+	assert.Nil(t, err)
+	assert.ElementsMatch(t, []string{"quote.json", "quote.toml", "quote.yaml"}, descriptorPaths(found))
+
+	// Let's delete a specific file.
+	err = m.Delete(desc)
+	assert.Nil(t, err)
+
+	// Check that only one file was deleted.
+	found, err = m.List()
+	assert.Nil(t, err)
+	assert.ElementsMatch(t, []string{"quote.toml", "quote.yaml"}, descriptorPaths(found))
+
+	// Let's delete the whole key.
+	err = m.Delete(Key("quote"))
+	assert.Nil(t, err)
+
+	// No quote anymore.
+	found, err = m.List()
+	assert.Nil(t, err)
+	assert.Empty(t, found)
+}
+
+func descriptorPaths(descs []Descriptor) []string {
+	paths := make([]string, 0, len(descs))
+	for _, desc := range descs {
+		if d, ok := desc.(*multiDescriptor); ok {
+			paths = append(paths, d.p)
+		}
 	}
+	return paths
+}

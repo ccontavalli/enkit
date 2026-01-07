@@ -196,7 +196,7 @@ func (s *Storer) List() ([]config.Descriptor, error) {
 
 	result := []config.Descriptor{}
 	for _, key := range keys {
-		result = append(result, key.Name)
+		result = append(result, config.Key(key.Name))
 	}
 	return result, nil
 }
@@ -207,10 +207,10 @@ func (s *Storer) Marshal(descriptor config.Descriptor, value interface{}) error 
 		value = vp.Interface()
 	}
 
-	name, converted := descriptor.(string)
-	if !converted {
-		return fmt.Errorf("invalid key: %#v - expected string", descriptor)
+	if descriptor == nil {
+		return fmt.Errorf("invalid key: <nil>")
 	}
+	name := descriptor.Key()
 
 	key, err := s.GenerateKey(name)
 	if err != nil {
@@ -226,23 +226,23 @@ func (s *Storer) Marshal(descriptor config.Descriptor, value interface{}) error 
 func (s *Storer) Unmarshal(name string, value interface{}) (config.Descriptor, error) {
 	key, err := s.GenerateKey(name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if err := s.Parent.Client.Get(s.GenerateContext(), key, value); err != nil {
 		if err == datastore.ErrNoSuchEntity {
-			return "", os.ErrNotExist
+			return nil, os.ErrNotExist
 		}
-		return "", err
+		return nil, err
 	}
-	return name, nil
+	return config.Key(name), nil
 }
 
 func (s *Storer) Delete(descriptor config.Descriptor) error {
-	name, converted := descriptor.(string)
-	if !converted {
-		return fmt.Errorf("invalid key: %#v - expected string", descriptor)
+	if descriptor == nil {
+		return fmt.Errorf("invalid key: <nil>")
 	}
+	name := descriptor.Key()
 
 	key, err := s.GenerateKey(name)
 	if err != nil {

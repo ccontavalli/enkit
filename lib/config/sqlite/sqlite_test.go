@@ -16,7 +16,7 @@ func TestSQLiteStoreRoundTrip(t *testing.T) {
 	assert.NoError(t, tmp.Close())
 	defer os.Remove(path)
 
-	db, err := Open(path)
+	db, err := New(WithPath(path))
 	assert.NoError(t, err)
 	defer db.Close()
 
@@ -27,7 +27,7 @@ func TestSQLiteStoreRoundTrip(t *testing.T) {
 		Value string
 	}
 
-	err = store.Marshal("config", &TestConfig{Value: "hello"})
+	err = store.Marshal(config.Key("config"), &TestConfig{Value: "hello"})
 	assert.NoError(t, err)
 
 	var loaded TestConfig
@@ -39,7 +39,7 @@ func TestSQLiteStoreRoundTrip(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, descriptorListContains(descs, "config"))
 
-	err = store.Delete("config")
+	err = store.Delete(config.Key("config"))
 	assert.NoError(t, err)
 
 	_, err = store.Unmarshal("config", &loaded)
@@ -54,7 +54,7 @@ func TestSQLiteStoreJSON(t *testing.T) {
 	assert.NoError(t, tmp.Close())
 	defer os.Remove(path)
 
-	db, err := Open(path)
+	db, err := New(WithPath(path))
 	assert.NoError(t, err)
 	defer db.Close()
 
@@ -65,7 +65,7 @@ func TestSQLiteStoreJSON(t *testing.T) {
 		Value string `json:"value"`
 	}
 
-	err = store.Marshal("config", TestConfig{Value: "hello"})
+	err = store.Marshal(config.Key("config"), TestConfig{Value: "hello"})
 	assert.NoError(t, err)
 
 	sqlStore, ok := store.(*SQLiteStore)
@@ -88,7 +88,7 @@ func TestSQLiteStoreJSON(t *testing.T) {
 
 func descriptorListContains(descs []config.Descriptor, name string) bool {
 	for _, desc := range descs {
-		if value, ok := desc.(string); ok && value == name {
+		if desc != nil && desc.Key() == name {
 			return true
 		}
 	}

@@ -100,7 +100,7 @@ func benchOps() []op {
 				if strings.HasPrefix(backend.name, "sqlite") {
 					for i := 0; i < b.N; i++ {
 						index := i % len(keys)
-						if err := store.Marshal(keys[index], benchConfig{Value: "value"}); err != nil {
+						if err := store.Marshal(config.Key(keys[index]), benchConfig{Value: "value"}); err != nil {
 							b.Fatal(err)
 						}
 					}
@@ -283,7 +283,7 @@ func benchBackends() []backend {
 func populateStore(tb testing.TB, store config.Store, keys []string) {
 	tb.Helper()
 	for _, key := range keys {
-		if err := store.Marshal(key, benchConfig{Value: "value"}); err != nil {
+		if err := store.Marshal(config.Key(key), benchConfig{Value: "value"}); err != nil {
 			tb.Fatalf("populate %s: %v", key, err)
 		}
 	}
@@ -306,7 +306,7 @@ func benchMissingKey(index int) string {
 }
 
 func storeMarshalWithRetry(backendName string, store config.Store, key string) error {
-	err := store.Marshal(key, benchConfig{Value: "value"})
+	err := store.Marshal(config.Key(key), benchConfig{Value: "value"})
 	if err == nil || !strings.HasPrefix(backendName, "sqlite") {
 		return err
 	}
@@ -316,7 +316,7 @@ func storeMarshalWithRetry(backendName string, store config.Store, key string) e
 
 	for i := 0; i < 20; i++ {
 		time.Sleep(5 * time.Millisecond)
-		err = store.Marshal(key, benchConfig{Value: "value"})
+		err = store.Marshal(config.Key(key), benchConfig{Value: "value"})
 		if err == nil {
 			return nil
 		}
