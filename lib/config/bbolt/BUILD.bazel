@@ -1,0 +1,29 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "bbolt",
+    srcs = ["bbolt.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/config/bbolt",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/config",
+        "//lib/config/directory",
+        "@io_etcd_go_bbolt//:bbolt",
+    ],
+)
+
+go_test(
+    name = "bbolt_test",
+    srcs = ["bbolt_test.go"],
+    embed = [":bbolt"],
+    deps = [
+        "//lib/config",
+        "@com_github_stretchr_testify//assert",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":bbolt",
+    visibility = ["//visibility:public"],
+)

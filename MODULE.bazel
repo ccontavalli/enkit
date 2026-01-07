@@ -171,6 +171,7 @@ use_repo(
     "com_google_cloud_go_datastore",
     "com_google_cloud_go_pubsub",
     "com_google_cloud_go_storage",
+    "io_etcd_go_bbolt",
     "in_gopkg_gomail_v2",
     "in_gopkg_yaml_v2",
     "org_golang_google_api",

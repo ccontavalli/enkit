@@ -68,6 +68,7 @@ require (
 	github.com/valyala/quicktemplate v1.8.0
 	github.com/xenking/zipstream v1.0.1
 	github.com/xor-gate/ar v0.0.0-20170530204233-5c72ae81e2b7
+	go.etcd.io/bbolt v1.3.3
 	go.uber.org/goleak v1.3.0
 	go.uber.org/zap v1.18.1
 	golang.org/x/crypto v0.41.0

@@ -25,6 +25,7 @@ go_test(
     ],
     embed = [":config"],
     deps = [
+        "//lib/config/bbolt",
         "//lib/config/directory",
         "//lib/config/marshal",
         "//lib/config/sqlite",

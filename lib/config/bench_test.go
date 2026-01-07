@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ccontavalli/enkit/lib/config"
+	configbbolt "github.com/ccontavalli/enkit/lib/config/bbolt"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/config/sqlite"
@@ -24,8 +25,6 @@ var benchParallelism = []int{1, 4}
 
 type backend struct {
 	name string
-	key  func(index int) string
-	miss func(index int) string
 	open func(tb testing.TB) (config.Store, func(), error)
 }
 
@@ -52,12 +51,12 @@ func BenchmarkConfigStore(b *testing.B) {
 									}
 									defer cleanup()
 
-									keys := backendKeys(backend, count)
+									keys := benchKeys(count)
 									populateStore(b, store, keys)
 
 									b.ResetTimer()
 									b.SetParallelism(parallelism)
-									operation.run(b, backend, parallelism, store, keys, backend.miss)
+									operation.run(b, backend, parallelism, store, keys, benchMissingKey)
 								})
 							}
 						})
@@ -142,8 +141,6 @@ func benchBackends() []backend {
 	return []backend{
 		{
 			name: "directory",
-			key:  func(index int) string { return fmt.Sprintf("key-%d", index) },
-			miss: func(index int) string { return fmt.Sprintf("missing-%d", index) },
 			open: func(tb testing.TB) (config.Store, func(), error) {
 				tb.Helper()
 				dir, err := os.MkdirTemp("", "config-bench-dir")
@@ -166,8 +163,6 @@ func benchBackends() []backend {
 		},
 		{
 			name: "sqlite-store",
-			key:  func(index int) string { return fmt.Sprintf("key-%d", index) },
-			miss: func(index int) string { return fmt.Sprintf("missing-%d", index) },
 			open: func(tb testing.TB) (config.Store, func(), error) {
 				tb.Helper()
 				tmp, err := os.CreateTemp("", "config-bench-sqlite-*.db")
@@ -209,8 +204,6 @@ func benchBackends() []backend {
 		},
 		{
 			name: "sqlite-multi",
-			key:  func(index int) string { return fmt.Sprintf("key-%d.json", index) },
-			miss: func(index int) string { return fmt.Sprintf("missing-%d.json", index) },
 			open: func(tb testing.TB) (config.Store, func(), error) {
 				tb.Helper()
 				tmp, err := os.CreateTemp("", "config-bench-sqlite-multi-*.db")
@@ -250,6 +243,40 @@ func benchBackends() []backend {
 				return store, cleanup, nil
 			},
 		},
+		{
+			name: "bbolt",
+			open: func(tb testing.TB) (config.Store, func(), error) {
+				tb.Helper()
+				tmp, err := os.CreateTemp("", "config-bench-bbolt-*.db")
+				if err != nil {
+					return nil, nil, err
+				}
+				path := tmp.Name()
+				if err := tmp.Close(); err != nil {
+					os.Remove(path)
+					return nil, nil, err
+				}
+
+				db, err := configbbolt.New(configbbolt.WithPath(path))
+				if err != nil {
+					os.Remove(path)
+					return nil, nil, err
+				}
+
+				store, err := db.Open("app", "ns")
+				if err != nil {
+					db.Close()
+					os.Remove(path)
+					return nil, nil, err
+				}
+
+				cleanup := func() {
+					_ = db.Close()
+					_ = os.Remove(path)
+				}
+				return store, cleanup, nil
+			},
+		},
 	}
 }
 
@@ -262,12 +289,20 @@ func populateStore(tb testing.TB, store config.Store, keys []string) {
 	}
 }
 
-func backendKeys(backend backend, count int) []string {
+func benchKeys(count int) []string {
 	keys := make([]string, count)
 	for i := range keys {
-		keys[i] = backend.key(i)
+		keys[i] = benchKey(i)
 	}
 	return keys
+}
+
+func benchKey(index int) string {
+	return fmt.Sprintf("key-%d", index)
+}
+
+func benchMissingKey(index int) string {
+	return fmt.Sprintf("missing-%d", index)
 }
 
 func storeMarshalWithRetry(backendName string, store config.Store, key string) error {
