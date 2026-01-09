@@ -178,7 +178,12 @@ func BasicMapper(mapper AssetMapper) AssetMapper {
 // PrefixMapper returns an AssetMapper that always prepends a prefix.
 func PrefixMapper(prefix string, mapper AssetMapper) AssetMapper {
 	return func(original, name string, handler khttp.FuncHandler) []string {
-		return mapper(original, path.Join(prefix, name), handler)
+		hasTrailing := strings.HasSuffix(name, "/")
+		joined := path.Join(prefix, name)
+		if hasTrailing && !strings.HasSuffix(joined, "/") {
+			joined += "/"
+		}
+		return mapper(original, joined, handler)
 	}
 }
 
@@ -271,22 +276,24 @@ func (as AssetStats) Log(p logger.Printer) {
 		mapped := make([]AssetResource, len(as.Mapped))
 		copy(mapped, as.Mapped)
 		sort.Slice(mapped, func(i, j int) bool {
-			return mapped[i].Name < mapped[j].Name
+			return assetPrimaryPath(mapped[i]) < assetPrimaryPath(mapped[j])
 		})
 
 		for _, res := range mapped {
+			primary := assetPrimaryPath(res)
 			base := ""
 			if res.Base != "" {
 				base = res.Base + ": "
 			}
-			p("  - %s%s - %s - size %s (%s compressed)", base, res.Name, res.Mime, humanize.Bytes(uint64(res.Size)), humanize.Bytes(uint64(res.Compressed)))
-			if len(res.Paths) > 1 || (len(res.Paths) == 1 && res.Paths[0] != res.Name) {
-				for _, path := range res.Paths {
-					if path == res.Name {
+			p("  - %s (from %s%s) - %s - size %s (%s compressed)", primary, base, res.Name, res.Mime, humanize.Bytes(uint64(res.Size)), humanize.Bytes(uint64(res.Compressed)))
+			if len(res.Paths) > 0 {
+				paths := append([]string(nil), res.Paths...)
+				sort.Strings(paths)
+				for _, path := range paths {
+					if path == primary {
 						continue
 					}
-
-					p("    - re-mapped as %s", path)
+					p("    - also mapped as %s", path)
 				}
 			}
 		}
@@ -305,7 +312,7 @@ func (as AssetStats) Log(p logger.Printer) {
 			count = len(largest)
 		}
 		for _, res := range largest[len(largest)-count:] {
-			p("  - %s - %s", res.Name, humanize.Bytes(uint64(res.Size)))
+			p("  - %s - %s", assetPrimaryPath(res), humanize.Bytes(uint64(res.Size)))
 		}
 	}
 
@@ -319,6 +326,19 @@ func (as AssetStats) Log(p logger.Printer) {
 	p("Javascript: size %s (compressed: %s)", humanize.Bytes(as.JsTotal), humanize.Bytes(as.JsCompressed))
 	p("Mapped: %d, skipped %d - compressed %0.2f%% of total", len(as.Mapped), len(as.Skipped), gain)
 	p("-------------------------------")
+}
+
+func assetPrimaryPath(res AssetResource) string {
+	if len(res.Paths) == 0 {
+		return res.Name
+	}
+	primary := res.Paths[0]
+	for _, path := range res.Paths[1:] {
+		if path < primary {
+			primary = path
+		}
+	}
+	return primary
 }
 
 // RegisterAssets goes oever each asset supplied, creates an http handler, and registers it with AssetMapper.

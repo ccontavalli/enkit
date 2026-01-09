@@ -17,14 +17,20 @@ go_library(
 
 go_test(
     name = "kassets_test",
-    srcs = ["embeds_test.go"],
+    srcs = [
+        "assets_test.go",
+        "embeds_test.go",
+    ],
     data = glob(["testdata/**"]),
     embed = [":kassets"],
     embedsrcs = [
         "testdata/file1.txt",
         "testdata/file2.txt",
     ],
-    deps = ["@com_github_stretchr_testify//assert"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
 )
 
 alias(
