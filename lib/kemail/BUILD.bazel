@@ -29,6 +29,7 @@ go_test(
     embed = [":kemail"],
     deps = [
         "//lib/logger",
+        "@com_github_stretchr_testify//assert",
         "@in_gopkg_gomail_v2//:gomail_v2",
     ],
 )

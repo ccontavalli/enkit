@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ccontavalli/enkit/lib/logger"
+	"github.com/stretchr/testify/assert"
 	"gopkg.in/gomail.v2"
 )
 
@@ -76,15 +77,9 @@ func TestSendRetriesDial(t *testing.T) {
 		WithSleep(func(time.Duration) {}),
 		WithMaxAttempts(3),
 	)
-	if err != nil {
-		t.Fatalf("Send returned error: %v", err)
-	}
-	if dialer.calls != 2 {
-		t.Fatalf("expected 2 dial attempts, got %d", dialer.calls)
-	}
-	if sender.sendCalls != 1 {
-		t.Fatalf("expected 1 send attempt, got %d", sender.sendCalls)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 2, dialer.calls, "dial attempts")
+	assert.Equal(t, 1, sender.sendCalls, "send attempts")
 }
 
 func TestSendRetriesSend(t *testing.T) {
@@ -109,18 +104,10 @@ func TestSendRetriesSend(t *testing.T) {
 		WithSleep(func(time.Duration) {}),
 		WithMaxAttempts(3),
 	)
-	if err != nil {
-		t.Fatalf("Send returned error: %v", err)
-	}
-	if dialer.calls != 2 {
-		t.Fatalf("expected 2 dial attempts, got %d", dialer.calls)
-	}
-	if !sender1.closed {
-		t.Fatalf("expected sender1 to be closed")
-	}
-	if sender2.sendCalls != 1 {
-		t.Fatalf("expected sender2 to send once, got %d", sender2.sendCalls)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 2, dialer.calls, "dial attempts")
+	assert.True(t, sender1.closed, "sender1 closed")
+	assert.Equal(t, 1, sender2.sendCalls, "sender2 send calls")
 }
 
 func TestSendShuffle(t *testing.T) {
@@ -139,15 +126,48 @@ func TestSendShuffle(t *testing.T) {
 		WithRng(rand.New(rand.NewSource(1))),
 		WithShuffle(true),
 	)
-	if err != nil {
-		t.Fatalf("Send returned error: %v", err)
+	assert.NoError(t, err)
+	assert.Len(t, order, 3)
+	assert.Equal(t, []int{1, 3, 2}, order)
+}
+
+func TestSendProgress(t *testing.T) {
+	fail := errors.New("send failed")
+	sender1 := &fakeSender{sendErrors: []error{fail}}
+	sender2 := &fakeSender{}
+	dialer := &fakeDialer{
+		results: []dialResult{
+			{sender: sender1},
+			{sender: sender2},
+		},
 	}
-	if len(order) != 3 {
-		t.Fatalf("expected 3 messages, got %d", len(order))
-	}
-	if order[0] != 1 || order[1] != 3 || order[2] != 2 {
-		t.Fatalf("expected shuffled order [1 3 2], got %v", order)
-	}
+
+	var reports []Progress
+	recipients := []string{"a@example.com"}
+	err := Send(dialer, recipients, func(r string) (*gomail.Message, error) {
+		return buildMessage(r), nil
+	}, func(r string) string {
+		return r
+	},
+		WithLogger(logger.Nil),
+		WithWait(0),
+		WithSleep(func(time.Duration) {}),
+		WithMaxAttempts(3),
+		WithProgress(func(p Progress) {
+			reports = append(reports, p)
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Len(t, reports, 4)
+	assert.Equal(t, ProgressSending, reports[0].Status)
+	assert.Equal(t, 1, reports[0].Attempt)
+	assert.Equal(t, ProgressError, reports[1].Status)
+	assert.Error(t, reports[1].Err)
+	assert.Equal(t, ProgressSending, reports[2].Status)
+	assert.Equal(t, 2, reports[2].Attempt)
+	assert.Equal(t, ProgressSent, reports[3].Status)
+	assert.Equal(t, 1, reports[3].Sent)
+	assert.Equal(t, 0, reports[3].Remaining)
 }
 
 func TestWaitForRetrySleeps(t *testing.T) {
@@ -162,12 +182,8 @@ func TestWaitForRetrySleeps(t *testing.T) {
 	}
 	last := now.Add(-5 * time.Second)
 	returned := waitForRetry(last, 10*time.Second, current, sleep, logger.Nil)
-	if slept != 5*time.Second {
-		t.Fatalf("expected sleep of 5s, got %s", slept)
-	}
-	if !returned.Equal(time.Unix(105, 0)) {
-		t.Fatalf("expected time to advance to 105, got %s", returned)
-	}
+	assert.Equal(t, 5*time.Second, slept)
+	assert.True(t, returned.Equal(time.Unix(105, 0)), "expected time to advance")
 }
 
 func TestWaitForRetryImmediate(t *testing.T) {
@@ -176,7 +192,5 @@ func TestWaitForRetryImmediate(t *testing.T) {
 		return now
 	}
 	returned := waitForRetry(now.Add(-15*time.Second), 10*time.Second, current, func(time.Duration) {}, logger.Nil)
-	if !returned.Equal(now) {
-		t.Fatalf("expected no sleep, got %s", returned)
-	}
+	assert.True(t, returned.Equal(now), "expected no sleep")
 }

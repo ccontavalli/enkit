@@ -17,6 +17,35 @@ type TimeSource func() time.Time
 // Sleeper pauses execution for a duration.
 type Sleeper func(time.Duration)
 
+// ProgressStatus describes the progress callback state.
+type ProgressStatus string
+
+const (
+	// ProgressSending reports an attempt to send a message.
+	ProgressSending ProgressStatus = "sending"
+	// ProgressSent reports a successfully sent message.
+	ProgressSent ProgressStatus = "sent"
+	// ProgressError reports a failed attempt for a recipient.
+	ProgressError ProgressStatus = "error"
+	// ProgressGiveUp reports when the sender gives up on a recipient.
+	ProgressGiveUp ProgressStatus = "give_up"
+)
+
+// Progress contains metadata about the current sending progress.
+type Progress struct {
+	Index     int
+	Total     int
+	Attempt   int
+	Label     string
+	Status    ProgressStatus
+	Err       error
+	Sent      int
+	Remaining int
+}
+
+// ProgressCallback is invoked to report sending progress.
+type ProgressCallback func(Progress)
+
 // Flags configures the sender behavior.
 type Flags struct {
 	Wait        time.Duration
@@ -43,10 +72,11 @@ func (f *Flags) Register(fs kflags.FlagSet, prefix string) *Flags {
 
 // Options controls the send behavior.
 type Options struct {
-	log   logger.Logger
-	Now   TimeSource
-	Sleep Sleeper
-	Rng   *rand.Rand
+	log      logger.Logger
+	Now      TimeSource
+	Sleep    Sleeper
+	Rng      *rand.Rand
+	Progress ProgressCallback
 
 	Flags
 }
@@ -124,6 +154,13 @@ func WithShuffle(shuffle bool) Modifier {
 	}
 }
 
+// WithProgress sets a callback to report progress.
+func WithProgress(cb ProgressCallback) Modifier {
+	return func(o *Options) {
+		o.Progress = cb
+	}
+}
+
 // MessageBuilder builds a gomail message for a recipient.
 type MessageBuilder[T any] func(T) (*gomail.Message, error)
 
@@ -159,6 +196,9 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 		}
 	}()
 
+	total := len(sent)
+	sentCount := 0
+
 	for idx, recipient := range sent {
 		attempts := 0
 		label := fmt.Sprintf("recipient %d", idx)
@@ -166,8 +206,25 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 			label = labeler(recipient)
 		}
 
+		report := func(status ProgressStatus, err error) {
+			if opts.Progress == nil {
+				return
+			}
+			opts.Progress(Progress{
+				Index:     idx,
+				Total:     total,
+				Attempt:   attempts + 1,
+				Label:     label,
+				Status:    status,
+				Err:       err,
+				Sent:      sentCount,
+				Remaining: total - sentCount,
+			})
+		}
+
 		for {
 			if opts.MaxAttempts > 0 && attempts >= opts.MaxAttempts {
+				report(ProgressGiveUp, fmt.Errorf("exceeded %d attempts for %s", opts.MaxAttempts, label))
 				return fmt.Errorf("exceeded %d attempts for %s", opts.MaxAttempts, label)
 			}
 
@@ -177,6 +234,7 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 				sender, err = dialer.Dial()
 				if err != nil {
 					opts.log.Warnf("attempt %d - connection failed - %v", attempts, err)
+					report(ProgressError, err)
 					attempts++
 					continue
 				}
@@ -189,13 +247,17 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 			}
 
 			opts.log.Infof("attempt %d - sending %s", attempts, label)
+			report(ProgressSending, nil)
 			if err := gomail.Send(sender, message); err != nil {
 				opts.log.Warnf("attempt %d - sending %s failed - %v", attempts, label, err)
+				report(ProgressError, err)
 				_ = sender.Close()
 				sender = nil
 				attempts++
 				continue
 			}
+			sentCount++
+			report(ProgressSent, nil)
 			break
 		}
 	}

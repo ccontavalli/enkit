@@ -1,7 +1,8 @@
 // Package kemail provides helpers for reliably sending bulk email.
 //
 // The sender retries both dialing and message delivery, optionally shuffles the
-// recipient list, and enforces a minimum wait between connection attempts.
+// recipient list, enforces a minimum wait between connection attempts, and can
+// report progress via a callback for UIs or logging.
 //
 // Typical usage:
 //
