@@ -19,7 +19,11 @@ go_test(
     name = "factory_test",
     srcs = ["factory_test.go"],
     embed = [":factory"],
-    deps = ["@com_github_stretchr_testify//assert"],
+    deps = [
+        "//lib/config",
+        "//lib/config/sqlite",
+        "@com_github_stretchr_testify//assert",
+    ],
 )
 
 alias(

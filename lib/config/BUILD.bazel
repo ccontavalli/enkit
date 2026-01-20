@@ -4,6 +4,7 @@ go_library(
     name = "config",
     srcs = [
         "bind.go",
+        "doc.go",
         "multi.go",
         "simple.go",
         "store.go",
