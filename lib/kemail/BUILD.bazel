@@ -1,0 +1,34 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "kemail",
+    srcs = [
+        "dialer.go",
+        "doc.go",
+        "sender.go",
+    ],
+    importpath = "github.com/ccontavalli/enkit/lib/kemail",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/kflags",
+        "//lib/logger",
+        "//lib/srand",
+        "@in_gopkg_gomail_v2//:gomail_v2",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":kemail",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "kemail_test",
+    srcs = ["sender_test.go"],
+    embed = [":kemail"],
+    deps = [
+        "//lib/logger",
+        "@in_gopkg_gomail_v2//:gomail_v2",
+    ],
+)
