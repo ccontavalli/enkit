@@ -2,6 +2,7 @@ package kemail
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"gopkg.in/gomail.v2"
@@ -14,11 +15,12 @@ type Dialer interface {
 
 // DialerFlags defines SMTP configuration flags.
 type DialerFlags struct {
-	SmtpHost     string
-	SmtpPort     int
-	SmtpUser     string
-	SmtpPassword string
-	LocalName    string
+	SmtpHost         string
+	SmtpPort         int
+	SmtpUser         string
+	SmtpPassword     string
+	SmtpPasswordFile []byte
+	LocalName        string
 }
 
 // DefaultDialerFlags returns defaults for SMTP dialer flags.
@@ -34,6 +36,7 @@ func (f *DialerFlags) Register(fs kflags.FlagSet, prefix string) *DialerFlags {
 	fs.IntVar(&f.SmtpPort, prefix+"smtp-port", f.SmtpPort, "SMTP port for sending emails.")
 	fs.StringVar(&f.SmtpUser, prefix+"smtp-user", f.SmtpUser, "SMTP user for sending emails.")
 	fs.StringVar(&f.SmtpPassword, prefix+"smtp-password", f.SmtpPassword, "SMTP password for sending emails.")
+	fs.ByteFileVar(&f.SmtpPasswordFile, prefix+"smtp-password-file", "", "Path to a file containing the SMTP password.", kflags.WithContent(f.SmtpPasswordFile))
 	fs.StringVar(&f.LocalName, prefix+"smtp-local-name", f.LocalName, "Local hostname to present during SMTP handshake.")
 	return f
 }
@@ -74,6 +77,9 @@ func FromDialerFlags(f *DialerFlags) DialerModifier {
 		}
 		if f.SmtpPort <= 0 || f.SmtpPort > 65535 {
 			return kflags.NewUsageErrorf("smtp-port must be a valid port number (1-65535)")
+		}
+		if f.SmtpPassword == "" && len(f.SmtpPasswordFile) > 0 {
+			f.SmtpPassword = strings.TrimSpace(string(f.SmtpPasswordFile))
 		}
 		o.SmtpHost = f.SmtpHost
 		o.SmtpPort = f.SmtpPort
