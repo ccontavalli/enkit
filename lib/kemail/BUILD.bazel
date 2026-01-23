@@ -6,6 +6,7 @@ go_library(
         "dialer.go",
         "doc.go",
         "sender.go",
+        "transactional.go",
     ],
     importpath = "github.com/ccontavalli/enkit/lib/kemail",
     visibility = ["//visibility:public"],
@@ -25,7 +26,10 @@ alias(
 
 go_test(
     name = "kemail_test",
-    srcs = ["sender_test.go"],
+    srcs = [
+        "sender_test.go",
+        "transactional_test.go",
+    ],
     embed = [":kemail"],
     deps = [
         "//lib/logger",

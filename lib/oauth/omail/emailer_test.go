@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ccontavalli/enkit/lib/kemail"
 	"github.com/ccontavalli/enkit/lib/oauth"
 	"github.com/ccontavalli/enkit/lib/srand"
 	"github.com/ccontavalli/enkit/lib/token"
@@ -38,22 +39,25 @@ func TestEmailer(t *testing.T) {
 	assert.NoError(t, err)
 
 	flags := &EmailerFlags{
-		SmtpHost:         "smtp.example.com",
-		SmtpPort:         587,
-		FromAddress:      "noreply@example.com",
-		SymmetricKey:     key,
-		TokenLifetime:    15 * time.Minute,
-		SubjectTemplate:  []byte("Welcome {{.name}}!"),
-		BodyHTMLTemplate: []byte("HTML Token for {{.email}}: {{.URL}} Key: {{.custom_key}}"),
-		BodyTextTemplate: []byte("Text Token for {{.email}}: {{.URL}} Key: {{.custom_key}}"),
+		DialerFlags: kemail.DialerFlags{
+			SmtpHost: "smtp.example.com",
+			SmtpPort: 587,
+		},
+		TemplateFlags: kemail.TemplateFlags{
+			SubjectTemplate:  []byte("Welcome {{.name}}!"),
+			BodyHTMLTemplate: []byte("HTML Token for {{.email}}: {{.URL}} Key: {{.custom_key}}"),
+			BodyTextTemplate: []byte("Text Token for {{.email}}: {{.URL}} Key: {{.custom_key}}"),
+		},
+		FromAddress:   "noreply@example.com",
+		SymmetricKey:  key,
+		TokenLifetime: 15 * time.Minute,
 	}
 
 	callbackURL, err := url.Parse("https://example.com/my/callback")
 	assert.NoError(t, err)
 
-	emailer, err := NewEmailer(rng, FromEmailerFlags(flags), WithCallbackURL(callbackURL))
+	emailer, err := NewEmailer(rng, FromEmailerFlags(flags), WithCallbackURL(callbackURL), WithEmailerDialer(mockDialer))
 	assert.NoError(t, err)
-	emailer.dialer = mockDialer
 
 	// Test CreateEmailToken and ValidateEmailToken
 	params := url.Values{}
@@ -105,45 +109,45 @@ func TestFlagsValidation(t *testing.T) {
 
 	validBody := []byte("{{.URL}}")
 
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpPort: 587, BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}), WithCallbackURL(callbackURL))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpPort: 587}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "smtp-host")
 
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587, BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}), WithCallbackURL(callbackURL))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "from-address")
 
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 0, BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}), WithCallbackURL(callbackURL))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 0}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}, FromAddress: "test@test.com"}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "smtp-port")
 
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 70000, BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}), WithCallbackURL(callbackURL))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 70000}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}, FromAddress: "test@test.com"}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "smtp-port")
 
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: []byte("{{.URL}} {{.Invalid")}), WithCallbackURL(callbackURL))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: []byte("{{.URL}} {{.Invalid")}, FromAddress: "test@test.com"}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unclosed action")
 
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: validBody, BodyTextTemplate: []byte("{{.URL}} {{.Invalid")}), WithCallbackURL(callbackURL))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: validBody, BodyTextTemplate: []byte("{{.URL}} {{.Invalid")}, FromAddress: "test@test.com"}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unclosed action")
 
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: []byte("no url")}), WithCallbackURL(callbackURL))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: []byte("no url")}, FromAddress: "test@test.com"}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "body html template must contain {{.URL}}")
 
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: validBody, BodyTextTemplate: []byte("no url")}), WithCallbackURL(callbackURL))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: validBody, BodyTextTemplate: []byte("no url")}, FromAddress: "test@test.com"}), WithCallbackURL(callbackURL))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "body text template must contain {{.URL}}")
 
 	// Test that a key is generated if not provided
-	emailer, err := NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}), WithCallbackURL(callbackURL))
+	emailer, err := NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}, FromAddress: "test@test.com"}), WithCallbackURL(callbackURL))
 	assert.NoError(t, err)
 	assert.NotNil(t, emailer)
 
 	// Test that callback URL is required
-	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{SmtpHost: "smtp.example.com", FromAddress: "test@test.com", SmtpPort: 587, BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}))
+	_, err = NewEmailer(rng, FromEmailerFlags(&EmailerFlags{DialerFlags: kemail.DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587}, TemplateFlags: kemail.TemplateFlags{BodyHTMLTemplate: validBody, BodyTextTemplate: validBody}, FromAddress: "test@test.com"}))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "CallbackURL must be configured")
 }

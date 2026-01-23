@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ccontavalli/enkit/lib/kemail"
 	"github.com/ccontavalli/enkit/lib/oauth"
 	"github.com/ccontavalli/enkit/lib/srand"
 	"github.com/ccontavalli/enkit/lib/token"
@@ -36,13 +37,17 @@ func TestAuthenticator(t *testing.T) {
 
 	authFlags := &AuthenticatorFlags{
 		EmailerFlags: EmailerFlags{
-			SmtpHost:         "smtp.example.com",
-			SmtpPort:         587,
-			FromAddress:      "noreply@example.com",
-			TokenLifetime:    15 * time.Minute,
-			SymmetricKey:     key,
-			BodyHTMLTemplate: []byte(kDefaultTemplateHTMLBody),
-			BodyTextTemplate: []byte(kDefaultTemplateTextBody),
+			DialerFlags: kemail.DialerFlags{
+				SmtpHost: "smtp.example.com",
+				SmtpPort: 587,
+			},
+			TemplateFlags: kemail.TemplateFlags{
+				BodyHTMLTemplate: []byte(kDefaultTemplateHTMLBody),
+				BodyTextTemplate: []byte(kDefaultTemplateTextBody),
+			},
+			FromAddress:   "noreply@example.com",
+			TokenLifetime: 15 * time.Minute,
+			SymmetricKey:  key,
 		},
 		SigningExtractorFlags: oauth.SigningExtractorFlags{
 			ExtractorFlags: &oauth.ExtractorFlags{
@@ -57,20 +62,20 @@ func TestAuthenticator(t *testing.T) {
 	callbackURL, err := url.Parse("https://example.com/auth/callback")
 	assert.NoError(t, err)
 
-	auth, err := NewAuthenticator(
-		rng,
-		FromAuthenticatorFlags(authFlags),
-		WithEmailerModifiers(WithCallbackURL(callbackURL)),
-	)
-	assert.NoError(t, err)
-
 	var sentMessage *gomail.Message
-	auth.Emailer.dialer = &mockDialer{
+	mockDialer := &mockDialer{
 		send: func(m *gomail.Message) error {
 			sentMessage = m
 			return nil
 		},
 	}
+
+	auth, err := NewAuthenticator(
+		rng,
+		FromAuthenticatorFlags(authFlags),
+		WithEmailerModifiers(WithCallbackURL(callbackURL), WithEmailerDialer(mockDialer)),
+	)
+	assert.NoError(t, err)
 
 	// Test PerformLogin
 	loginReq := httptest.NewRequest("POST", "/login?email=test@example.com", nil)

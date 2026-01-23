@@ -10,13 +10,13 @@ go_library(
     importpath = "github.com/ccontavalli/enkit/lib/oauth/omail",
     visibility = ["//visibility:public"],
     deps = [
+        "//lib/kemail",
         "//lib/kflags",
         "//lib/khttp",
         "//lib/khttp/kcookie",
         "//lib/logger",
         "//lib/oauth",
         "//lib/token",
-        "@in_gopkg_gomail_v2//:gomail_v2",
     ],
 )
 

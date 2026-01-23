@@ -1,39 +1,27 @@
 package omail
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"html/template"
 	"math/rand"
 	"net/url"
 	"strings"
-	texttemplate "text/template"
 	"time"
 
+	"github.com/ccontavalli/enkit/lib/kemail"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/ccontavalli/enkit/lib/oauth"
 	"github.com/ccontavalli/enkit/lib/token"
-	"gopkg.in/gomail.v2"
 )
-
-// Dialer is an interface for sending emails, allowing for mock implementations in tests.
-type Dialer interface {
-	DialAndSend(m ...*gomail.Message) error
-}
 
 // Emailer handles the sending of authentication emails.
 type Emailer struct {
-	log              logger.Logger
-	bodyHTMLTemplate *template.Template
-	bodyTextTemplate *texttemplate.Template
-	subjectTemplate  *template.Template
-	tokenEncoder     *token.TypeEncoder
-	dialer           Dialer
-	fromAddress      string
-	tokenLifetime    time.Duration
-	callbackURL      *url.URL
+	log           logger.Logger
+	tokenEncoder  *token.TypeEncoder
+	mailer        *kemail.TransactionalEmailer
+	tokenLifetime time.Duration
+	callbackURL   *url.URL
 }
 
 // EmailTokenPayload is the data encoded in the secure email token.
@@ -45,19 +33,18 @@ type EmailTokenPayload struct {
 
 // emailerOptions holds the internal configuration for the email authenticator.
 type emailerOptions struct {
-	rng              *rand.Rand
-	log              logger.Logger
-	SmtpHost         string
-	SmtpPort         int
-	SmtpUser         string
-	SmtpPassword     string
-	FromAddress      string
-	SubjectTemplate  *template.Template
-	BodyHTMLTemplate *template.Template
-	BodyTextTemplate *texttemplate.Template
-	TokenLifetime    time.Duration
-	SymmetricKey     []byte
-	CallbackURL      *url.URL
+	rng             *rand.Rand
+	log             logger.Logger
+	Dialer          kemail.SendDialer
+	SmtpHost        string
+	SmtpPort        int
+	SmtpUser        string
+	SmtpPasswordSet bool
+	FromAddress     string
+	Templates       *kemail.Templates
+	TokenLifetime   time.Duration
+	SymmetricKey    []byte
+	CallbackURL     *url.URL
 }
 
 // EmailerModifier is a function that applies a configuration change to the authenticator options.
@@ -78,16 +65,11 @@ func (mods EmailerModifiers) Apply(o *emailerOptions) error {
 
 // EmailerFlags defines the command-line flags for the email authenticator.
 type EmailerFlags struct {
-	SmtpHost         string
-	SmtpPort         int
-	SmtpUser         string
-	SmtpPassword     string
-	FromAddress      string
-	SubjectTemplate  []byte
-	BodyHTMLTemplate []byte
-	BodyTextTemplate []byte
-	TokenLifetime    time.Duration
-	SymmetricKey     []byte
+	kemail.DialerFlags
+	kemail.TemplateFlags
+	FromAddress   string
+	TokenLifetime time.Duration
+	SymmetricKey  []byte
 }
 
 const kDefaultTemplateSubject = "Your login link"
@@ -123,39 +105,35 @@ If you did not request this login link, please ignore this email.`
 
 func EmailerDefaultFlags() *EmailerFlags {
 	return &EmailerFlags{
-		SmtpPort:         587,
-		SubjectTemplate:  []byte(kDefaultTemplateSubject),
-		BodyHTMLTemplate: []byte(kDefaultTemplateHTMLBody),
-		BodyTextTemplate: []byte(kDefaultTemplateTextBody),
-		TokenLifetime:    1 * time.Hour,
+		DialerFlags:   *kemail.DefaultDialerFlags(),
+		TemplateFlags: kemail.TemplateFlags{SubjectTemplate: []byte(kDefaultTemplateSubject), BodyHTMLTemplate: []byte(kDefaultTemplateHTMLBody), BodyTextTemplate: []byte(kDefaultTemplateTextBody)},
+		TokenLifetime: 1 * time.Hour,
 	}
 }
 
 func (f *EmailerFlags) Register(fs kflags.FlagSet, prefix string) {
-	fs.StringVar(&f.SmtpHost, prefix+"smtp-host", f.SmtpHost, "SMTP host for sending emails. Mandatory.")
-	fs.IntVar(&f.SmtpPort, prefix+"smtp-port", f.SmtpPort, "SMTP port for sending emails.")
-	fs.StringVar(&f.SmtpUser, prefix+"smtp-user", f.SmtpUser, "SMTP user for sending emails.")
-	fs.StringVar(&f.SmtpPassword, prefix+"smtp-password", f.SmtpPassword, "SMTP password for sending emails.")
+	f.DialerFlags.Register(fs, prefix)
 	fs.StringVar(&f.FromAddress, prefix+"from-address", f.FromAddress, "From address for sending emails. Mandatory.")
 	fs.DurationVar(&f.TokenLifetime, prefix+"token-lifetime", f.TokenLifetime, "How long the login token is valid for.")
-
-	fs.ByteFileVar(&f.SubjectTemplate, prefix+"subject-template-file", "", "Path to a Go template file for the login email subject. If not set, a default subject is used.", kflags.WithContent(f.SubjectTemplate))
-	fs.ByteFileVar(&f.BodyHTMLTemplate, prefix+"body-html-template-file", "", "Path to a Go template file for the login email body (HTML). Must contain {{.URL}}. If not set, a default email body is used.", kflags.WithContent(f.BodyHTMLTemplate))
-	fs.ByteFileVar(&f.BodyTextTemplate, prefix+"body-text-template-file", "", "Path to a Go template file for the login email body (Text). Must contain {{.URL}}. If not set, a default email body is used.", kflags.WithContent(f.BodyTextTemplate))
+	f.TemplateFlags.RegisterWithHelp(
+		fs,
+		prefix,
+		"Path to a Go template file for the login email subject. If not set, a default subject is used.",
+		"Path to a Go template file for the login email body (HTML). Must contain {{.URL}}. If not set, a default email body is used.",
+		"Path to a Go template file for the login email body (Text). Must contain {{.URL}}. If not set, a default email body is used.",
+	)
 	fs.ByteFileVar(&f.SymmetricKey, prefix+"symmetric-key-file", "", "Path to a file containing the symmetric key for token encryption. If not set, a new key is generated.", kflags.WithContent(f.SymmetricKey))
 }
 
 // FromEmailerFlags returns a Modifier that applies the configuration from the Flags struct.
 func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 	return func(o *emailerOptions) error {
-		if f.SmtpHost == "" {
-			return kflags.NewUsageErrorf("smtp-host flag is mandatory")
+		dialer, err := kemail.NewDialer(kemail.FromDialerFlags(&f.DialerFlags))
+		if err != nil {
+			return err
 		}
 		if f.FromAddress == "" {
 			return kflags.NewUsageErrorf("from-address flag is mandatory")
-		}
-		if f.SmtpPort <= 0 || f.SmtpPort > 65535 {
-			return kflags.NewUsageErrorf("smtp-port must be a valid port number (1-65535)")
 		}
 
 		bodyTemplateStr := string(f.BodyHTMLTemplate)
@@ -165,10 +143,6 @@ func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 		if !strings.Contains(bodyTemplateStr, "{{.URL}}") {
 			return fmt.Errorf("body html template must contain {{.URL}}")
 		}
-		bodyHTMLTemplate, err := template.New("body_html").Parse(bodyTemplateStr)
-		if err != nil {
-			return err
-		}
 
 		bodyTextTemplateStr := string(f.BodyTextTemplate)
 		if bodyTextTemplateStr == "" {
@@ -177,16 +151,12 @@ func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 		if !strings.Contains(bodyTextTemplateStr, "{{.URL}}") {
 			return fmt.Errorf("body text template must contain {{.URL}}")
 		}
-		bodyTextTemplate, err := texttemplate.New("body_text").Parse(bodyTextTemplateStr)
-		if err != nil {
-			return err
-		}
 
 		subjectTemplateStr := string(f.SubjectTemplate)
 		if subjectTemplateStr == "" {
 			subjectTemplateStr = kDefaultTemplateSubject
 		}
-		subjectTemplate, err := template.New("subject").Parse(subjectTemplateStr)
+		templates, err := kemail.ParseTemplates([]byte(subjectTemplateStr), []byte(bodyTemplateStr), []byte(bodyTextTemplateStr))
 		if err != nil {
 			return err
 		}
@@ -200,15 +170,14 @@ func FromEmailerFlags(f *EmailerFlags) EmailerModifier {
 			}
 		}
 
+		o.Dialer = dialer
 		o.SmtpHost = f.SmtpHost
 		o.SmtpPort = f.SmtpPort
 		o.SmtpUser = f.SmtpUser
-		o.SmtpPassword = f.SmtpPassword
+		o.SmtpPasswordSet = f.SmtpPassword != ""
 		o.FromAddress = f.FromAddress
 		o.TokenLifetime = f.TokenLifetime
-		o.SubjectTemplate = subjectTemplate
-		o.BodyHTMLTemplate = bodyHTMLTemplate
-		o.BodyTextTemplate = bodyTextTemplate
+		o.Templates = templates
 		o.SymmetricKey = key
 		return nil
 	}
@@ -234,6 +203,14 @@ func WithCallbackURL(u *url.URL) EmailerModifier {
 func WithEmailerLogger(log logger.Logger) EmailerModifier {
 	return func(o *emailerOptions) error {
 		o.log = log
+		return nil
+	}
+}
+
+// WithEmailerDialer overrides the SMTP dialer used for sending emails.
+func WithEmailerDialer(dialer kemail.SendDialer) EmailerModifier {
+	return func(o *emailerOptions) error {
+		o.Dialer = dialer
 		return nil
 	}
 }
@@ -271,22 +248,28 @@ func NewEmailer(rng *rand.Rand, mods ...EmailerModifier) (*Emailer, error) {
 	))
 
 	smtpPasswordStatus := "(not set)"
-	if opts.SmtpPassword != "" {
+	if opts.SmtpPasswordSet {
 		smtpPasswordStatus = "(set)"
 	}
 	opts.log.Infof("NewEmailer configured with: SmtpHost=%s, SmtpPort=%d, SmtpUser=%s, SmtpPassword=%s, FromAddress=%s, TokenLifetime=%s",
 		opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, smtpPasswordStatus, opts.FromAddress, opts.TokenLifetime)
 
+	mailer, err := kemail.NewTransactionalEmailer(
+		kemail.WithTransactionalLogger(opts.log),
+		kemail.WithDialer(opts.Dialer),
+		kemail.WithFromAddress(opts.FromAddress),
+		kemail.WithTemplates(opts.Templates),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure transactional emailer: %w", err)
+	}
+
 	return &Emailer{
-		log:              opts.log,
-		fromAddress:      opts.FromAddress,
-		subjectTemplate:  opts.SubjectTemplate,
-		bodyHTMLTemplate: opts.BodyHTMLTemplate,
-		bodyTextTemplate: opts.BodyTextTemplate,
-		tokenEncoder:     tokenEncoder,
-		dialer:           gomail.NewDialer(opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, opts.SmtpPassword),
-		tokenLifetime:    opts.TokenLifetime,
-		callbackURL:      opts.CallbackURL,
+		log:           opts.log,
+		tokenEncoder:  tokenEncoder,
+		mailer:        mailer,
+		tokenLifetime: opts.TokenLifetime,
+		callbackURL:   opts.CallbackURL,
 	}, nil
 }
 
@@ -346,32 +329,8 @@ func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth
 		templateData[k] = v
 	}
 
-	var body bytes.Buffer
-	if err := e.bodyHTMLTemplate.Execute(&body, templateData); err != nil {
-		return fmt.Errorf("error executing body html template: %w", err)
-	}
-
-	var textBody bytes.Buffer
-	if err := e.bodyTextTemplate.Execute(&textBody, templateData); err != nil {
-		return fmt.Errorf("error executing body text template: %w", err)
-	}
-
-	var subject bytes.Buffer
-	if err := e.subjectTemplate.Execute(&subject, templateData); err != nil {
-		return fmt.Errorf("error executing subject template: %w", err)
-	}
-
-	m := gomail.NewMessage()
-	m.SetHeader("From", e.fromAddress)
-	m.SetHeader("To", email)
-	m.SetHeader("Subject", subject.String())
-
-	m.SetBody("text/plain", textBody.String())
-	m.AddAlternative("text/html", body.String())
-
-	if err := e.dialer.DialAndSend(m); err != nil {
-		e.log.Errorf("Failed to send login email to %s: %v", email, err)
-		return fmt.Errorf("error sending email: %w", err)
+	if err := e.mailer.Send(email, templateData); err != nil {
+		return err
 	}
 
 	e.log.Infof("Login email sent to %s from %s", email, location)
