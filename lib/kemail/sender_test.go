@@ -153,8 +153,9 @@ func TestSendProgress(t *testing.T) {
 		WithWait(0),
 		WithSleep(func(time.Duration) {}),
 		WithMaxAttempts(3),
-		WithProgress(func(p Progress) {
+		WithProgress(func(p Progress) ProgressAction {
 			reports = append(reports, p)
+			return ProgressContinue
 		}),
 	)
 	assert.NoError(t, err)
@@ -168,6 +169,78 @@ func TestSendProgress(t *testing.T) {
 	assert.Equal(t, ProgressSent, reports[3].Status)
 	assert.Equal(t, 1, reports[3].Sent)
 	assert.Equal(t, 0, reports[3].Remaining)
+}
+
+func TestSendProgressSkip(t *testing.T) {
+	sender := &fakeSender{}
+	dialer := &fakeDialer{results: []dialResult{{sender: sender}}}
+
+	recipients := []string{"a@example.com"}
+	err := Send(dialer, recipients, func(r string) (*gomail.Message, error) {
+		return buildMessage(r), nil
+	}, func(r string) string {
+		return r
+	},
+		WithLogger(logger.Nil),
+		WithWait(0),
+		WithSleep(func(time.Duration) {}),
+		WithProgress(func(p Progress) ProgressAction {
+			if p.Status == ProgressSending {
+				return ProgressSkip
+			}
+			return ProgressContinue
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, sender.sendCalls)
+}
+
+func TestSendProgressPause(t *testing.T) {
+	sender := &fakeSender{}
+	dialer := &fakeDialer{results: []dialResult{{sender: sender}}}
+
+	recipients := []string{"a@example.com"}
+	err := Send(dialer, recipients, func(r string) (*gomail.Message, error) {
+		return buildMessage(r), nil
+	}, func(r string) string {
+		return r
+	},
+		WithLogger(logger.Nil),
+		WithWait(0),
+		WithSleep(func(time.Duration) {}),
+		WithProgress(func(p Progress) ProgressAction {
+			if p.Status == ProgressSending {
+				return ProgressPause
+			}
+			return ProgressContinue
+		}),
+	)
+	assert.ErrorIs(t, err, ErrPaused)
+	assert.Equal(t, 0, sender.sendCalls)
+}
+
+func TestSendProgressCancel(t *testing.T) {
+	sender := &fakeSender{}
+	dialer := &fakeDialer{results: []dialResult{{sender: sender}}}
+
+	recipients := []string{"a@example.com"}
+	err := Send(dialer, recipients, func(r string) (*gomail.Message, error) {
+		return buildMessage(r), nil
+	}, func(r string) string {
+		return r
+	},
+		WithLogger(logger.Nil),
+		WithWait(0),
+		WithSleep(func(time.Duration) {}),
+		WithProgress(func(p Progress) ProgressAction {
+			if p.Status == ProgressSending {
+				return ProgressCancel
+			}
+			return ProgressContinue
+		}),
+	)
+	assert.ErrorIs(t, err, ErrCanceled)
+	assert.Equal(t, 0, sender.sendCalls)
 }
 
 func TestWaitForRetrySleeps(t *testing.T) {

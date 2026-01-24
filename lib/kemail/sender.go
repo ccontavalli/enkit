@@ -31,12 +31,33 @@ const (
 	ProgressGiveUp ProgressStatus = "give_up"
 )
 
+// ProgressAction controls how the sender continues.
+type ProgressAction string
+
+const (
+	// ProgressContinue keeps sending normally.
+	ProgressContinue ProgressAction = "continue"
+	// ProgressSkip skips the current recipient without sending.
+	ProgressSkip ProgressAction = "skip"
+	// ProgressPause stops sending after the current recipient.
+	ProgressPause ProgressAction = "pause"
+	// ProgressCancel stops sending immediately.
+	ProgressCancel ProgressAction = "cancel"
+)
+
+// ErrPaused indicates sending was paused via progress callback.
+var ErrPaused = fmt.Errorf("sending paused")
+
+// ErrCanceled indicates sending was canceled via progress callback.
+var ErrCanceled = fmt.Errorf("sending canceled")
+
 // Progress contains metadata about the current sending progress.
 type Progress struct {
 	Index     int
 	Total     int
 	Attempt   int
 	Label     string
+	Recipient string
 	Status    ProgressStatus
 	Err       error
 	Sent      int
@@ -44,7 +65,7 @@ type Progress struct {
 }
 
 // ProgressCallback is invoked to report sending progress.
-type ProgressCallback func(Progress)
+type ProgressCallback func(Progress) ProgressAction
 
 // Flags configures the sender behavior.
 type Flags struct {
@@ -206,20 +227,25 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 			label = labeler(recipient)
 		}
 
-		report := func(status ProgressStatus, err error) {
+		report := func(status ProgressStatus, err error) ProgressAction {
 			if opts.Progress == nil {
-				return
+				return ProgressContinue
 			}
-			opts.Progress(Progress{
+			action := opts.Progress(Progress{
 				Index:     idx,
 				Total:     total,
 				Attempt:   attempts + 1,
 				Label:     label,
+				Recipient: label,
 				Status:    status,
 				Err:       err,
 				Sent:      sentCount,
 				Remaining: total - sentCount,
 			})
+			if action == "" {
+				return ProgressContinue
+			}
+			return action
 		}
 
 		for {
@@ -241,23 +267,45 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 				opts.log.Infof("connected to SMTP server")
 			}
 
+			action := report(ProgressSending, nil)
+			if action == ProgressSkip {
+				break
+			}
+			if action == ProgressPause {
+				return ErrPaused
+			}
+			if action == ProgressCancel {
+				return ErrCanceled
+			}
+
 			message, err := build(recipient)
 			if err != nil {
 				return err
 			}
 
 			opts.log.Infof("attempt %d - sending %s", attempts, label)
-			report(ProgressSending, nil)
 			if err := gomail.Send(sender, message); err != nil {
 				opts.log.Warnf("attempt %d - sending %s failed - %v", attempts, label, err)
-				report(ProgressError, err)
+				action = report(ProgressError, err)
+				if action == ProgressPause {
+					return ErrPaused
+				}
+				if action == ProgressCancel {
+					return ErrCanceled
+				}
 				_ = sender.Close()
 				sender = nil
 				attempts++
 				continue
 			}
 			sentCount++
-			report(ProgressSent, nil)
+			action = report(ProgressSent, nil)
+			if action == ProgressPause {
+				return ErrPaused
+			}
+			if action == ProgressCancel {
+				return ErrCanceled
+			}
 			break
 		}
 	}
