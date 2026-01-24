@@ -26,7 +26,13 @@ import (
 
 // Flags holds the configuration options for creating a config store.
 // These are typically populated from command-line flags.
+const (
+	directoryModeSimple = "simple"
+	directoryModeMulti  = "multi"
+)
+
 type Flags struct {
+	// StoreType determines the backend to use. Supported values: "directory", "datastore", "sqlite".
 	// StoreType determines the backend to use. Supported values: "directory", "datastore", "sqlite".
 	StoreType string
 	// DatastoreProject specifies the Google Cloud Project ID when using the "datastore" backend.
@@ -35,6 +41,11 @@ type Flags struct {
 	// DirectoryPath specifies a custom root directory for the "directory" backend.
 	// If empty, the user's default configuration directory (e.g., ~/.config/appname) is used.
 	DirectoryPath string
+	// DirectoryMode selects the directory store implementation: "simple" or "multi".
+	DirectoryMode string
+	// DirectoryFormat selects the marshalling format for the simple directory store.
+	// Valid values: toml, json, yaml, gob. Ignored for multi mode.
+	DirectoryFormat string
 	// SQLite holds SQLite-specific configuration.
 	SQLite *sqlite.Flags
 }
@@ -45,8 +56,10 @@ type Flags struct {
 func DefaultFlags() *Flags {
 	storeType := "directory"
 	return &Flags{
-		StoreType: storeType,
-		SQLite:    sqlite.DefaultFlags(),
+		StoreType:       storeType,
+		DirectoryMode:   directoryModeSimple,
+		DirectoryFormat: "toml",
+		SQLite:          sqlite.DefaultFlags(),
 	}
 }
 
@@ -58,6 +71,8 @@ func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
 	set.StringVar(&f.StoreType, prefix+"config-store", f.StoreType, "Type of config store to use (datastore, directory, sqlite)")
 	set.StringVar(&f.DatastoreProject, prefix+"config-store-datastore-project", f.DatastoreProject, "Project ID for Datastore config backend (optional, defaults to auto-detect)")
 	set.StringVar(&f.DirectoryPath, prefix+"config-store-directory-path", f.DirectoryPath, "Custom path for Directory config backend (optional, defaults to user config dir)")
+	set.StringVar(&f.DirectoryMode, prefix+"config-store-directory-mode", f.DirectoryMode, "Directory store mode (simple or multi)")
+	set.StringVar(&f.DirectoryFormat, prefix+"config-store-directory-format", f.DirectoryFormat, "Directory store format for simple mode (toml, json, yaml, gob)")
 	f.SQLite.Register(set, prefix)
 	return f
 }
@@ -74,6 +89,66 @@ type Modifier func(*Options)
 func FromFlags(flags *Flags) Modifier {
 	return func(o *Options) {
 		o.Flags = flags
+	}
+}
+
+// WithDirectoryMode overrides the directory store mode (simple or multi).
+func WithDirectoryMode(mode string) Modifier {
+	return func(o *Options) {
+		if o.Flags == nil {
+			o.Flags = DefaultFlags()
+		}
+		o.Flags.DirectoryMode = mode
+	}
+}
+
+// WithDirectoryFormat overrides the directory store format used by simple mode.
+func WithDirectoryFormat(format string) Modifier {
+	return func(o *Options) {
+		if o.Flags == nil {
+			o.Flags = DefaultFlags()
+		}
+		o.Flags.DirectoryFormat = format
+	}
+}
+
+// WithDirectorySimple selects the simple directory store with the requested format.
+func WithDirectorySimple(format string) Modifier {
+	return func(o *Options) {
+		if o.Flags == nil {
+			o.Flags = DefaultFlags()
+		}
+		o.Flags.DirectoryMode = directoryModeSimple
+		o.Flags.DirectoryFormat = format
+	}
+}
+
+// WithDirectoryMulti selects the multi-format directory store.
+func WithDirectoryMulti() Modifier {
+	return func(o *Options) {
+		if o.Flags == nil {
+			o.Flags = DefaultFlags()
+		}
+		o.Flags.DirectoryMode = directoryModeMulti
+		o.Flags.DirectoryFormat = ""
+	}
+}
+
+func directoryMarshaller(format string) (marshal.FileMarshaller, error) {
+	if format == "" {
+		format = "toml"
+	}
+	switch format {
+	case "toml":
+		return marshal.Toml, nil
+	case "json":
+		return marshal.Json, nil
+	case "yaml":
+		return marshal.Yaml, nil
+	case "gob":
+		return marshal.Gob, nil
+	default:
+		return nil, fmt.Errorf("unknown directory format: %s", format)
 	}
 }
 
@@ -118,8 +193,22 @@ func New(mods ...Modifier) (config.Opener, error) {
 			if err != nil {
 				return nil, err
 			}
-			// Use MultiFormat store which handles marshalling/unmarshalling (JSON, TOML, YAML)
-			return config.NewMulti(loader, marshal.Known...), nil
+
+			switch opts.Flags.DirectoryMode {
+			case "", directoryModeSimple:
+				marshaller, err := directoryMarshaller(opts.Flags.DirectoryFormat)
+				if err != nil {
+					return nil, err
+				}
+				return config.NewSimple(loader, marshaller), nil
+			case directoryModeMulti:
+				if opts.Flags.DirectoryFormat != "" {
+					return nil, fmt.Errorf("directory format is only valid for simple mode")
+				}
+				return config.NewMulti(loader, marshal.Known...), nil
+			default:
+				return nil, fmt.Errorf("unknown directory mode: %s", opts.Flags.DirectoryMode)
+			}
 		}, nil
 
 	case "sqlite":

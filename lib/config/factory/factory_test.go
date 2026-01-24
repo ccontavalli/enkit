@@ -44,7 +44,7 @@ func TestNewDirectoryStore(t *testing.T) {
 	// Check file exists
 	// The path logic in factory: Join(DirectoryPath, name, namespace...)
 	// name="myapp", namespace="testns"
-	expectedPath := filepath.Join(tmpDir, "myapp", "testns", "test-key.toml") // default format toml
+	expectedPath := filepath.Join(tmpDir, "myapp", "testns", "test-key") // simple store uses raw keys
 	_, err = os.Stat(expectedPath)
 	assert.Nil(t, err)
 
@@ -94,4 +94,49 @@ func TestNewSQLiteStore(t *testing.T) {
 	_, err = store.Unmarshal("test-key", &loaded)
 	assert.NoError(t, err)
 	assert.Equal(t, "bar", loaded.Value)
+}
+func TestDirectoryMultiRejectsFormat(t *testing.T) {
+	flags := &Flags{
+		StoreType:       "directory",
+		DirectoryMode:   "multi",
+		DirectoryFormat: "toml",
+	}
+
+	opener, err := New(FromFlags(flags))
+	assert.NoError(t, err)
+	_, err = opener("myapp", "testns")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "directory format is only valid for simple mode")
+}
+
+func TestDirectorySimpleWithFormat(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "config-factory-test")
+	assert.Nil(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	flags := &Flags{
+		StoreType:       "directory",
+		DirectoryMode:   "simple",
+		DirectoryFormat: "json",
+		DirectoryPath:   tmpDir,
+	}
+
+	opener, err := New(FromFlags(flags))
+	assert.Nil(t, err)
+	assert.NotNil(t, opener)
+
+	store, err := opener("myapp", "testns")
+	assert.Nil(t, err)
+	assert.NotNil(t, store)
+
+	type TestConfig struct {
+		Value string
+	}
+	err = store.Marshal(config.Key("test-key"), &TestConfig{Value: "baz"})
+	assert.Nil(t, err)
+
+	var loaded TestConfig
+	_, err = store.Unmarshal("test-key", &loaded)
+	assert.Nil(t, err)
+	assert.Equal(t, "baz", loaded.Value)
 }
