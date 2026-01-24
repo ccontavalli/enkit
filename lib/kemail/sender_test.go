@@ -267,3 +267,36 @@ func TestWaitForRetryImmediate(t *testing.T) {
 	returned := waitForRetry(now.Add(-15*time.Second), 10*time.Second, current, func(time.Duration) {}, logger.Nil)
 	assert.True(t, returned.Equal(now), "expected no sleep")
 }
+
+func TestSenderFactoryFromFlagsFake(t *testing.T) {
+	flags := DefaultFlags()
+	flags.Sender = "fake"
+	flags.FakeDelay = 10 * time.Millisecond
+
+	slept := time.Duration(0)
+	factory, err := SenderFactoryFromFlags(nil, flags, logger.Nil, func(d time.Duration) {
+		slept = d
+	})
+	assert.NoError(t, err)
+
+	sender, err := factory.Open()
+	assert.NoError(t, err)
+
+	err = sender.Send(buildMessage("test@example.com"))
+	assert.NoError(t, err)
+	assert.Equal(t, flags.FakeDelay, slept)
+	assert.NoError(t, sender.Close())
+}
+
+func TestSenderFactoryFromFlagsErrors(t *testing.T) {
+	flags := DefaultFlags()
+	flags.Sender = "smtp"
+	_, err := SenderFactoryFromFlags(nil, flags, logger.Nil, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "dialer is required")
+
+	flags.Sender = "unknown"
+	_, err = SenderFactoryFromFlags(nil, flags, logger.Nil, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown email sender")
+}

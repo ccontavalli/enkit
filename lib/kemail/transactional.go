@@ -85,17 +85,19 @@ func ParseTemplates(subject, bodyHTML, bodyText []byte) (*Templates, error) {
 
 // TransactionalEmailer builds and sends templated emails.
 type TransactionalEmailer struct {
-	log         logger.Logger
-	dialer      SendDialer
-	fromAddress string
-	templates   *Templates
+	log           logger.Logger
+	dialer        SendDialer
+	senderFactory SingleSenderFactory
+	fromAddress   string
+	templates     *Templates
 }
 
 type transactionalOptions struct {
-	log         logger.Logger
-	dialer      SendDialer
-	fromAddress string
-	templates   *Templates
+	log           logger.Logger
+	dialer        SendDialer
+	senderFactory SingleSenderFactory
+	fromAddress   string
+	templates     *Templates
 }
 
 // TransactionalModifier applies configuration to a TransactionalEmailer.
@@ -118,6 +120,28 @@ func (mods TransactionalModifiers) Apply(o *transactionalOptions) error {
 func WithDialer(dialer SendDialer) TransactionalModifier {
 	return func(o *transactionalOptions) error {
 		o.dialer = dialer
+		return nil
+	}
+}
+
+// WithTransactionalSenderFactory sets a sender factory for transactional emails.
+func WithTransactionalSenderFactory(factory SingleSenderFactory) TransactionalModifier {
+	return func(o *transactionalOptions) error {
+		o.senderFactory = factory
+		return nil
+	}
+}
+
+// WithTransactionalSender uses a single sender for transactional emails.
+func WithTransactionalSender(sender SingleSender) TransactionalModifier {
+	return func(o *transactionalOptions) error {
+		if sender == nil {
+			o.senderFactory = nil
+			return nil
+		}
+		o.senderFactory = singleSenderFactoryFunc(func() (SingleSender, error) {
+			return sender, nil
+		})
 		return nil
 	}
 }
@@ -158,8 +182,8 @@ func NewTransactionalEmailer(mods ...TransactionalModifier) (*TransactionalEmail
 	if err := TransactionalModifiers(mods).Apply(opts); err != nil {
 		return nil, err
 	}
-	if opts.dialer == nil {
-		return nil, fmt.Errorf("dialer is required")
+	if opts.dialer == nil && opts.senderFactory == nil {
+		return nil, fmt.Errorf("dialer or sender factory is required")
 	}
 	if opts.fromAddress == "" {
 		return nil, fmt.Errorf("from address is required")
@@ -169,10 +193,11 @@ func NewTransactionalEmailer(mods ...TransactionalModifier) (*TransactionalEmail
 	}
 
 	return &TransactionalEmailer{
-		log:         opts.log,
-		dialer:      opts.dialer,
-		fromAddress: opts.fromAddress,
-		templates:   opts.templates,
+		log:           opts.log,
+		dialer:        opts.dialer,
+		senderFactory: opts.senderFactory,
+		fromAddress:   opts.fromAddress,
+		templates:     opts.templates,
 	}, nil
 }
 
@@ -214,6 +239,15 @@ func (e *TransactionalEmailer) Send(to string, data map[string]interface{}) erro
 	message, err := e.BuildMessage(to, data)
 	if err != nil {
 		return err
+	}
+	if e.senderFactory != nil {
+		if err := Send(nil, []string{to}, func(_ string) (*gomail.Message, error) {
+			return message, nil
+		}, nil, WithSenderFactory(e.senderFactory), WithLogger(e.log)); err != nil {
+			e.log.Errorf("Failed to send email to %s: %v", to, err)
+			return fmt.Errorf("error sending email: %w", err)
+		}
+		return nil
 	}
 	if err := e.dialer.DialAndSend(message); err != nil {
 		e.log.Errorf("Failed to send email to %s: %v", to, err)

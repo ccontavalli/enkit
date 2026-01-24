@@ -11,6 +11,17 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
+// SingleSender sends a single message and can release any resources.
+type SingleSender interface {
+	Send(message *gomail.Message) error
+	Close() error
+}
+
+// SingleSenderFactory creates senders for single-message delivery.
+type SingleSenderFactory interface {
+	Open() (SingleSender, error)
+}
+
 // TimeSource provides the current time.
 type TimeSource func() time.Time
 
@@ -72,6 +83,8 @@ type Flags struct {
 	Wait        time.Duration
 	MaxAttempts int
 	Shuffle     bool
+	Sender      string
+	FakeDelay   time.Duration
 }
 
 // DefaultFlags returns default sender flags.
@@ -80,6 +93,8 @@ func DefaultFlags() *Flags {
 		Wait:        10 * time.Second,
 		MaxAttempts: 0,
 		Shuffle:     true,
+		Sender:      "smtp",
+		FakeDelay:   0,
 	}
 }
 
@@ -88,16 +103,19 @@ func (f *Flags) Register(fs kflags.FlagSet, prefix string) *Flags {
 	fs.DurationVar(&f.Wait, prefix+"email-retry-wait", f.Wait, "How long to wait between connection attempts.")
 	fs.IntVar(&f.MaxAttempts, prefix+"email-max-attempts", f.MaxAttempts, "Max attempts per recipient (0 means unlimited).")
 	fs.BoolVar(&f.Shuffle, prefix+"email-shuffle", f.Shuffle, "Shuffle recipient list before sending.")
+	fs.StringVar(&f.Sender, prefix+"email-sender", f.Sender, "Email sender backend (smtp or fake).")
+	fs.DurationVar(&f.FakeDelay, prefix+"email-fake-delay", f.FakeDelay, "Delay between fake email sends.")
 	return f
 }
 
 // Options controls the send behavior.
 type Options struct {
-	log      logger.Logger
-	Now      TimeSource
-	Sleep    Sleeper
-	Rng      *rand.Rand
-	Progress ProgressCallback
+	log           logger.Logger
+	Now           TimeSource
+	Sleep         Sleeper
+	Rng           *rand.Rand
+	Progress      ProgressCallback
+	SenderFactory SingleSenderFactory
 
 	Flags
 }
@@ -182,6 +200,40 @@ func WithProgress(cb ProgressCallback) Modifier {
 	}
 }
 
+// WithSenderFactory overrides the sender factory.
+func WithSenderFactory(factory SingleSenderFactory) Modifier {
+	return func(o *Options) {
+		o.SenderFactory = factory
+	}
+}
+
+// WithSingleSender uses a fixed single sender instance.
+func WithSingleSender(sender SingleSender) Modifier {
+	return func(o *Options) {
+		if sender == nil {
+			o.SenderFactory = nil
+			return
+		}
+		o.SenderFactory = singleSenderFactoryFunc(func() (SingleSender, error) {
+			return sender, nil
+		})
+	}
+}
+
+// WithSenderType overrides the sender backend.
+func WithSenderType(sender string) Modifier {
+	return func(o *Options) {
+		o.Sender = sender
+	}
+}
+
+// WithFakeDelay overrides the delay for fake sends.
+func WithFakeDelay(delay time.Duration) Modifier {
+	return func(o *Options) {
+		o.FakeDelay = delay
+	}
+}
+
 // MessageBuilder builds a gomail message for a recipient.
 type MessageBuilder[T any] func(T) (*gomail.Message, error)
 
@@ -190,9 +242,6 @@ type RecipientLabeler[T any] func(T) string
 
 // Send sends email messages built for each recipient with retry logic.
 func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler RecipientLabeler[T], mods ...Modifier) error {
-	if dialer == nil {
-		return fmt.Errorf("dialer is required")
-	}
 	if build == nil {
 		return fmt.Errorf("message builder is required")
 	}
@@ -210,7 +259,15 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 	}
 
 	lastAttempt := time.Unix(0, 0)
-	var sender gomail.SendCloser
+	senderFactory := opts.SenderFactory
+	if senderFactory == nil {
+		var err error
+		senderFactory, err = SenderFactoryFromFlags(dialer, &opts.Flags, opts.log, opts.Sleep)
+		if err != nil {
+			return err
+		}
+	}
+	var sender SingleSender
 	defer func() {
 		if sender != nil {
 			_ = sender.Close()
@@ -257,14 +314,14 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 			if sender == nil {
 				lastAttempt = waitForRetry(lastAttempt, opts.Wait, opts.Now, opts.Sleep, opts.log)
 				var err error
-				sender, err = dialer.Dial()
+				sender, err = senderFactory.Open()
 				if err != nil {
-					opts.log.Warnf("attempt %d - connection failed - %v", attempts, err)
+					opts.log.Warnf("attempt %d - sender open failed - %v", attempts, err)
 					report(ProgressError, err)
 					attempts++
 					continue
 				}
-				opts.log.Infof("connected to SMTP server")
+				opts.log.Infof("sender ready")
 			}
 
 			action := report(ProgressSending, nil)
@@ -284,7 +341,7 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 			}
 
 			opts.log.Infof("attempt %d - sending %s", attempts, label)
-			if err := gomail.Send(sender, message); err != nil {
+			if err := sender.Send(message); err != nil {
 				opts.log.Warnf("attempt %d - sending %s failed - %v", attempts, label, err)
 				action = report(ProgressError, err)
 				if action == ProgressPause {
@@ -330,6 +387,106 @@ func New(mods ...Modifier) *Options {
 		Flags: *DefaultFlags(),
 	}
 	return Modifiers(mods).Apply(options)
+}
+
+type singleSenderFactoryFunc func() (SingleSender, error)
+
+func (f singleSenderFactoryFunc) Open() (SingleSender, error) {
+	return f()
+}
+
+// FakeSender logs emails instead of sending them.
+type FakeSender struct {
+	Delay time.Duration
+	Log   logger.Logger
+	Sleep Sleeper
+}
+
+// NewFakeSender returns a fake sender that logs and sleeps between sends.
+func NewFakeSender(delay time.Duration, log logger.Logger) *FakeSender {
+	return &FakeSender{Delay: delay, Log: log}
+}
+
+func (s *FakeSender) Send(message *gomail.Message) error {
+	log := s.Log
+	if log == nil {
+		log = logger.Go
+	}
+	to := message.GetHeader("To")
+	subject := message.GetHeader("Subject")
+	log.Infof("fake send to %v subject %v", to, subject)
+	if s.Delay > 0 {
+		sleep := s.Sleep
+		if sleep == nil {
+			sleep = time.Sleep
+		}
+		sleep(s.Delay)
+	}
+	return nil
+}
+
+func (s *FakeSender) Close() error {
+	return nil
+}
+
+// dialerSenderFactory uses a Dialer to open SMTP senders.
+type dialerSenderFactory struct {
+	dialer Dialer
+}
+
+func (f *dialerSenderFactory) Open() (SingleSender, error) {
+	sender, err := f.dialer.Dial()
+	if err != nil {
+		return nil, err
+	}
+	return &gomailSingleSender{sender: sender}, nil
+}
+
+// fakeSenderFactory builds FakeSender instances.
+type fakeSenderFactory struct {
+	delay time.Duration
+	log   logger.Logger
+	sleep Sleeper
+}
+
+func (f *fakeSenderFactory) Open() (SingleSender, error) {
+	return &FakeSender{Delay: f.delay, Log: f.log, Sleep: f.sleep}, nil
+}
+
+// gomailSingleSender adapts a gomail.SendCloser to SingleSender.
+type gomailSingleSender struct {
+	sender gomail.SendCloser
+}
+
+func (s *gomailSingleSender) Send(message *gomail.Message) error {
+	return gomail.Send(s.sender, message)
+}
+
+func (s *gomailSingleSender) Close() error {
+	return s.sender.Close()
+}
+
+// SenderFactoryFromFlags returns a sender factory based on flags.
+func SenderFactoryFromFlags(dialer Dialer, flags *Flags, log logger.Logger, sleep Sleeper) (SingleSenderFactory, error) {
+	sender := "smtp"
+	if flags != nil && flags.Sender != "" {
+		sender = flags.Sender
+	}
+	switch sender {
+	case "smtp":
+		if dialer == nil {
+			return nil, fmt.Errorf("dialer is required for smtp sender")
+		}
+		return &dialerSenderFactory{dialer: dialer}, nil
+	case "fake":
+		delay := time.Duration(0)
+		if flags != nil {
+			delay = flags.FakeDelay
+		}
+		return &fakeSenderFactory{delay: delay, log: log, sleep: sleep}, nil
+	default:
+		return nil, fmt.Errorf("unknown email sender: %s", sender)
+	}
 }
 
 func waitForRetry(last time.Time, wait time.Duration, now TimeSource, sleep Sleeper, log logger.Logger) time.Time {

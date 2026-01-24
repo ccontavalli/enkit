@@ -94,3 +94,67 @@ func TestTransactionalEmailerSendError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error sending email")
 }
+
+type fakeSingleSender struct {
+	sent []*gomail.Message
+}
+
+func (s *fakeSingleSender) Send(message *gomail.Message) error {
+	s.sent = append(s.sent, message)
+	return nil
+}
+
+func (s *fakeSingleSender) Close() error {
+	return nil
+}
+
+type fakeSingleSenderFactory struct {
+	sender *fakeSingleSender
+}
+
+func (f *fakeSingleSenderFactory) Open() (SingleSender, error) {
+	if f.sender == nil {
+		f.sender = &fakeSingleSender{}
+	}
+	return f.sender, nil
+}
+
+func TestTransactionalEmailerSendWithSenderFactory(t *testing.T) {
+	templates, err := ParseTemplates(
+		[]byte("Welcome {{.name}}"),
+		[]byte("<p>Hello {{.name}}</p>"),
+		[]byte("Hello {{.name}}"),
+	)
+	assert.NoError(t, err)
+
+	factory := &fakeSingleSenderFactory{}
+	emailer, err := NewTransactionalEmailer(
+		WithTransactionalSenderFactory(factory),
+		WithFromAddress("noreply@example.com"),
+		WithTemplates(templates),
+	)
+	assert.NoError(t, err)
+
+	err = emailer.Send("user@example.com", map[string]interface{}{"name": "Test User"})
+	assert.NoError(t, err)
+	if assert.NotNil(t, factory.sender) {
+		assert.Len(t, factory.sender.sent, 1)
+		assert.Equal(t, "user@example.com", factory.sender.sent[0].GetHeader("To")[0])
+	}
+}
+
+func TestTransactionalEmailerRequiresDialerOrSender(t *testing.T) {
+	templates, err := ParseTemplates(
+		[]byte("Subject"),
+		[]byte("<p>HTML</p>"),
+		[]byte("Text"),
+	)
+	assert.NoError(t, err)
+
+	_, err = NewTransactionalEmailer(
+		WithFromAddress("noreply@example.com"),
+		WithTemplates(templates),
+	)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "dialer or sender factory is required")
+}
