@@ -138,9 +138,29 @@ func benchOps() []op {
 }
 
 func benchBackends() []backend {
-	return []backend{
-		{
-			name: "directory",
+	backends := []backend{}
+	backends = append(backends, benchDirectorySimpleBackends()...)
+	backends = append(backends, benchDirectoryMultiBackends()...)
+	backends = append(backends, benchSQLiteBackends()...)
+	backends = append(backends, benchBboltBackends()...)
+	return backends
+}
+
+func benchDirectorySimpleBackends() []backend {
+	marshallers := []struct {
+		name string
+		m    marshal.FileMarshaller
+	}{
+		{"json", marshal.Json},
+		{"toml", marshal.Toml},
+		{"yaml", marshal.Yaml},
+		{"gob", marshal.Gob},
+	}
+	backends := make([]backend, 0, len(marshallers))
+	for _, m := range marshallers {
+		m := m
+		backends = append(backends, backend{
+			name: "directory-simple-" + m.name,
 			open: func(tb testing.TB) (config.Store, func(), error) {
 				tb.Helper()
 				dir, err := os.MkdirTemp("", "config-bench-dir")
@@ -150,17 +170,62 @@ func benchBackends() []backend {
 
 				loader, err := directory.OpenDir(dir, "app", "ns")
 				if err != nil {
-					os.RemoveAll(dir)
+					_ = os.RemoveAll(dir)
 					return nil, nil, err
 				}
 
-				store := config.NewSimple(loader, marshal.Json)
+				store := config.NewSimple(loader, m.m)
 				cleanup := func() {
 					_ = os.RemoveAll(dir)
 				}
 				return store, cleanup, nil
 			},
-		},
+		})
+	}
+	return backends
+}
+
+func benchDirectoryMultiBackends() []backend {
+	marshallers := []struct {
+		name string
+		m    marshal.FileMarshaller
+	}{
+		{"json", marshal.Json},
+		{"toml", marshal.Toml},
+		{"yaml", marshal.Yaml},
+		{"gob", marshal.Gob},
+	}
+	backends := make([]backend, 0, len(marshallers))
+	for _, m := range marshallers {
+		m := m
+		backends = append(backends, backend{
+			name: "directory-multi-" + m.name,
+			open: func(tb testing.TB) (config.Store, func(), error) {
+				tb.Helper()
+				dir, err := os.MkdirTemp("", "config-bench-dir")
+				if err != nil {
+					return nil, nil, err
+				}
+
+				loader, err := directory.OpenDir(dir, "app", "ns")
+				if err != nil {
+					_ = os.RemoveAll(dir)
+					return nil, nil, err
+				}
+
+				store := config.NewMulti(loader, m.m)
+				cleanup := func() {
+					_ = os.RemoveAll(dir)
+				}
+				return store, cleanup, nil
+			},
+		})
+	}
+	return backends
+}
+
+func benchSQLiteBackends() []backend {
+	return []backend{
 		{
 			name: "sqlite-store",
 			open: func(tb testing.TB) (config.Store, func(), error) {
@@ -171,7 +236,7 @@ func benchBackends() []backend {
 				}
 				path := tmp.Name()
 				if err := tmp.Close(); err != nil {
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 
@@ -184,14 +249,14 @@ func benchBackends() []backend {
 					sqlite.WithMaxIdleConns(8),
 				)
 				if err != nil {
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 
 				store, err := db.Open("app", "ns")
 				if err != nil {
 					db.Close()
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 
@@ -212,7 +277,7 @@ func benchBackends() []backend {
 				}
 				path := tmp.Name()
 				if err := tmp.Close(); err != nil {
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 
@@ -225,14 +290,14 @@ func benchBackends() []backend {
 					sqlite.WithMaxIdleConns(8),
 				)
 				if err != nil {
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 
 				store, err := db.Open("app", "ns")
 				if err != nil {
 					db.Close()
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 
@@ -243,6 +308,11 @@ func benchBackends() []backend {
 				return store, cleanup, nil
 			},
 		},
+	}
+}
+
+func benchBboltBackends() []backend {
+	return []backend{
 		{
 			name: "bbolt",
 			open: func(tb testing.TB) (config.Store, func(), error) {
@@ -253,20 +323,20 @@ func benchBackends() []backend {
 				}
 				path := tmp.Name()
 				if err := tmp.Close(); err != nil {
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 
 				db, err := configbbolt.New(configbbolt.WithPath(path))
 				if err != nil {
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 
 				store, err := db.Open("app", "ns")
 				if err != nil {
 					db.Close()
-					os.Remove(path)
+					_ = os.Remove(path)
 					return nil, nil, err
 				}
 

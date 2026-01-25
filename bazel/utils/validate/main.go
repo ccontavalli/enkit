@@ -45,7 +45,7 @@ func main() {
 			if *strip != "" {
 				guess = strings.TrimSuffix(guess, *strip)
 			}
-			marshaller = marshal.ByExtension(guess)
+			marshaller = marshal.FilePathByExtension(guess)
 			if marshaller == nil {
 				log.Fatalf("File %s has unknown format - known formats are %v", input, marshal.Formats())
 			}

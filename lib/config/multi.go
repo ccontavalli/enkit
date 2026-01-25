@@ -196,7 +196,7 @@ func (ss *MultiFormat) Unmarshal(desc Descriptor, value interface{}) (Descriptor
 }
 
 func newMultiDescriptorFromPath(path string, marshaller []marshal.FileMarshaller, codec KeyCodec) *multiDescriptor {
-	m := marshal.FileMarshallers(marshaller).ByExtension(path)
+	m := marshal.FileMarshallers(marshaller).ByFilePathExtension(path)
 	key := path
 	if m != nil {
 		key = strings.TrimSuffix(path, "."+m.Extension())

@@ -151,3 +151,32 @@ func TestMultiKeyWithExtension(t *testing.T) {
 	assert.Len(t, files, 1)
 	assert.Equal(t, "foo.toml.toml", files[0])
 }
+
+func TestMultiKeyWithColon(t *testing.T) {
+	td, err := ioutil.TempDir("", "test-multi")
+	assert.Nil(t, err)
+
+	hd, err := directory.OpenDir(filepath.Join(td, "test"))
+	assert.Nil(t, err)
+
+	m := NewMulti(hd, marshal.Toml)
+	data := TestConfig{Key: "k", Value: "v"}
+	key := "user:123"
+	err = m.Marshal(Key(key), data)
+	assert.Nil(t, err)
+
+	var read TestConfig
+	_, err = m.Unmarshal(Key(key), &read)
+	assert.Nil(t, err)
+	assert.Equal(t, data, read)
+
+	files, err := hd.List()
+	assert.Nil(t, err)
+	assert.Len(t, files, 1)
+	assert.Equal(t, "user:123.toml", files[0])
+
+	list, err := m.List()
+	assert.Nil(t, err)
+	assert.Len(t, list, 1)
+	assert.Equal(t, key, list[0].Key())
+}

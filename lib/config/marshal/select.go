@@ -30,19 +30,24 @@ var Known = []FileMarshaller{
 // Represents a sorted list of marshallers. Lowest index is the most preferred marshaller.
 type FileMarshallers []FileMarshaller
 
-// ByExtension returns the first FileMarshaller based on the extension of the
-// path provided. `path` can be either a local file path or a URL; if `path` is
-// a URL, the Path component of the URL is used for extension-based detection.
-func (fm FileMarshallers) ByExtension(path string) FileMarshaller {
-	u, err := url.Parse(path)
-	if err == nil && u != nil {
-		path = u.Path
-	}
+// ByFilePathExtension returns the first FileMarshaller based on the extension of the
+// file path provided.
+func (fm FileMarshallers) ByFilePathExtension(path string) FileMarshaller {
 	ext := strings.TrimPrefix(filepath.Ext(path), ".")
 	if ext == "" {
 		return nil
 	}
 	return fm.ByFormat(ext)
+}
+
+// ByURLExtension returns the first FileMarshaller based on the extension of the
+// URL path (ignoring query parameters).
+func (fm FileMarshallers) ByURLExtension(rawurl string) FileMarshaller {
+	u, err := url.Parse(rawurl)
+	if err != nil || u == nil {
+		return nil
+	}
+	return fm.ByFilePathExtension(u.Path)
 }
 
 func (fm FileMarshallers) Formats() []string {
@@ -69,7 +74,7 @@ func (fm FileMarshallers) ByFormat(format string) FileMarshaller {
 //
 // Returns a byte array with the marshalled value, or error.
 func (fm FileMarshallers) Marshal(path string, value interface{}) ([]byte, error) {
-	marshaller := fm.ByExtension(path)
+	marshaller := fm.ByFilePathExtension(path)
 	if marshaller == nil {
 		return nil, fmt.Errorf("could not determine format from path %s - unknown extension?", path)
 	}
@@ -81,7 +86,7 @@ func (fm FileMarshallers) Marshal(path string, value interface{}) ([]byte, error
 //
 // Returns a byte array with the marshalled value, or error.
 func (fm FileMarshallers) MarshalDefault(path string, def Marshaller, value interface{}) ([]byte, error) {
-	marshaller := fm.ByExtension(path)
+	marshaller := fm.ByFilePathExtension(path)
 	if marshaller == nil {
 		return def.Marshal(value)
 	}
@@ -93,7 +98,7 @@ func (fm FileMarshallers) MarshalDefault(path string, def Marshaller, value inte
 // value is a pointer to the object to be parsed.
 // If the extension is unknown, an error is returned.
 func (fm FileMarshallers) Unmarshal(path string, data []byte, value interface{}) error {
-	marshaller := fm.ByExtension(path)
+	marshaller := fm.ByFilePathExtension(path)
 	if marshaller == nil {
 		return fmt.Errorf("could not determine format from path %s - unknown extension?", path)
 	}
@@ -105,7 +110,7 @@ func (fm FileMarshallers) Unmarshal(path string, data []byte, value interface{})
 // value is a pointer to the object to be parsed.
 // If the extension is unknown, the specified default marshaller is used.
 func (fm FileMarshallers) UnmarshalDefault(path string, data []byte, def Marshaller, value interface{}) error {
-	marshaller := fm.ByExtension(path)
+	marshaller := fm.ByFilePathExtension(path)
 	if marshaller == nil {
 		return def.Unmarshal(data, value)
 	}
@@ -234,9 +239,14 @@ func UnmarshalFilePrefix(prefix string, value interface{}) (string, error) {
 	return FileMarshallers(Known).UnmarshalFilePrefix(prefix, value)
 }
 
-// ByExtension is the same as FileMarshallers.ByExtension, but uses the default list of Marshallers.
-func ByExtension(path string) FileMarshaller {
-	return FileMarshallers(Known).ByExtension(path)
+// FilePathByExtension is the same as FileMarshallers.ByFilePathExtension, but uses the default list of Marshallers.
+func FilePathByExtension(path string) FileMarshaller {
+	return FileMarshallers(Known).ByFilePathExtension(path)
+}
+
+// URLByExtension is the same as FileMarshallers.ByURLExtension, but uses the default list of Marshallers.
+func URLByExtension(rawurl string) FileMarshaller {
+	return FileMarshallers(Known).ByURLExtension(rawurl)
 }
 
 // ByFormat is the same as FileMarshallers.ByFormat, but uses the default list of Marshallers.

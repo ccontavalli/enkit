@@ -66,3 +66,29 @@ func TestSimpleStoreKeyWithExtension(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "value", cfg.Value)
 }
+
+func TestSimpleStoreKeyWithColon(t *testing.T) {
+	base := t.TempDir()
+	loader, err := directory.OpenDir(base)
+	assert.NoError(t, err)
+
+	store := NewSimple(loader, marshal.Toml)
+	key := "user:123"
+	err = store.Marshal(Key(key), simpleTestConfig{Value: "value"})
+	assert.NoError(t, err)
+
+	files, err := loader.List()
+	assert.NoError(t, err)
+	assert.Len(t, files, 1)
+	assert.Equal(t, "user:123.toml", files[0])
+
+	var cfg simpleTestConfig
+	_, err = store.Unmarshal(Key(key), &cfg)
+	assert.NoError(t, err)
+	assert.Equal(t, "value", cfg.Value)
+
+	list, err := store.List()
+	assert.NoError(t, err)
+	assert.Len(t, list, 1)
+	assert.Equal(t, key, list[0].Key())
+}

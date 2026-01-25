@@ -31,7 +31,7 @@ func TestMarshalFile(t *testing.T) {
 	assert.Equal(t, data, readback)
 }
 
-func TestFileMarshallersByExtension(t *testing.T) {
+func TestFileMarshallersByFilePathExtension(t *testing.T) {
 	testCases := []struct {
 		desc        string
 		path        string
@@ -48,6 +48,26 @@ func TestFileMarshallersByExtension(t *testing.T) {
 			wantEncoder: Gob,
 		},
 		{
+			desc:        "colon in key",
+			path:        "user:123.toml",
+			wantEncoder: Toml,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := FileMarshallers(Known).ByFilePathExtension(tc.path)
+			assert.Equal(t, got, tc.wantEncoder)
+		})
+	}
+}
+
+func TestFileMarshallersByURLExtension(t *testing.T) {
+	testCases := []struct {
+		desc        string
+		path        string
+		wantEncoder FileMarshaller
+	}{
+		{
 			desc:        "url",
 			path:        "https://astore.example.com/g/foo/bar/baz.yaml",
 			wantEncoder: Yaml,
@@ -60,7 +80,7 @@ func TestFileMarshallersByExtension(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			got := FileMarshallers(Known).ByExtension(tc.path)
+			got := FileMarshallers(Known).ByURLExtension(tc.path)
 			assert.Equal(t, got, tc.wantEncoder)
 		})
 	}

@@ -24,10 +24,10 @@ import (
 var (
 	formatterMap = map[string]castore.Formatter{
 		"pretty-json": NewStructuredStdout(&marshal.PrettyJsonEncoder{}),
-		"json": NewStructuredStdout(&marshal.JsonEncoder{}),
-		"toml": NewStructuredStdout(&marshal.TomlEncoder{}),
-		"yaml": NewStructuredStdout(&marshal.YamlEncoder{}),
-		"gob":  NewStructuredStdout(&marshal.GobEncoder{}),
+		"json":        NewStructuredStdout(&marshal.JsonEncoder{}),
+		"toml":        NewStructuredStdout(&marshal.TomlEncoder{}),
+		"yaml":        NewStructuredStdout(&marshal.YamlEncoder{}),
+		"gob":         NewStructuredStdout(&marshal.GobEncoder{}),
 	}
 )
 
@@ -93,7 +93,7 @@ func NewRoot(base *client.BaseFlags) *Root {
 func (rc *Root) StoreClient() (*astore.Client, error) {
 	if rc.outputFile != "" {
 		// check output file type is supported
-		marshaller := marshal.ByExtension(rc.outputFile)
+		marshaller := marshal.FilePathByExtension(rc.outputFile)
 		if marshaller == nil {
 			return nil, fmt.Errorf("Output file extension not supported `%s`.  Supported formats: %s",
 				rc.outputFile, marshal.Formats())
