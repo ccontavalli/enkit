@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	texttemplate "text/template"
+	"time"
 
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/logger"
@@ -90,6 +91,7 @@ type TransactionalEmailer struct {
 	senderFactory SingleSenderFactory
 	fromAddress   string
 	templates     *Templates
+	sleep         Sleeper
 }
 
 type transactionalOptions struct {
@@ -98,6 +100,9 @@ type transactionalOptions struct {
 	senderFactory SingleSenderFactory
 	fromAddress   string
 	templates     *Templates
+	sleep         Sleeper
+	senderFlags   *Flags
+	senderDialer  Dialer
 }
 
 // TransactionalModifier applies configuration to a TransactionalEmailer.
@@ -146,6 +151,14 @@ func WithTransactionalSender(sender SingleSender) TransactionalModifier {
 	}
 }
 
+// WithTransactionalSleep overrides the sleep function for transactional sends.
+func WithTransactionalSleep(sleep Sleeper) TransactionalModifier {
+	return func(o *transactionalOptions) error {
+		o.sleep = sleep
+		return nil
+	}
+}
+
 // WithFromAddress sets the From address for emails.
 func WithFromAddress(fromAddress string) TransactionalModifier {
 	return func(o *transactionalOptions) error {
@@ -162,6 +175,15 @@ func WithTemplates(templates *Templates) TransactionalModifier {
 	}
 }
 
+// FromTransactionalFlags configures sender selection based on flags.
+func FromTransactionalFlags(flags *Flags, dialer Dialer) TransactionalModifier {
+	return func(o *transactionalOptions) error {
+		o.senderFlags = flags
+		o.senderDialer = dialer
+		return nil
+	}
+}
+
 // WithTransactionalLogger sets the logger for transactional emails.
 func WithTransactionalLogger(log logger.Logger) TransactionalModifier {
 	return func(o *transactionalOptions) error {
@@ -172,7 +194,8 @@ func WithTransactionalLogger(log logger.Logger) TransactionalModifier {
 
 func defaultTransactionalOptions() *transactionalOptions {
 	return &transactionalOptions{
-		log: logger.Go,
+		log:   logger.Go,
+		sleep: time.Sleep,
 	}
 }
 
@@ -181,6 +204,21 @@ func NewTransactionalEmailer(mods ...TransactionalModifier) (*TransactionalEmail
 	opts := defaultTransactionalOptions()
 	if err := TransactionalModifiers(mods).Apply(opts); err != nil {
 		return nil, err
+	}
+	if opts.senderFactory == nil && opts.senderFlags != nil {
+		log := opts.log
+		if log == nil {
+			log = logger.Go
+		}
+		sleep := opts.sleep
+		if sleep == nil {
+			sleep = time.Sleep
+		}
+		factory, err := SenderFactoryFromFlags(opts.senderDialer, opts.senderFlags, log, sleep)
+		if err != nil {
+			return nil, err
+		}
+		opts.senderFactory = factory
 	}
 	if opts.dialer == nil && opts.senderFactory == nil {
 		return nil, fmt.Errorf("dialer or sender factory is required")
@@ -198,6 +236,7 @@ func NewTransactionalEmailer(mods ...TransactionalModifier) (*TransactionalEmail
 		senderFactory: opts.senderFactory,
 		fromAddress:   opts.fromAddress,
 		templates:     opts.templates,
+		sleep:         opts.sleep,
 	}, nil
 }
 

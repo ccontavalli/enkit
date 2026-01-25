@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/gomail.v2"
@@ -157,4 +158,30 @@ func TestTransactionalEmailerRequiresDialerOrSender(t *testing.T) {
 	)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "dialer or sender factory is required")
+}
+
+func TestTransactionalEmailerFromFlags(t *testing.T) {
+	templates, err := ParseTemplates(
+		[]byte("Subject"),
+		[]byte("<p>HTML</p>"),
+		[]byte("Text"),
+	)
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.Sender = "fake"
+	flags.FakeDelay = 5 * time.Millisecond
+
+	slept := time.Duration(0)
+	emailer, err := NewTransactionalEmailer(
+		FromTransactionalFlags(flags, nil),
+		WithTransactionalSleep(func(d time.Duration) { slept = d }),
+		WithFromAddress("noreply@example.com"),
+		WithTemplates(templates),
+	)
+	assert.NoError(t, err)
+
+	err = emailer.Send("user@example.com", map[string]interface{}{})
+	assert.NoError(t, err)
+	assert.Equal(t, flags.FakeDelay, slept)
 }
