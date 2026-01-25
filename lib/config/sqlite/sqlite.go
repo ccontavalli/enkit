@@ -349,7 +349,11 @@ func (s *SQLiteStore) Marshal(desc config.Descriptor, value interface{}) error {
 	return s.loader.Write(name, data)
 }
 
-func (s *SQLiteStore) Unmarshal(name string, value interface{}) (config.Descriptor, error) {
+func (s *SQLiteStore) Unmarshal(desc config.Descriptor, value interface{}) (config.Descriptor, error) {
+	name, err := descriptorName(desc)
+	if err != nil {
+		return nil, err
+	}
 	data, err := s.loader.Read(name)
 	if err != nil {
 		return nil, err

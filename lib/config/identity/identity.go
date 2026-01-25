@@ -137,13 +137,13 @@ func (id *ConfigIdentityStore) SetDefault(identity string) error {
 func (id *ConfigIdentityStore) Load(identity string) (string, string, error) {
 	if identity == "" {
 		var def Default
-		if _, err := id.store.Unmarshal("default", &def); err != nil {
+		if _, err := id.store.Unmarshal(config.Key("default"), &def); err != nil {
 			return identity, "", err
 		}
 		identity = def.Identity
 	}
 
 	var token Token
-	_, err := id.store.Unmarshal(identity, &token)
+	_, err := id.store.Unmarshal(config.Key(identity), &token)
 	return identity, token.Token, err
 }

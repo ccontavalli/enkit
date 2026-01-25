@@ -31,7 +31,7 @@ func TestBoltStoreRoundTrip(t *testing.T) {
 	assert.NoError(t, err)
 
 	var loaded TestConfig
-	_, err = store.Unmarshal("config", &loaded)
+	_, err = store.Unmarshal(config.Key("config"), &loaded)
 	assert.NoError(t, err)
 	assert.Equal(t, "hello", loaded.Value)
 
@@ -42,7 +42,7 @@ func TestBoltStoreRoundTrip(t *testing.T) {
 	err = store.Delete(config.Key("config"))
 	assert.NoError(t, err)
 
-	_, err = store.Unmarshal("config", &loaded)
+	_, err = store.Unmarshal(config.Key("config"), &loaded)
 	assert.Error(t, err)
 	assert.True(t, os.IsNotExist(err))
 }
@@ -82,7 +82,7 @@ func TestBoltStoreJSON(t *testing.T) {
 	assert.NoError(t, err)
 
 	var loaded TestConfig
-	_, err = store.Unmarshal("bad", &loaded)
+	_, err = store.Unmarshal(config.Key("bad"), &loaded)
 	assert.Error(t, err)
 }
 

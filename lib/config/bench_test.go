@@ -87,7 +87,7 @@ func benchOps() []op {
 					var value benchConfig
 					for pb.Next() {
 						index := int(atomic.AddUint64(&counter, 1)-1) % len(keys)
-						if _, err := store.Unmarshal(keys[index], &value); err != nil {
+						if _, err := store.Unmarshal(config.Key(keys[index]), &value); err != nil {
 							b.Fatal(err)
 						}
 					}
@@ -127,7 +127,7 @@ func benchOps() []op {
 					for pb.Next() {
 						index := atomic.AddUint64(&counter, 1) - 1
 						key := miss(int(index))
-						if _, err := store.Unmarshal(key, &value); err == nil || !os.IsNotExist(err) {
+						if _, err := store.Unmarshal(config.Key(key), &value); err == nil || !os.IsNotExist(err) {
 							b.Fatalf("expected not-exist error, got %v", err)
 						}
 					}

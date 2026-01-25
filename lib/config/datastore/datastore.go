@@ -211,7 +211,6 @@ func (s *Storer) Marshal(descriptor config.Descriptor, value interface{}) error 
 		return fmt.Errorf("invalid key: <nil>")
 	}
 	name := descriptor.Key()
-
 	key, err := s.GenerateKey(name)
 	if err != nil {
 		return err
@@ -223,7 +222,11 @@ func (s *Storer) Marshal(descriptor config.Descriptor, value interface{}) error 
 	return nil
 }
 
-func (s *Storer) Unmarshal(name string, value interface{}) (config.Descriptor, error) {
+func (s *Storer) Unmarshal(desc config.Descriptor, value interface{}) (config.Descriptor, error) {
+	if desc == nil {
+		return nil, fmt.Errorf("invalid key: <nil>")
+	}
+	name := desc.Key()
 	key, err := s.GenerateKey(name)
 	if err != nil {
 		return nil, err
@@ -243,7 +246,6 @@ func (s *Storer) Delete(descriptor config.Descriptor) error {
 		return fmt.Errorf("invalid key: <nil>")
 	}
 	name := descriptor.Key()
-
 	key, err := s.GenerateKey(name)
 	if err != nil {
 		return err

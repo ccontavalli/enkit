@@ -44,12 +44,12 @@ func TestNewDirectoryStore(t *testing.T) {
 	// Check file exists
 	// The path logic in factory: Join(DirectoryPath, name, namespace...)
 	// name="myapp", namespace="testns"
-	expectedPath := filepath.Join(tmpDir, "myapp", "testns", "test-key") // simple store uses raw keys
+	expectedPath := filepath.Join(tmpDir, "myapp", "testns", "test-key.toml")
 	_, err = os.Stat(expectedPath)
 	assert.Nil(t, err)
 
 	var loaded TestConfig
-	_, err = store.Unmarshal("test-key", &loaded)
+	_, err = store.Unmarshal(config.Key("test-key"), &loaded)
 	assert.Nil(t, err)
 	assert.Equal(t, "foo", loaded.Value)
 }
@@ -91,7 +91,7 @@ func TestNewSQLiteStore(t *testing.T) {
 	assert.NoError(t, err)
 
 	var loaded TestConfig
-	_, err = store.Unmarshal("test-key", &loaded)
+	_, err = store.Unmarshal(config.Key("test-key"), &loaded)
 	assert.NoError(t, err)
 	assert.Equal(t, "bar", loaded.Value)
 }
@@ -136,7 +136,7 @@ func TestDirectorySimpleWithFormat(t *testing.T) {
 	assert.Nil(t, err)
 
 	var loaded TestConfig
-	_, err = store.Unmarshal("test-key", &loaded)
+	_, err = store.Unmarshal(config.Key("test-key"), &loaded)
 	assert.Nil(t, err)
 	assert.Equal(t, "baz", loaded.Value)
 }

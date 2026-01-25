@@ -210,10 +210,11 @@ func (t *tracedStore) Marshal(desc config.Descriptor, value interface{}) error {
 	return err
 }
 
-func (t *tracedStore) Unmarshal(name string, value interface{}) (config.Descriptor, error) {
-	t.logStart("Unmarshal", name)
-	desc, err := t.store.Unmarshal(name, value)
-	t.logEnd("Unmarshal", name, err, value)
+func (t *tracedStore) Unmarshal(desc config.Descriptor, value interface{}) (config.Descriptor, error) {
+	key := fmt.Sprint(desc)
+	t.logStart("Unmarshal", key)
+	desc, err := t.store.Unmarshal(desc, value)
+	t.logEnd("Unmarshal", key, err, value)
 	return desc, err
 }
 

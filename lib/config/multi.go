@@ -12,13 +12,19 @@ import (
 type MultiFormat struct {
 	loader     Loader
 	marshaller []marshal.FileMarshaller
+	keyCodec   KeyCodec
 }
 
 func NewMulti(loader Loader, marshaller ...marshal.FileMarshaller) *MultiFormat {
+	return NewMultiWithOptions(loader, marshaller)
+}
+
+func NewMultiWithOptions(loader Loader, marshaller []marshal.FileMarshaller, opts ...StoreOption) *MultiFormat {
 	if len(marshaller) <= 0 {
 		marshaller = marshal.Known
 	}
-	return &MultiFormat{loader: loader, marshaller: marshaller}
+	options := applyStoreOptions(opts...)
+	return &MultiFormat{loader: loader, marshaller: marshaller, keyCodec: options.keyCodec}
 }
 
 // List returns the list of configs the loader knows about.
@@ -29,17 +35,17 @@ func NewMulti(loader Loader, marshaller ...marshal.FileMarshaller) *MultiFormat 
 //
 // For example:
 //
-//	mf.Marshal("config", Config{})
-//	mf.Marshal("config.json", Config{})
+//	mf.Marshal(Key("config"), Config{})
+//	mf.Marshal(FormatKey("config", marshal.Json), Config{})
 //
 // will results in a "config.toml" file (default preferred format) and
 // "config.json" file being created.
 //
 // List() will return "config.toml" and "config.json" both.
 //
-// Unmarshal() can be called with Unmarshal("config"), which will result in
-// the "config.toml" file being parsed, with Unmarsahl("config.toml"), or
-// with Unmarshal("config.json"), as desired.
+// Unmarshal() can be called with Unmarshal(Key("config")), which will result in
+// the "config.toml" file being parsed (the preferred format). To target a
+// specific format, use Unmarshal(FormatKey("config", marshal.Json)).
 //
 // In general, the value returned by List is guaranteed to be usable with
 // Unmarshal, but may not match the value that was passed to Marshal before.
@@ -50,7 +56,7 @@ func (ss *MultiFormat) List() ([]Descriptor, error) {
 	}
 	descs := make([]Descriptor, len(list))
 	for i, name := range list {
-		descs[i] = newMultiDescriptorFromPath(name, ss.marshaller)
+		descs[i] = newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
 	}
 	return descs, nil
 }
@@ -62,7 +68,7 @@ func (ss *MultiFormat) Marshal(desc Descriptor, value interface{}) error {
 	}
 	if marshaller == nil {
 		marshaller = ss.marshaller[0]
-		name = name + "." + marshaller.Extension()
+		name = ss.pathForKey(name, marshaller)
 	}
 
 	data, err := marshaller.Marshal(value)
@@ -78,9 +84,8 @@ func (ss *MultiFormat) parseDesc(desc Descriptor) (string, marshal.FileMarshalle
 	switch t := desc.(type) {
 	case Key:
 		name = string(t)
-		marshaller = marshal.FileMarshallers(ss.marshaller).ByExtension(name)
 	case *multiDescriptor:
-		name = t.p
+		name = ss.pathForKey(t.k, t.m)
 		marshaller = t.m
 	default:
 		return "", nil, fmt.Errorf("API Usage Error - MultiFormat.Marshal passed an unknown descriptor type - %#v", desc)
@@ -102,7 +107,7 @@ func (ss *MultiFormat) Delete(desc Descriptor) error {
 	nonexisting := 0
 	var errors []error
 	for _, marshaller := range ss.marshaller {
-		fullname := name + "." + marshaller.Extension()
+		fullname := ss.pathForKey(name, marshaller)
 		err := ss.loader.Delete(fullname)
 		if err == nil {
 			continue
@@ -122,9 +127,29 @@ func (ss *MultiFormat) Delete(desc Descriptor) error {
 	return multierror.New(errors)
 }
 
+func (ss *MultiFormat) encodeKey(name string) string {
+	return ss.keyCodec.Encode(name)
+}
+
+func (ss *MultiFormat) decodeKey(name string) string {
+	return ss.keyCodec.Decode(name)
+}
+
+func (ss *MultiFormat) pathForKey(key string, m marshal.FileMarshaller) string {
+	encoded := ss.encodeKey(key)
+	if m == nil {
+		return encoded
+	}
+	return encoded + "." + m.Extension()
+}
+
+// FormatKey returns a descriptor that targets a specific format for a key.
+func FormatKey(key string, m marshal.FileMarshaller) Descriptor {
+	return &multiDescriptor{m: m, k: key}
+}
+
 type multiDescriptor struct {
 	m marshal.FileMarshaller
-	p string
 	k string
 }
 
@@ -132,48 +157,50 @@ func (d *multiDescriptor) Key() string {
 	return d.k
 }
 
-func (ss *MultiFormat) Unmarshal(name string, value interface{}) (Descriptor, error) {
+func (ss *MultiFormat) Unmarshal(desc Descriptor, value interface{}) (Descriptor, error) {
+	if desc == nil {
+		return nil, fmt.Errorf("API Usage Error - MultiFormat.Unmarshal must be passed a non-nil descriptor")
+	}
 	load := func(m marshal.FileMarshaller, path string) (Descriptor, error) {
 		data, err := ss.loader.Read(path)
 		if err != nil {
 			return nil, err
 		}
-		descriptor := newMultiDescriptor(path, m)
+		key := ss.decodeKey(strings.TrimSuffix(path, "."+m.Extension()))
+		descriptor := &multiDescriptor{m: m, k: key}
 		if len(data) <= 0 {
 			return descriptor, nil
 		}
 		return descriptor, m.Unmarshal(data, value)
 	}
 
-	marshaller := marshal.FileMarshallers(ss.marshaller).ByExtension(name)
-	if marshaller != nil {
-		return load(marshaller, name)
-	}
-
-	var err error
-	var desc Descriptor
-	for _, m := range ss.marshaller {
-		path := name + "." + m.Extension()
-		desc, err = load(m, path)
-		if err == nil {
-			return desc, err
+	switch t := desc.(type) {
+	case Key:
+		key := string(t)
+		var err error
+		var result Descriptor
+		for _, m := range ss.marshaller {
+			path := ss.pathForKey(key, m)
+			result, err = load(m, path)
+			if err == nil {
+				return result, nil
+			}
 		}
+		return result, err
+	case *multiDescriptor:
+		path := ss.pathForKey(t.k, t.m)
+		return load(t.m, path)
+	default:
+		return nil, fmt.Errorf("API Usage Error - MultiFormat.Unmarshal passed an unknown descriptor type - %#v", desc)
 	}
-	return desc, err
 }
 
-func newMultiDescriptorFromPath(path string, marshaller []marshal.FileMarshaller) *multiDescriptor {
+func newMultiDescriptorFromPath(path string, marshaller []marshal.FileMarshaller, codec KeyCodec) *multiDescriptor {
 	m := marshal.FileMarshallers(marshaller).ByExtension(path)
-	return newMultiDescriptor(path, m)
-}
-
-func newMultiDescriptor(path string, m marshal.FileMarshaller) *multiDescriptor {
 	key := path
 	if m != nil {
-		suffix := "." + m.Extension()
-		if strings.HasSuffix(path, suffix) {
-			key = strings.TrimSuffix(path, suffix)
-		}
+		key = strings.TrimSuffix(path, "."+m.Extension())
 	}
-	return &multiDescriptor{m: m, p: path, k: key}
+	key = codec.Decode(key)
+	return &multiDescriptor{m: m, k: key}
 }

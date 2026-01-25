@@ -19,6 +19,6 @@ func (b *StoreBinding) Marshal(value interface{}) error {
 }
 
 func (b *StoreBinding) Unmarshal(value interface{}) error {
-	_, err := b.store.Unmarshal(b.key, value)
+	_, err := b.store.Unmarshal(Key(b.key), value)
 	return err
 }

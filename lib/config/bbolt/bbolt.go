@@ -171,7 +171,11 @@ func (s *BoltStore) Marshal(desc config.Descriptor, value interface{}) error {
 	return s.loader.Write(name, data)
 }
 
-func (s *BoltStore) Unmarshal(name string, value interface{}) (config.Descriptor, error) {
+func (s *BoltStore) Unmarshal(desc config.Descriptor, value interface{}) (config.Descriptor, error) {
+	name, err := descriptorName(desc)
+	if err != nil {
+		return nil, err
+	}
 	data, err := s.loader.Read(name)
 	if err != nil {
 		return nil, err

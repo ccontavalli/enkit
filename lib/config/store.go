@@ -17,7 +17,7 @@
 //
 //	... load it later ...
 //
-//	if _, err := store.Unmarshal("server-config", &config); err != nil {
+//	if _, err := store.Unmarshal(Key("server-config"), &config); err != nil {
 //	   ...
 //	}
 //
@@ -81,7 +81,7 @@ type Store interface {
 	// Unmarshal returns a descriptor that can be passed back to Marshal to store data into this object.
 	//
 	// In case the config file cannot be found, os.IsNotExist(error) will return true.
-	Unmarshal(name string, value interface{}) (Descriptor, error)
+	Unmarshal(descriptor Descriptor, value interface{}) (Descriptor, error)
 
 	// Deletes an object.
 	//
