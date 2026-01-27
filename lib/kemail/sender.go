@@ -1,6 +1,7 @@
 package kemail
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"time"
@@ -415,6 +416,12 @@ func (s *FakeSender) Send(message *gomail.Message) error {
 	to := message.GetHeader("To")
 	subject := message.GetHeader("Subject")
 	log.Infof("fake send to %v subject %v", to, subject)
+	var buf bytes.Buffer
+	if _, err := message.WriteTo(&buf); err != nil {
+		log.Errorf("fake send failed to render message: %v", err)
+	} else {
+		log.Infof("fake send raw message:\n%s", buf.String())
+	}
 	if s.Delay > 0 {
 		sleep := s.Sleep
 		if sleep == nil {
