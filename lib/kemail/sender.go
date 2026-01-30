@@ -81,21 +81,25 @@ type ProgressCallback func(Progress) ProgressAction
 
 // Flags configures the sender behavior.
 type Flags struct {
-	Wait        time.Duration
-	MaxAttempts int
-	Shuffle     bool
-	Sender      string
-	FakeDelay   time.Duration
+	Wait              time.Duration
+	MaxAttempts       int
+	Shuffle           bool
+	Sender            string
+	FakeDelay         time.Duration
+	PreSendSleep      time.Duration
+	OverrideRecipient string
 }
 
 // DefaultFlags returns default sender flags.
 func DefaultFlags() *Flags {
 	return &Flags{
-		Wait:        10 * time.Second,
-		MaxAttempts: 0,
-		Shuffle:     true,
-		Sender:      "smtp",
-		FakeDelay:   0,
+		Wait:              10 * time.Second,
+		MaxAttempts:       0,
+		Shuffle:           true,
+		Sender:            "smtp",
+		FakeDelay:         0,
+		PreSendSleep:      0,
+		OverrideRecipient: "",
 	}
 }
 
@@ -106,6 +110,8 @@ func (f *Flags) Register(fs kflags.FlagSet, prefix string) *Flags {
 	fs.BoolVar(&f.Shuffle, prefix+"email-shuffle", f.Shuffle, "Shuffle recipient list before sending.")
 	fs.StringVar(&f.Sender, prefix+"email-sender", f.Sender, "Email sender backend (smtp or fake).")
 	fs.DurationVar(&f.FakeDelay, prefix+"email-fake-delay", f.FakeDelay, "Delay between fake email sends.")
+	fs.DurationVar(&f.PreSendSleep, prefix+"email-pre-send-sleep", f.PreSendSleep, "Delay before sending each email.")
+	fs.StringVar(&f.OverrideRecipient, prefix+"email-override-recipient", f.OverrideRecipient, "Override SMTP recipient address for testing (smtp sender only).")
 	return f
 }
 
@@ -184,6 +190,20 @@ func WithWait(wait time.Duration) Modifier {
 func WithMaxAttempts(attempts int) Modifier {
 	return func(o *Options) {
 		o.MaxAttempts = attempts
+	}
+}
+
+// WithPreSendSleep overrides the delay before sending each email.
+func WithPreSendSleep(delay time.Duration) Modifier {
+	return func(o *Options) {
+		o.PreSendSleep = delay
+	}
+}
+
+// WithOverrideRecipient overrides the recipient for SMTP sends (testing only).
+func WithOverrideRecipient(address string) Modifier {
+	return func(o *Options) {
+		o.OverrideRecipient = address
 	}
 }
 
@@ -341,6 +361,10 @@ func Send[T any](dialer Dialer, recipients []T, build MessageBuilder[T], labeler
 				return err
 			}
 
+			if opts.PreSendSleep > 0 {
+				opts.Sleep(opts.PreSendSleep)
+			}
+
 			opts.log.Infof("attempt %d - sending %s", attempts, label)
 			if err := sender.Send(message); err != nil {
 				opts.log.Warnf("attempt %d - sending %s failed - %v", attempts, label, err)
@@ -438,7 +462,8 @@ func (s *FakeSender) Close() error {
 
 // dialerSenderFactory uses a Dialer to open SMTP senders.
 type dialerSenderFactory struct {
-	dialer Dialer
+	dialer            Dialer
+	overrideRecipient string
 }
 
 func (f *dialerSenderFactory) Open() (SingleSender, error) {
@@ -446,7 +471,7 @@ func (f *dialerSenderFactory) Open() (SingleSender, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &gomailSingleSender{sender: sender}, nil
+	return &gomailSingleSender{sender: sender, overrideRecipient: f.overrideRecipient}, nil
 }
 
 // fakeSenderFactory builds FakeSender instances.
@@ -462,10 +487,16 @@ func (f *fakeSenderFactory) Open() (SingleSender, error) {
 
 // gomailSingleSender adapts a gomail.SendCloser to SingleSender.
 type gomailSingleSender struct {
-	sender gomail.SendCloser
+	sender            gomail.SendCloser
+	overrideRecipient string
 }
 
 func (s *gomailSingleSender) Send(message *gomail.Message) error {
+	if s.overrideRecipient != "" {
+		message.SetHeader("To", s.overrideRecipient)
+		message.SetHeader("Cc")
+		message.SetHeader("Bcc")
+	}
 	return gomail.Send(s.sender, message)
 }
 
@@ -484,7 +515,11 @@ func SenderFactoryFromFlags(dialer Dialer, flags *Flags, log logger.Logger, slee
 		if dialer == nil {
 			return nil, fmt.Errorf("dialer is required for smtp sender")
 		}
-		return &dialerSenderFactory{dialer: dialer}, nil
+		override := ""
+		if flags != nil {
+			override = flags.OverrideRecipient
+		}
+		return &dialerSenderFactory{dialer: dialer, overrideRecipient: override}, nil
 	case "fake":
 		delay := time.Duration(0)
 		if flags != nil {
