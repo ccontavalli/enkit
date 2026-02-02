@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ccontavalli/enkit/lib/config"
-	configbbolt "github.com/ccontavalli/enkit/lib/config/bbolt"
+	"github.com/ccontavalli/enkit/lib/config/bbolt"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/config/sqlite"
@@ -20,7 +20,7 @@ type benchConfig struct {
 	Value string `json:"value"`
 }
 
-var benchRecordCounts = []int{1, 100, 1000}
+var benchRecordCounts = []int{1, 1000, 10000}
 var benchParallelism = []int{1, 4}
 
 type backend struct {
@@ -75,6 +75,60 @@ func benchOps() []op {
 				for i := 0; i < b.N; i++ {
 					if _, err := store.List(); err != nil {
 						b.Fatal(err)
+					}
+				}
+			},
+		},
+		{
+			name: "ListUnmarshal",
+			run: func(b *testing.B, backend backend, parallelism int, store config.Store, keys []string, miss func(int) string) {
+				target := &benchConfig{}
+				for i := 0; i < b.N; i++ {
+					list, err := store.List(config.Unmarshal(target, func(desc config.Descriptor, value *benchConfig) error {
+						_ = desc
+						_ = value
+						return nil
+					}))
+					if err != nil {
+						b.Fatal(err)
+					}
+					if len(list) != 0 {
+						b.Fatalf("expected empty list with unmarshal, got %d", len(list))
+					}
+				}
+			},
+		},
+		{
+			name: "ListOffsetLimit",
+			run: func(b *testing.B, backend backend, parallelism int, store config.Store, keys []string, miss func(int) string) {
+				for i := 0; i < b.N; i++ {
+					offset, limit := benchOffsetLimitAt(len(keys), i)
+					if _, err := store.List(config.WithOffset(offset), config.WithLimit(limit)); err != nil {
+						b.Fatal(err)
+					}
+				}
+			},
+		},
+		{
+			name: "ListOffsetLimitUnmarshal",
+			run: func(b *testing.B, backend backend, parallelism int, store config.Store, keys []string, miss func(int) string) {
+				target := &benchConfig{}
+				for i := 0; i < b.N; i++ {
+					offset, limit := benchOffsetLimitAt(len(keys), i)
+					list, err := store.List(
+						config.WithOffset(offset),
+						config.WithLimit(limit),
+						config.Unmarshal(target, func(desc config.Descriptor, value *benchConfig) error {
+							_ = desc
+							_ = value
+							return nil
+						}),
+					)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if len(list) != 0 {
+						b.Fatalf("expected empty list with unmarshal, got %d", len(list))
 					}
 				}
 			},
@@ -267,47 +321,6 @@ func benchSQLiteBackends() []backend {
 				return store, cleanup, nil
 			},
 		},
-		{
-			name: "sqlite-multi",
-			open: func(tb testing.TB) (config.Store, func(), error) {
-				tb.Helper()
-				tmp, err := os.CreateTemp("", "config-bench-sqlite-multi-*.db")
-				if err != nil {
-					return nil, nil, err
-				}
-				path := tmp.Name()
-				if err := tmp.Close(); err != nil {
-					_ = os.Remove(path)
-					return nil, nil, err
-				}
-
-				db, err := sqlite.NewMulti(
-					sqlite.WithPath(path),
-					sqlite.WithJournalMode("WAL"),
-					sqlite.WithSynchronous("NORMAL"),
-					sqlite.WithBusyTimeout(5000),
-					sqlite.WithMaxOpenConns(8),
-					sqlite.WithMaxIdleConns(8),
-				)
-				if err != nil {
-					_ = os.Remove(path)
-					return nil, nil, err
-				}
-
-				store, err := db.Open("app", "ns")
-				if err != nil {
-					db.Close()
-					_ = os.Remove(path)
-					return nil, nil, err
-				}
-
-				cleanup := func() {
-					_ = db.Close()
-					_ = os.Remove(path)
-				}
-				return store, cleanup, nil
-			},
-		},
 	}
 }
 
@@ -327,7 +340,7 @@ func benchBboltBackends() []backend {
 					return nil, nil, err
 				}
 
-				db, err := configbbolt.New(configbbolt.WithPath(path))
+				db, err := bbolt.New(bbolt.WithPath(path))
 				if err != nil {
 					_ = os.Remove(path)
 					return nil, nil, err
@@ -373,6 +386,22 @@ func benchKey(index int) string {
 
 func benchMissingKey(index int) string {
 	return fmt.Sprintf("missing-%d", index)
+}
+
+func benchOffsetLimitAt(count int, seed int) (int, int) {
+	if count <= 0 {
+		return 0, 0
+	}
+	offset := (seed * 9973) % count
+	limitMax := count / 10
+	if limitMax < 1 {
+		limitMax = 1
+	}
+	limit := (seed*37)%limitMax + 1
+	if offset+limit > count {
+		limit = count - offset
+	}
+	return offset, limit
 }
 
 func storeMarshalWithRetry(backendName string, store config.Store, key string) error {

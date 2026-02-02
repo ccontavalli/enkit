@@ -26,7 +26,11 @@ func NewSimpleWithOptions(loader Loader, marshaller marshal.FileMarshaller, opts
 	}
 }
 
-func (ss *SimpleStore) List() ([]Descriptor, error) {
+func (ss *SimpleStore) List(mods ...ListModifier) ([]Descriptor, error) {
+	opts := &ListOptions{}
+	if err := ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
 	list, err := ss.loader.List()
 	if err != nil {
 		return nil, err
@@ -37,7 +41,7 @@ func (ss *SimpleStore) List() ([]Descriptor, error) {
 		key = ss.decodeKey(key)
 		descs[i] = Key(key)
 	}
-	return descs, nil
+	return FinalizeList(ss, descs, opts, 0)
 }
 
 func (ss *SimpleStore) Marshal(desc Descriptor, value interface{}) error {

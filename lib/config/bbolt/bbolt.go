@@ -147,16 +147,47 @@ func (l *Loader) Delete(name string) error {
 	})
 }
 
-func (s *BoltStore) List() ([]config.Descriptor, error) {
-	names, err := s.loader.List()
+func (s *BoltStore) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
+	var out []config.Descriptor
+	index := 0
+	seen := 0
+	err := s.loader.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(s.loader.scope)
+		if bucket == nil {
+			return nil
+		}
+		return bucket.ForEach(func(key, value []byte) error {
+			if value == nil {
+				return nil
+			}
+			if index < opts.Offset {
+				index++
+				return nil
+			}
+			if opts.Limit > 0 && seen >= opts.Limit {
+				return nil
+			}
+			desc := config.Key(string(key))
+			if opts.Unmarshal != nil {
+				if err := opts.Unmarshal.UnmarshalAndCall(desc, value, json.Unmarshal); err != nil {
+					return err
+				}
+			} else {
+				out = append(out, desc)
+			}
+			index++
+			seen++
+			return nil
+		})
+	})
 	if err != nil {
 		return nil, err
 	}
-	descs := make([]config.Descriptor, len(names))
-	for i, name := range names {
-		descs[i] = config.Key(name)
-	}
-	return descs, nil
+	return config.FinalizeList(s, out, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 
 func (s *BoltStore) Marshal(desc config.Descriptor, value interface{}) error {

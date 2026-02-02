@@ -195,9 +195,9 @@ type tracedStore struct {
 	logResponses bool
 }
 
-func (t *tracedStore) List() ([]config.Descriptor, error) {
+func (t *tracedStore) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
 	t.logStart("List", "")
-	descs, err := t.store.List()
+	descs, err := t.store.List(mods...)
 	t.logEnd("List", "", err, descs)
 	return descs, err
 }

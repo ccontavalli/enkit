@@ -182,14 +182,40 @@ type Storer struct {
 	GenerateContext ContextGenerator
 }
 
-func (s *Storer) List() ([]config.Descriptor, error) {
+func (s *Storer) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
 	key, err := s.GenerateKey("")
 	if err != nil {
 		return nil, err
 	}
 
-	q := datastore.NewQuery(key.Kind).Ancestor(key.Parent).KeysOnly()
-	keys, err := s.Parent.Client.GetAll(s.GenerateContext(), q, nil)
+	q := datastore.NewQuery(key.Kind).Ancestor(key.Parent)
+	if opts.Offset > 0 {
+		q = q.Offset(opts.Offset)
+	}
+	if opts.Limit > 0 {
+		q = q.Limit(opts.Limit)
+	}
+
+	if opts.Unmarshal != nil {
+		slicePtr := opts.Unmarshal.NewSlice()
+		keys, err := s.Parent.Client.GetAll(s.GenerateContext(), q, slicePtr)
+		if err != nil {
+			return nil, err
+		}
+		for i, key := range keys {
+			item := opts.Unmarshal.SliceItem(slicePtr, i)
+			if err := opts.Unmarshal.Call(config.Key(key.Name), item); err != nil {
+				return nil, err
+			}
+		}
+		return config.FinalizeList(s, []config.Descriptor{}, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+	}
+
+	keys, err := s.Parent.Client.GetAll(s.GenerateContext(), q.KeysOnly(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +224,7 @@ func (s *Storer) List() ([]config.Descriptor, error) {
 	for _, key := range keys {
 		result = append(result, config.Key(key.Name))
 	}
-	return result, nil
+	return config.FinalizeList(s, result, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 func (s *Storer) Marshal(descriptor config.Descriptor, value interface{}) error {
 	if reflect.ValueOf(value).Kind() != reflect.Ptr {

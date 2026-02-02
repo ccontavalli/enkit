@@ -63,7 +63,7 @@ type Opener func(name string, namespace ...string) (Store, error)
 // It allows to load config files and store them, by using the Marshal and Unmarshal interface.
 type Store interface {
 	// List the object names available for unmarshalling.
-	List() ([]Descriptor, error)
+	List(mods ...ListModifier) ([]Descriptor, error)
 
 	// Marshal saves an object, specified by value, under the name specified in descriptor.
 	//

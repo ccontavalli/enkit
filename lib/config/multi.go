@@ -49,7 +49,11 @@ func NewMultiWithOptions(loader Loader, marshaller []marshal.FileMarshaller, opt
 //
 // In general, the value returned by List is guaranteed to be usable with
 // Unmarshal, but may not match the value that was passed to Marshal before.
-func (ss *MultiFormat) List() ([]Descriptor, error) {
+func (ss *MultiFormat) List(mods ...ListModifier) ([]Descriptor, error) {
+	opts := &ListOptions{}
+	if err := ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
 	list, err := ss.loader.List()
 	if err != nil {
 		return nil, err
@@ -58,7 +62,7 @@ func (ss *MultiFormat) List() ([]Descriptor, error) {
 	for i, name := range list {
 		descs[i] = newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
 	}
-	return descs, nil
+	return FinalizeList(ss, descs, opts, 0)
 }
 
 func (ss *MultiFormat) Marshal(desc Descriptor, value interface{}) error {

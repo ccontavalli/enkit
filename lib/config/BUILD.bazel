@@ -6,6 +6,7 @@ go_library(
         "bind.go",
         "doc.go",
         "key_codec.go",
+        "list_options.go",
         "multi.go",
         "simple.go",
         "store.go",
@@ -22,6 +23,8 @@ go_test(
     name = "config_test",
     srcs = [
         "bench_test.go",
+        "conformance_test.go",
+        "list_options_test.go",
         "multi_test.go",
         "simple_test.go",
         "store_test.go",

@@ -1,8 +1,6 @@
 // Config store backed by SQLite.
 //
 // SQLite uses JSON encoding for values and is optimized for programmatic access.
-// Use SQLiteMulti when you need multi-format compatibility (JSON/TOML/YAML/Gob),
-// for example when configs must be edited by external tools.
 //
 // Tuning knobs:
 // - WithJournalMode, WithSynchronous, WithBusyTimeout control SQLite pragmas.
@@ -21,7 +19,6 @@ import (
 
 	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/config/directory"
-	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	_ "modernc.org/sqlite"
 )
@@ -36,11 +33,6 @@ CREATE TABLE IF NOT EXISTS configs (
 `
 
 type SQLite struct {
-	db *sql.DB
-}
-
-// SQLiteMulti provides multi-format stores on top of SQLite for interoperability.
-type SQLiteMulti struct {
 	db *sql.DB
 }
 
@@ -228,15 +220,6 @@ func New(mods ...Modifier) (*SQLite, error) {
 	return &SQLite{db: db}, nil
 }
 
-// NewMulti opens a SQLite database for a multi-format store.
-func NewMulti(mods ...Modifier) (*SQLiteMulti, error) {
-	db, err := openDB(mods...)
-	if err != nil {
-		return nil, err
-	}
-	return &SQLiteMulti{db: db}, nil
-}
-
 // DefaultPath returns the default sqlite database path for an app/namespace.
 func DefaultPath(app string, namespaces ...string) (string, error) {
 	dir, err := directory.GetConfigDir(app, namespaces...)
@@ -265,14 +248,15 @@ type Loader struct {
 	db    *sql.DB
 	scope string
 
-	listStmt   *sql.Stmt
-	readStmt   *sql.Stmt
-	writeStmt  *sql.Stmt
-	deleteStmt *sql.Stmt
+	listStmtLimit     *sql.Stmt
+	listDataStmtLimit *sql.Stmt
+	readStmt          *sql.Stmt
+	writeStmt         *sql.Stmt
+	deleteStmt        *sql.Stmt
 }
 
 func (l *Loader) List() ([]string, error) {
-	rows, err := l.listStmt.Query(l.scope)
+	rows, err := l.listStmtLimit.Query(l.scope, -1, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -325,16 +309,68 @@ type SQLiteStore struct {
 	loader *Loader
 }
 
-func (s *SQLiteStore) List() ([]config.Descriptor, error) {
-	names, err := s.loader.List()
+func (s *SQLiteStore) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
+	if opts.Unmarshal != nil {
+		return s.listKeyData(opts)
+	}
+	return s.listKeys(opts)
+}
+
+func (s *SQLiteStore) listKeys(opts *config.ListOptions) ([]config.Descriptor, error) {
+	limit := -1
+	if opts.Limit > 0 {
+		limit = opts.Limit
+	}
+	rows, err := s.loader.listStmtLimit.Query(s.loader.scope, limit, opts.Offset)
 	if err != nil {
 		return nil, err
 	}
-	descs := make([]config.Descriptor, len(names))
-	for i, name := range names {
-		descs[i] = config.Key(name)
+	defer rows.Close()
+
+	var descs []config.Descriptor
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		descs = append(descs, config.Key(name))
 	}
-	return descs, nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return config.FinalizeList(s, descs, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+}
+
+func (s *SQLiteStore) listKeyData(opts *config.ListOptions) ([]config.Descriptor, error) {
+	limit := -1
+	if opts.Limit > 0 {
+		limit = opts.Limit
+	}
+	rows, err := s.loader.listDataStmtLimit.Query(s.loader.scope, limit, opts.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+		var data []byte
+		if err := rows.Scan(&name, &data); err != nil {
+			return nil, err
+		}
+		desc := config.Key(name)
+		if err := opts.Unmarshal.UnmarshalAndCall(desc, data, json.Unmarshal); err != nil {
+			return nil, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return config.FinalizeList(s, []config.Descriptor{}, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 
 func (s *SQLiteStore) Marshal(desc config.Descriptor, value interface{}) error {
@@ -370,22 +406,6 @@ func (s *SQLiteStore) Delete(desc config.Descriptor) error {
 		return err
 	}
 	return s.loader.Delete(name)
-}
-
-// OpenMulti returns a multi-format store on top of the SQLite loader.
-// Close releases the underlying database resources.
-func (s *SQLiteMulti) Close() error {
-	return s.db.Close()
-}
-
-// Open returns a multi-format config store scoped to the provided app and namespaces.
-func (s *SQLiteMulti) Open(app string, namespaces ...string) (config.Store, error) {
-	scope := storeScope(app, namespaces...)
-	loader, err := newLoader(s.db, scope)
-	if err != nil {
-		return nil, err
-	}
-	return config.NewMulti(loader, marshal.Known...), nil
 }
 
 func descriptorName(desc config.Descriptor) (string, error) {
@@ -469,14 +489,21 @@ func openDB(mods ...Modifier) (*sql.DB, error) {
 }
 
 func newLoader(db *sql.DB, scope string) (*Loader, error) {
-	listStmt, err := db.Prepare(`SELECT name FROM configs WHERE scope = ? ORDER BY name`)
+	listStmtLimit, err := db.Prepare(`SELECT name FROM configs WHERE scope = ? ORDER BY name LIMIT ? OFFSET ?`)
 	if err != nil {
+		return nil, err
+	}
+
+	listDataStmtLimit, err := db.Prepare(`SELECT name, data FROM configs WHERE scope = ? ORDER BY name LIMIT ? OFFSET ?`)
+	if err != nil {
+		_ = listStmtLimit.Close()
 		return nil, err
 	}
 
 	readStmt, err := db.Prepare(`SELECT data FROM configs WHERE scope = ? AND name = ?`)
 	if err != nil {
-		_ = listStmt.Close()
+		_ = listStmtLimit.Close()
+		_ = listDataStmtLimit.Close()
 		return nil, err
 	}
 
@@ -485,26 +512,29 @@ func newLoader(db *sql.DB, scope string) (*Loader, error) {
 		 ON CONFLICT(scope, name) DO UPDATE SET data = excluded.data`,
 	)
 	if err != nil {
-		_ = listStmt.Close()
+		_ = listStmtLimit.Close()
+		_ = listDataStmtLimit.Close()
 		_ = readStmt.Close()
 		return nil, err
 	}
 
 	deleteStmt, err := db.Prepare(`DELETE FROM configs WHERE scope = ? AND name = ?`)
 	if err != nil {
-		_ = listStmt.Close()
+		_ = listStmtLimit.Close()
+		_ = listDataStmtLimit.Close()
 		_ = readStmt.Close()
 		_ = writeStmt.Close()
 		return nil, err
 	}
 
 	return &Loader{
-		db:         db,
-		scope:      scope,
-		listStmt:   listStmt,
-		readStmt:   readStmt,
-		writeStmt:  writeStmt,
-		deleteStmt: deleteStmt,
+		db:                db,
+		scope:             scope,
+		listStmtLimit:     listStmtLimit,
+		listDataStmtLimit: listDataStmtLimit,
+		readStmt:          readStmt,
+		writeStmt:         writeStmt,
+		deleteStmt:        deleteStmt,
 	}, nil
 }
 
