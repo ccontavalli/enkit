@@ -99,6 +99,40 @@ func benchOps() []op {
 			},
 		},
 		{
+			name: "ListStartFrom",
+			run: func(b *testing.B, backend backend, parallelism int, store config.Store, keys []string, miss func(int) string) {
+				for i := 0; i < b.N; i++ {
+					start := benchStartFromKey(keys, i)
+					if _, err := store.List(config.WithStartFrom(config.Key(start))); err != nil {
+						b.Fatal(err)
+					}
+				}
+			},
+		},
+		{
+			name: "ListStartFromUnmarshal",
+			run: func(b *testing.B, backend backend, parallelism int, store config.Store, keys []string, miss func(int) string) {
+				target := &benchConfig{}
+				for i := 0; i < b.N; i++ {
+					start := benchStartFromKey(keys, i)
+					list, err := store.List(
+						config.WithStartFrom(config.Key(start)),
+						config.Unmarshal(target, func(desc config.Descriptor, value *benchConfig) error {
+							_ = desc
+							_ = value
+							return nil
+						}),
+					)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if len(list) != 0 {
+						b.Fatalf("expected empty list with unmarshal, got %d", len(list))
+					}
+				}
+			},
+		},
+		{
 			name: "ListOffsetLimit",
 			run: func(b *testing.B, backend backend, parallelism int, store config.Store, keys []string, miss func(int) string) {
 				for i := 0; i < b.N; i++ {
@@ -386,6 +420,14 @@ func benchKey(index int) string {
 
 func benchMissingKey(index int) string {
 	return fmt.Sprintf("missing-%d", index)
+}
+
+func benchStartFromKey(keys []string, seed int) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	index := (seed * 101) % len(keys)
+	return keys[index]
 }
 
 func benchOffsetLimitAt(count int, seed int) (int, int) {

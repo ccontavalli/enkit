@@ -47,6 +47,32 @@ func TestFinalizeListOffsetLimit(t *testing.T) {
 	}
 }
 
+func TestFinalizeListStartFrom(t *testing.T) {
+	opts := &ListOptions{}
+	if err := ListModifiers([]ListModifier{
+		WithStartFrom(Key("k3")),
+		WithOffset(1),
+		WithLimit(2),
+	}).Apply(opts); err != nil {
+		t.Fatalf("apply options: %v", err)
+	}
+
+	descs := makeDescs(8)
+	got, err := FinalizeList(listTestStore{}, descs, opts, 0)
+	if err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+	want := []Descriptor{Key("k4"), Key("k5")}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].Key() != want[i].Key() {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
 func TestFinalizeListUnmarshalFallback(t *testing.T) {
 	var seen []string
 	target := &struct{}{}

@@ -1,8 +1,11 @@
 package config
 
+import "sort"
+
 type ListOptions struct {
 	Limit     int
 	Offset    int
+	StartFrom string
 	Unmarshal UnmarshalSpec
 }
 
@@ -60,7 +63,8 @@ func (u *UnmarshalSpecT[T]) SliceItem(slice interface{}, i int) interface{} {
 type ListOptimized uint32
 
 const (
-	OptimizedOffsetLimit ListOptimized = 1 << iota
+	OptimizedStartFrom ListOptimized = 1 << iota
+	OptimizedOffsetLimit
 	OptimizedUnmarshal
 )
 
@@ -81,6 +85,7 @@ func WithListOptions(opts ListOptions) ListModifier {
 	return func(target *ListOptions) error {
 		target.Limit = opts.Limit
 		target.Offset = opts.Offset
+		target.StartFrom = opts.StartFrom
 		if opts.Unmarshal != nil {
 			target.Unmarshal = opts.Unmarshal
 		}
@@ -102,11 +107,31 @@ func WithOffset(offset int) ListModifier {
 	}
 }
 
+func WithStartFrom(desc Descriptor) ListModifier {
+	return func(opts *ListOptions) error {
+		if desc == nil {
+			return nil
+		}
+		opts.StartFrom = desc.Key()
+		return nil
+	}
+}
+
 func Unmarshal[T any](target *T, fn func(Descriptor, *T) error) ListModifier {
 	return func(opts *ListOptions) error {
 		opts.Unmarshal = NewUnmarshalSpec(target, fn)
 		return nil
 	}
+}
+
+func ApplyStartFrom(descs []Descriptor, start string) []Descriptor {
+	if start == "" || len(descs) == 0 {
+		return descs
+	}
+	index := sort.Search(len(descs), func(i int) bool {
+		return descs[i].Key() >= start
+	})
+	return descs[index:]
 }
 
 func ApplyOffsetLimit(descs []Descriptor, offset int, limit int) []Descriptor {
@@ -122,7 +147,11 @@ func ApplyOffsetLimit(descs []Descriptor, offset int, limit int) []Descriptor {
 }
 
 func FinalizeList(store Store, descs []Descriptor, opts *ListOptions, optimized ListOptimized) ([]Descriptor, error) {
+	needsStartFromFallback := optimized&OptimizedStartFrom == 0
 	needsOffsetLimitFallback := optimized&OptimizedOffsetLimit == 0
+	if needsStartFromFallback {
+		descs = ApplyStartFrom(descs, opts.StartFrom)
+	}
 	if needsOffsetLimitFallback {
 		descs = ApplyOffsetLimit(descs, opts.Offset, opts.Limit)
 	}

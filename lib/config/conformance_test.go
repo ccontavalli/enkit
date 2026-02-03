@@ -173,10 +173,17 @@ func TestStoreConformance(t *testing.T) {
 			assertOffsetLimit(t, store, remaining, 10, 5)
 			assertOffsetLimit(t, store, remaining, 10, len(remaining))
 
+			assertStartFrom(t, store, remaining, remaining[100], 0, 0)
+			assertStartFrom(t, store, remaining, remaining[100], 5, 10)
+			assertStartFrom(t, store, remaining, remaining[len(remaining)-1], 0, 5)
+
 			assertOffsetLimitUnmarshal(t, store, remaining, 0, 10)
 			assertOffsetLimitUnmarshal(t, store, remaining, len(remaining)-5, 10)
 			assertOffsetLimitUnmarshal(t, store, remaining, len(remaining), 5)
 			assertOffsetLimitUnmarshal(t, store, remaining, len(remaining)+5, 5)
+
+			assertStartFromUnmarshal(t, store, remaining, remaining[200], 3, 7)
+			assertStartFromUnmarshal(t, store, remaining, remaining[len(remaining)-1], 0, 5)
 		})
 	}
 }
@@ -190,6 +197,18 @@ func assertOffsetLimit(t *testing.T, store config.Store, all []string, offset in
 		got[i] = desc.Key()
 	}
 	want := sliceOffsetLimit(all, offset, limit)
+	assert.Equal(t, want, got)
+}
+
+func assertStartFrom(t *testing.T, store config.Store, all []string, start string, offset int, limit int) {
+	t.Helper()
+	descs, err := store.List(config.WithStartFrom(config.Key(start)), config.WithOffset(offset), config.WithLimit(limit))
+	assert.NoError(t, err)
+	got := make([]string, len(descs))
+	for i, desc := range descs {
+		got[i] = desc.Key()
+	}
+	want := sliceOffsetLimit(sliceStartFrom(all, start), offset, limit)
 	assert.Equal(t, want, got)
 }
 
@@ -211,6 +230,25 @@ func assertOffsetLimitUnmarshal(t *testing.T, store config.Store, all []string, 
 	assert.Equal(t, want, append([]string{}, seen...))
 }
 
+func assertStartFromUnmarshal(t *testing.T, store config.Store, all []string, start string, offset int, limit int) {
+	t.Helper()
+	var seen []string
+	target := &conformanceConfig{}
+	list, err := store.List(
+		config.WithStartFrom(config.Key(start)),
+		config.WithOffset(offset),
+		config.WithLimit(limit),
+		config.Unmarshal(target, func(desc config.Descriptor, value *conformanceConfig) error {
+			seen = append(seen, desc.Key())
+			return nil
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Len(t, list, 0)
+	want := sliceOffsetLimit(sliceStartFrom(all, start), offset, limit)
+	assert.Equal(t, want, append([]string{}, seen...))
+}
+
 func sliceOffsetLimit(all []string, offset int, limit int) []string {
 	if offset < 0 {
 		offset = 0
@@ -223,4 +261,9 @@ func sliceOffsetLimit(all []string, offset int, limit int) []string {
 		end = offset + limit
 	}
 	return append([]string{}, all[offset:end]...)
+}
+
+func sliceStartFrom(all []string, start string) []string {
+	index := sort.SearchStrings(all, start)
+	return append([]string{}, all[index:]...)
 }

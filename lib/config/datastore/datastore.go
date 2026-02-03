@@ -193,6 +193,13 @@ func (s *Storer) List(mods ...config.ListModifier) ([]config.Descriptor, error) 
 	}
 
 	q := datastore.NewQuery(key.Kind).Ancestor(key.Parent)
+	if opts.StartFrom != "" {
+		startKey, err := s.GenerateKey(opts.StartFrom)
+		if err != nil {
+			return nil, err
+		}
+		q = q.Filter("__key__ >=", startKey)
+	}
 	if opts.Offset > 0 {
 		q = q.Offset(opts.Offset)
 	}
@@ -212,7 +219,7 @@ func (s *Storer) List(mods ...config.ListModifier) ([]config.Descriptor, error) 
 				return nil, err
 			}
 		}
-		return config.FinalizeList(s, []config.Descriptor{}, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+		return config.FinalizeList(s, []config.Descriptor{}, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 	}
 
 	keys, err := s.Parent.Client.GetAll(s.GenerateContext(), q.KeysOnly(), nil)
@@ -224,7 +231,7 @@ func (s *Storer) List(mods ...config.ListModifier) ([]config.Descriptor, error) 
 	for _, key := range keys {
 		result = append(result, config.Key(key.Name))
 	}
-	return config.FinalizeList(s, result, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+	return config.FinalizeList(s, result, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 func (s *Storer) Marshal(descriptor config.Descriptor, value interface{}) error {
 	if reflect.ValueOf(value).Kind() != reflect.Ptr {

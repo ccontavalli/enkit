@@ -160,16 +160,23 @@ func (s *BoltStore) List(mods ...config.ListModifier) ([]config.Descriptor, erro
 		if bucket == nil {
 			return nil
 		}
-		return bucket.ForEach(func(key, value []byte) error {
+		cursor := bucket.Cursor()
+		var key, value []byte
+		if opts.StartFrom != "" {
+			key, value = cursor.Seek([]byte(opts.StartFrom))
+		} else {
+			key, value = cursor.First()
+		}
+		for ; key != nil; key, value = cursor.Next() {
 			if value == nil {
-				return nil
+				continue
 			}
 			if index < opts.Offset {
 				index++
-				return nil
+				continue
 			}
 			if opts.Limit > 0 && seen >= opts.Limit {
-				return nil
+				break
 			}
 			desc := config.Key(string(key))
 			if opts.Unmarshal != nil {
@@ -181,13 +188,13 @@ func (s *BoltStore) List(mods ...config.ListModifier) ([]config.Descriptor, erro
 			}
 			index++
 			seen++
-			return nil
-		})
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return config.FinalizeList(s, out, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+	return config.FinalizeList(s, out, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 
 func (s *BoltStore) Marshal(desc config.Descriptor, value interface{}) error {

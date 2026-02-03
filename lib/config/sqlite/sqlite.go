@@ -248,11 +248,13 @@ type Loader struct {
 	db    *sql.DB
 	scope string
 
-	listStmtLimit     *sql.Stmt
-	listDataStmtLimit *sql.Stmt
-	readStmt          *sql.Stmt
-	writeStmt         *sql.Stmt
-	deleteStmt        *sql.Stmt
+	listStmtLimit          *sql.Stmt
+	listStmtStartLimit     *sql.Stmt
+	listDataStmtLimit      *sql.Stmt
+	listDataStmtStartLimit *sql.Stmt
+	readStmt               *sql.Stmt
+	writeStmt              *sql.Stmt
+	deleteStmt             *sql.Stmt
 }
 
 func (l *Loader) List() ([]string, error) {
@@ -325,7 +327,13 @@ func (s *SQLiteStore) listKeys(opts *config.ListOptions) ([]config.Descriptor, e
 	if opts.Limit > 0 {
 		limit = opts.Limit
 	}
-	rows, err := s.loader.listStmtLimit.Query(s.loader.scope, limit, opts.Offset)
+	stmt := s.loader.listStmtLimit
+	args := []interface{}{s.loader.scope, limit, opts.Offset}
+	if opts.StartFrom != "" {
+		stmt = s.loader.listStmtStartLimit
+		args = []interface{}{s.loader.scope, opts.StartFrom, limit, opts.Offset}
+	}
+	rows, err := stmt.Query(args...)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +350,7 @@ func (s *SQLiteStore) listKeys(opts *config.ListOptions) ([]config.Descriptor, e
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return config.FinalizeList(s, descs, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+	return config.FinalizeList(s, descs, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 
 func (s *SQLiteStore) listKeyData(opts *config.ListOptions) ([]config.Descriptor, error) {
@@ -350,7 +358,13 @@ func (s *SQLiteStore) listKeyData(opts *config.ListOptions) ([]config.Descriptor
 	if opts.Limit > 0 {
 		limit = opts.Limit
 	}
-	rows, err := s.loader.listDataStmtLimit.Query(s.loader.scope, limit, opts.Offset)
+	stmt := s.loader.listDataStmtLimit
+	args := []interface{}{s.loader.scope, limit, opts.Offset}
+	if opts.StartFrom != "" {
+		stmt = s.loader.listDataStmtStartLimit
+		args = []interface{}{s.loader.scope, opts.StartFrom, limit, opts.Offset}
+	}
+	rows, err := stmt.Query(args...)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +384,7 @@ func (s *SQLiteStore) listKeyData(opts *config.ListOptions) ([]config.Descriptor
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return config.FinalizeList(s, []config.Descriptor{}, opts, config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+	return config.FinalizeList(s, []config.Descriptor{}, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 
 func (s *SQLiteStore) Marshal(desc config.Descriptor, value interface{}) error {
@@ -494,16 +508,33 @@ func newLoader(db *sql.DB, scope string) (*Loader, error) {
 		return nil, err
 	}
 
+	listStmtStartLimit, err := db.Prepare(`SELECT name FROM configs WHERE scope = ? AND name >= ? ORDER BY name LIMIT ? OFFSET ?`)
+	if err != nil {
+		_ = listStmtLimit.Close()
+		return nil, err
+	}
+
 	listDataStmtLimit, err := db.Prepare(`SELECT name, data FROM configs WHERE scope = ? ORDER BY name LIMIT ? OFFSET ?`)
 	if err != nil {
 		_ = listStmtLimit.Close()
+		_ = listStmtStartLimit.Close()
+		return nil, err
+	}
+
+	listDataStmtStartLimit, err := db.Prepare(`SELECT name, data FROM configs WHERE scope = ? AND name >= ? ORDER BY name LIMIT ? OFFSET ?`)
+	if err != nil {
+		_ = listStmtLimit.Close()
+		_ = listStmtStartLimit.Close()
+		_ = listDataStmtLimit.Close()
 		return nil, err
 	}
 
 	readStmt, err := db.Prepare(`SELECT data FROM configs WHERE scope = ? AND name = ?`)
 	if err != nil {
 		_ = listStmtLimit.Close()
+		_ = listStmtStartLimit.Close()
 		_ = listDataStmtLimit.Close()
+		_ = listDataStmtStartLimit.Close()
 		return nil, err
 	}
 
@@ -513,7 +544,9 @@ func newLoader(db *sql.DB, scope string) (*Loader, error) {
 	)
 	if err != nil {
 		_ = listStmtLimit.Close()
+		_ = listStmtStartLimit.Close()
 		_ = listDataStmtLimit.Close()
+		_ = listDataStmtStartLimit.Close()
 		_ = readStmt.Close()
 		return nil, err
 	}
@@ -521,20 +554,24 @@ func newLoader(db *sql.DB, scope string) (*Loader, error) {
 	deleteStmt, err := db.Prepare(`DELETE FROM configs WHERE scope = ? AND name = ?`)
 	if err != nil {
 		_ = listStmtLimit.Close()
+		_ = listStmtStartLimit.Close()
 		_ = listDataStmtLimit.Close()
+		_ = listDataStmtStartLimit.Close()
 		_ = readStmt.Close()
 		_ = writeStmt.Close()
 		return nil, err
 	}
 
 	return &Loader{
-		db:                db,
-		scope:             scope,
-		listStmtLimit:     listStmtLimit,
-		listDataStmtLimit: listDataStmtLimit,
-		readStmt:          readStmt,
-		writeStmt:         writeStmt,
-		deleteStmt:        deleteStmt,
+		db:                     db,
+		scope:                  scope,
+		listStmtLimit:          listStmtLimit,
+		listStmtStartLimit:     listStmtStartLimit,
+		listDataStmtLimit:      listDataStmtLimit,
+		listDataStmtStartLimit: listDataStmtStartLimit,
+		readStmt:               readStmt,
+		writeStmt:              writeStmt,
+		deleteStmt:             deleteStmt,
 	}, nil
 }
 
