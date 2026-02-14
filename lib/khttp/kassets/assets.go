@@ -22,9 +22,9 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
-	"sort"
 
 	"github.com/ccontavalli/enkit/lib/khttp"
 	"github.com/ccontavalli/enkit/lib/logger"
@@ -90,13 +90,17 @@ func AcceptsEncoding(accepts, encoding string) bool {
 // or add additional names.
 type AssetMapper func(original, name string, handler khttp.FuncHandler) []string
 
-// MuxMapper returns an AssetMapper that simply returns the specified name
-// with an http.ServeMux.
-func MuxMapper(mux *http.ServeMux) AssetMapper {
+// RegisterMapper returns an AssetMapper that registers handlers using a function.
+func RegisterMapper(register khttp.RegisterFunc) AssetMapper {
 	return func(original, name string, handler khttp.FuncHandler) []string {
-		mux.HandleFunc(name, handler)
+		register(name, handler)
 		return []string{name}
 	}
+}
+
+// MuxMapper returns an AssetMapper that registers handlers using an http.ServeMux.
+func MuxMapper(mux *http.ServeMux) AssetMapper {
+	return RegisterMapper(mux.HandleFunc)
 }
 
 type Wrapper func(khttp.FuncHandler) khttp.FuncHandler
@@ -196,8 +200,13 @@ func StripExtensionMapper(mapper AssetMapper) AssetMapper {
 }
 
 // DefaultMapper returns a mapper doing the bare minimum necessary.
-func DefaultMapper(mux *http.ServeMux) AssetMapper {
-	return BasicMapper(MuxMapper(mux))
+func DefaultMapper(register khttp.RegisterFunc) AssetMapper {
+	return BasicMapper(RegisterMapper(register))
+}
+
+// DefaultMuxMapper returns a mapper using an http.ServeMux.
+func DefaultMuxMapper(mux *http.ServeMux) AssetMapper {
+	return DefaultMapper(mux.HandleFunc)
 }
 
 // AssetResource represents an asset after beign pre-processed.

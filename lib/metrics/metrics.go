@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/ccontavalli/enkit/lib/khttp"
 	"github.com/ccontavalli/enkit/lib/stamp"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,18 +38,18 @@ var (
 
 func StartServer(hostPort string, endpoint string) {
 	mux := http.NewServeMux()
-	initMux(mux, endpoint)
+	initMux(mux.HandleFunc, endpoint)
 	http.ListenAndServe(hostPort, mux)
 }
 
-func AddHandler(mux *http.ServeMux, endpoint string) {
-	initMux(mux, endpoint)
+func AddHandler(register khttp.RegisterFunc, endpoint string) {
+	initMux(register, endpoint)
 }
 
-func initMux(mux *http.ServeMux, endpoint string) {
+func initMux(register khttp.RegisterFunc, endpoint string) {
 	// Initialize common metrics
 	metricBuildInfo.Set(float64(stamp.BuildTimestamp().UnixNano()) / 1e9)
 	metricStartTime.SetToCurrentTime()
 
-	mux.Handle(endpoint, promhttp.Handler())
+	register(endpoint, promhttp.Handler().ServeHTTP)
 }

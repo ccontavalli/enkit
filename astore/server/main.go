@@ -175,8 +175,8 @@ func Start(ctx context.Context, targetURL, cookieDomain string, astoreFlags *ast
 		fmt.Fprintf(w, "I hear you.")
 	})
 
-	kassets.RegisterAssets(&stats, assets.Data, "", kassets.BasicMapper(kassets.MuxMapper(mux)))
-	kassets.RegisterAssets(&stats, configs.Data, "", kassets.PrefixMapper("/configs", kassets.StripExtensionMapper(kassets.BasicMapper(kassets.MuxMapper(mux)))))
+	kassets.RegisterAssets(&stats, assets.Data, "", kassets.BasicMapper(kassets.RegisterMapper(mux.HandleFunc)))
+	kassets.RegisterAssets(&stats, configs.Data, "", kassets.PrefixMapper("/configs", kassets.StripExtensionMapper(kassets.BasicMapper(kassets.RegisterMapper(mux.HandleFunc)))))
 	stats.Log(log.Infof)
 
 	// Published artifacts, web page for human consumption, lists the options available for download.

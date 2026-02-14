@@ -152,7 +152,7 @@ func main() {
 	bpb.RegisterPublishBuildEventServer(grpcs, &BuildEventService{})
 
 	mux := http.NewServeMux()
-	metrics.AddHandler(mux, "/metrics")
+	metrics.AddHandler(mux.HandleFunc, "/metrics")
 
 	glog.Exit(server.Run(ctx, mux, grpcs, nil))
 }

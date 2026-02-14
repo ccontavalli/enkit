@@ -108,7 +108,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 
-	//	metrics.AddHandler(mux, "/metrics")
+	//	metrics.AddHandler(mux.HandleFunc, "/metrics")
 	//	mux.Handle("/queue", fe)
 
 	// port from https://docs.google.com/document/d/1ZtmR60B-pBRlTQSw_aqaujUOWe6tD6TTNbNj7VdZHAY/edit

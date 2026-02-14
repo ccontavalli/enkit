@@ -23,6 +23,9 @@ import (
 
 type FuncHandler func(w http.ResponseWriter, r *http.Request)
 
+// RegisterFunc registers an HTTP handler for a path pattern.
+type RegisterFunc func(pattern string, handler func(http.ResponseWriter, *http.Request))
+
 type Flags struct {
 	*ServerFlags
 	*AutocertFlags

@@ -58,7 +58,7 @@ func main() {
 	go logHeartbeat(ctx, 60*time.Second)
 
 	mux := http.NewServeMux()
-	metrics.AddHandler(mux, "/metrics")
+	metrics.AddHandler(mux.HandleFunc, "/metrics")
 	mux.HandleFunc("/printpath/", printPath)
 
 	server.Run(ctx, mux, nil, nil)

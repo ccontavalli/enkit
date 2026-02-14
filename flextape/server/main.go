@@ -73,7 +73,7 @@ func main() {
 	fe := frontend.New(template, s)
 
 	mux := http.NewServeMux()
-	metrics.AddHandler(mux, "/metrics")
+	metrics.AddHandler(mux.HandleFunc, "/metrics")
 	mux.Handle("/queue", fe)
 
 	exitIf(server.Run(ctx, mux, grpcs, nil))
