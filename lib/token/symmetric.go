@@ -14,6 +14,7 @@ type SymmetricEncoder struct {
 
 	key    []byte
 	cipher cipher.AEAD
+	nonce  []byte
 }
 
 type SymmetricSetter func(*SymmetricEncoder) error
@@ -25,6 +26,25 @@ type SymmetricSetter func(*SymmetricEncoder) error
 func UseSymmetricKey(key []byte) SymmetricSetter {
 	return func(be *SymmetricEncoder) error {
 		be.key = key
+		return nil
+	}
+}
+
+// UseFixedNonce configures a constant nonce for every encryption operation.
+//
+// WARNING: Reusing a nonce with AES-GCM is cryptographically unsafe and leaks
+// information about repeated plaintexts. Use only for special cases such as
+// deterministic tokens and cache keys where confidentiality is not required.
+//
+// If nonce is nil or empty, a random constant nonce is generated once during
+// encoder initialization and then reused for every encryption.
+func UseFixedNonce(nonce []byte) SymmetricSetter {
+	return func(be *SymmetricEncoder) error {
+		if nonce == nil || len(nonce) == 0 {
+			be.nonce = []byte{}
+			return nil
+		}
+		be.nonce = nonce
 		return nil
 	}
 }
@@ -141,6 +161,22 @@ func NewSymmetricEncoder(rng *rand.Rand, setters ...SymmetricSetter) (*Symmetric
 	if err != nil {
 		return nil, err
 	}
+	if be.nonce != nil && len(be.nonce) == 0 {
+		be.nonce = make([]byte, be.cipher.NonceSize())
+		if be.rng == nil {
+			return nil, fmt.Errorf("rng must be set for nonce generation - it is nil instead")
+		}
+		n, err := be.rng.Read(be.nonce)
+		if err != nil {
+			return nil, err
+		}
+		if n != be.cipher.NonceSize() {
+			return nil, fmt.Errorf("attempted to generate a nonce of %d bytes, got %d", be.cipher.NonceSize(), n)
+		}
+	}
+	if len(be.nonce) > 0 && len(be.nonce) != be.cipher.NonceSize() {
+		return nil, fmt.Errorf("fixed nonce must be %d bytes", be.cipher.NonceSize())
+	}
 
 	return be, nil
 }
@@ -162,16 +198,21 @@ var SymmetricCreator CryptoFactory = func(rng *rand.Rand, key []byte) (BinaryEnc
 }
 
 func (t *SymmetricEncoder) Encode(data []byte) ([]byte, error) {
-	nonce := make([]byte, t.cipher.NonceSize())
-	if t.rng == nil {
-		return nil, fmt.Errorf("no rng - cannot encode")
-	}
-	n, err := t.rng.Read(nonce)
-	if err != nil || n != t.cipher.NonceSize() {
-		if err != nil {
-			return nil, err
+	var nonce []byte
+	if len(t.nonce) > 0 {
+		nonce = t.nonce
+	} else {
+		nonce = make([]byte, t.cipher.NonceSize())
+		if t.rng == nil {
+			return nil, fmt.Errorf("no rng - cannot encode")
 		}
-		return nil, fmt.Errorf("attempted to generate a nonce of %d bytes, got %d", t.cipher.NonceSize(), n)
+		n, err := t.rng.Read(nonce)
+		if err != nil || n != t.cipher.NonceSize() {
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("attempted to generate a nonce of %d bytes, got %d", t.cipher.NonceSize(), n)
+		}
 	}
 
 	ciphertext := t.cipher.Seal(nonce, nonce, data, nil)
