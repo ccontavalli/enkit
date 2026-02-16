@@ -19,6 +19,30 @@ type SymmetricEncoder struct {
 
 type SymmetricSetter func(*SymmetricEncoder) error
 
+// SymmetricNonceSizeBytes is the nonce length used by AES-GCM.
+const SymmetricNonceSizeBytes = 12
+
+// SymmetricNonceSize returns the nonce length used by AES-GCM.
+func SymmetricNonceSize() int {
+	return SymmetricNonceSizeBytes
+}
+
+// RandomSymmetricNonce returns a random nonce for AES-GCM.
+func RandomSymmetricNonce(rng *rand.Rand) ([]byte, error) {
+	if rng == nil {
+		return nil, fmt.Errorf("rng must be provided")
+	}
+	nonce := make([]byte, SymmetricNonceSizeBytes)
+	n, err := rng.Read(nonce)
+	if err != nil {
+		return nil, err
+	}
+	if n != len(nonce) {
+		return nil, fmt.Errorf("attempted to generate a nonce of %d bytes, got %d", len(nonce), n)
+	}
+	return nonce, nil
+}
+
 // UseSymmetricKey uses a key supplied as an array of bytes.
 //
 // The key can be any array of bytes long enough for the block cipher

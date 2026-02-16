@@ -97,3 +97,10 @@ func TestSymmetricFixedNonceWrongSize(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, be)
 }
+
+func TestSymmetricNonceHelpers(t *testing.T) {
+	rng := rand.New(rand.NewSource(4))
+	nonce, err := RandomSymmetricNonce(rng)
+	assert.NoError(t, err)
+	assert.Equal(t, SymmetricNonceSize(), len(nonce))
+}
