@@ -14,6 +14,14 @@ import (
 
 // ServeStore publishes upload/download URLs and serves blob content.
 //
+// Recommended usage:
+// - Use a URL codec that encrypts or signs keys and parameters to prevent
+//   tampering (for example TokenCodec).
+// - Use separate encoders for keys and parameters so each can be rotated
+//   independently.
+// - If you need deterministic URLs for caching, use a stable nonce, but be
+//   aware this is cryptographically weaker because it reveals repeats.
+//
 // Example: serve blob URLs with inline metadata.
 //
 //    mux := http.NewServeMux()

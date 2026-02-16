@@ -1,95 +1,33 @@
 package blob
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 
+	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/khttp/krequest"
 	"github.com/ccontavalli/enkit/lib/khttp/ktest"
 	"github.com/ccontavalli/enkit/lib/khttp/protocol"
+	"github.com/ccontavalli/enkit/lib/srand"
 	"github.com/ccontavalli/enkit/lib/token"
 	"github.com/stretchr/testify/assert"
 )
 
-type memoryStreamLoader struct {
-	mu   sync.Mutex
-	data map[string][]byte
-}
-
-func newMemoryStreamLoader() *memoryStreamLoader {
-	return &memoryStreamLoader{data: make(map[string][]byte)}
-}
-
-func (m *memoryStreamLoader) List() ([]string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	names := make([]string, 0, len(m.data))
-	for name := range m.data {
-		names = append(names, name)
-	}
-	return names, nil
-}
-
-func (m *memoryStreamLoader) Reader(name string) (io.ReadCloser, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	data, ok := m.data[name]
-	if !ok {
-		return nil, os.ErrNotExist
-	}
-	return &testReadSeekerCloser{Reader: bytes.NewReader(data)}, nil
-}
-
-func (m *memoryStreamLoader) Writer(name string) (io.WriteCloser, error) {
-	return &memoryWriter{loader: m, key: name}, nil
-}
-
-func (m *memoryStreamLoader) Delete(name string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, ok := m.data[name]; !ok {
-		return os.ErrNotExist
-	}
-	delete(m.data, name)
-	return nil
-}
-
-type memoryWriter struct {
-	loader *memoryStreamLoader
-	key    string
-	buf    bytes.Buffer
-}
-
-type testReadSeekerCloser struct {
-	*bytes.Reader
-}
-
-func (r *testReadSeekerCloser) Close() error {
-	return nil
-}
-
-func (w *memoryWriter) Write(p []byte) (int, error) {
-	return w.buf.Write(p)
-}
-
-func (w *memoryWriter) Close() error {
-	w.loader.mu.Lock()
-	defer w.loader.mu.Unlock()
-	w.loader.data[w.key] = append([]byte(nil), w.buf.Bytes()...)
-	return nil
-}
-
 func TestServeStoreUploadDownload(t *testing.T) {
-	loader := newMemoryStreamLoader()
+	dir := t.TempDir()
+	loader, err := directory.OpenDir(dir)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
 	mux := http.NewServeMux()
 
 	baseURL, err := ktest.StartURL(mux)
@@ -136,6 +74,97 @@ func TestServeStoreUploadDownload(t *testing.T) {
 	resp = fetch(t, overrideURL.String(), nil)
 	assert.Equal(t, "application/octet-stream", resp.headers.Get("Content-Type"), "unexpected override content-type")
 	assert.Contains(t, resp.headers.Get("Content-Disposition"), "override.bin", "unexpected override content-disposition")
+}
+
+func ExampleServeStore() {
+	dir, err := os.MkdirTemp("", "blob-serve")
+	if err != nil {
+		return
+	}
+	defer os.RemoveAll(dir)
+
+	loader, err := directory.OpenDir(dir)
+	if err != nil {
+		return
+	}
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	baseURL, err := url.Parse(server.URL)
+	if err != nil {
+		return
+	}
+
+	rng := rand.New(srand.Source)
+	codec, err := NewTokenCodec(WithTokenRand(rng))
+	if err != nil {
+		return
+	}
+	// Note:
+	// WithTokenRand generates a fresh key at process start, and uses random
+	// nonces per URL. Old URLs remain valid as long as the key stays the same,
+	// so restarting without a persisted key will invalidate old URLs.
+
+	_, _ = NewServeStore(
+		loader,
+		mux.HandleFunc,
+		baseURL,
+		WithPrefix("/blobs/"),
+		WithMetadataStore(InlineMetadata{}),
+		WithCodec(codec),
+	)
+	// No output: example is for documentation.
+}
+
+func ExampleServeStore_stableNonce() {
+	dir, err := os.MkdirTemp("", "blob-serve")
+	if err != nil {
+		return
+	}
+	defer os.RemoveAll(dir)
+
+	loader, err := directory.OpenDir(dir)
+	if err != nil {
+		return
+	}
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	baseURL, err := url.Parse(server.URL)
+	if err != nil {
+		return
+	}
+
+	// Stable nonce + persisted key example for deterministic URLs.
+	flags := DefaultTokenCodecFlags()
+	// flags.Register(flagSet, "blob-") // In production, register and parse flags.
+
+	rng := rand.New(srand.Source)
+	// Use a fixed nonce persisted across restarts for deterministic URLs.
+	nonce, err := token.RandomSymmetricNonce(rng)
+	if err != nil {
+		return
+	}
+	codec, err := NewTokenCodec(
+		WithTokenRand(rng),
+		WithTokenFlags(flags),
+		WithTokenSetters(token.UseFixedNonce(nonce)),
+	)
+	if err != nil {
+		return
+	}
+
+	_, _ = NewServeStore(
+		loader,
+		mux.HandleFunc,
+		baseURL,
+		WithPrefix("/blobs/"),
+		WithMetadataStore(InlineMetadata{}),
+		WithCodec(codec),
+	)
+	// No output: example is for documentation.
 }
 
 func TestTokenCodecPathOnlyRoundTrip(t *testing.T) {

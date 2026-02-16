@@ -28,6 +28,7 @@ go_test(
     ],
     embed = [":blob"],
     deps = [
+        "//lib/config/directory",
         "@com_github_stretchr_testify//assert",
         "//lib/khttp/krequest",
         "//lib/khttp/ktest",
