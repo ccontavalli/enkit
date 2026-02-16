@@ -1,0 +1,42 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "blob",
+    srcs = [
+        "blob.go",
+        "metadata.go",
+        "serve.go",
+        "url_codec.go",
+    ],
+    importpath = "github.com/ccontavalli/enkit/lib/config/blob",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/config",
+        "//lib/config/marshal",
+        "//lib/kflags",
+        "//lib/khttp",
+        "//lib/srand",
+        "//lib/token",
+    ],
+)
+
+go_test(
+    name = "blob_test",
+    srcs = [
+        "metadata_test.go",
+        "serve_test.go",
+    ],
+    embed = [":blob"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+        "//lib/khttp/krequest",
+        "//lib/khttp/ktest",
+        "//lib/khttp/protocol",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":blob",
+    visibility = ["//visibility:public"],
+)

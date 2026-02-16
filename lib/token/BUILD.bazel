@@ -4,6 +4,7 @@ go_library(
     name = "token",
     srcs = [
         "asymmetric.go",
+        "flags.go",
         "multi.go",
         "symmetric.go",
         "time.go",
@@ -13,6 +14,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//lib/config/marshal",
+        "//lib/kflags",
         "//lib/multierror",
         "@org_golang_x_crypto//nacl/box",
         "@org_golang_x_crypto//nacl/sign",
