@@ -2,6 +2,7 @@
 package directory
 
 import (
+	"io"
 	"github.com/kirsle/configdir"
 	"io/ioutil"
 	"os"
@@ -109,4 +110,44 @@ func (hd *Directory) Write(name string, data []byte) error {
 	}
 
 	return os.Rename(tmp.Name(), filepath.Join(hd.path, name))
+}
+
+func (hd *Directory) Reader(name string) (io.ReadCloser, error) {
+	path := filepath.Join(hd.path, name)
+	return os.Open(path)
+}
+
+type atomicFileWriter struct {
+	file       *os.File
+	finalPath  string
+}
+
+func (w *atomicFileWriter) Write(p []byte) (int, error) {
+	return w.file.Write(p)
+}
+
+func (w *atomicFileWriter) Close() error {
+	if err := w.file.Close(); err != nil {
+		os.Remove(w.file.Name())
+		return err
+	}
+	if err := os.Rename(w.file.Name(), w.finalPath); err != nil {
+		os.Remove(w.file.Name())
+		return err
+	}
+	return nil
+}
+
+func (hd *Directory) Writer(name string) (io.WriteCloser, error) {
+	if err := os.MkdirAll(hd.path, 0770); err != nil {
+		return nil, err
+	}
+	tmp, err := ioutil.TempFile(hd.path, name)
+	if err != nil {
+		return nil, err
+	}
+	return &atomicFileWriter{
+		file:      tmp,
+		finalPath: filepath.Join(hd.path, name),
+	}, nil
 }

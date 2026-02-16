@@ -1,6 +1,7 @@
 package directory
 
 import (
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -70,4 +71,34 @@ func TestOpenDir(t *testing.T) {
 	confs, err = hd.List()
 	assert.Nil(t, err)
 	assert.Equal(t, []string{}, confs)
+}
+
+func TestDirectoryStreamIO(t *testing.T) {
+	dir, err := ioutil.TempDir("", "stream")
+	assert.Nil(t, err)
+
+	hd, err := OpenDir(dir)
+	assert.Nil(t, err)
+
+	writer, err := hd.Writer("streamed")
+	assert.Nil(t, err)
+	if err != nil {
+		return
+	}
+
+	payload := []byte("streamed payload")
+	_, err = writer.Write(payload)
+	assert.Nil(t, err)
+	assert.Nil(t, writer.Close())
+
+	reader, err := hd.Reader("streamed")
+	assert.Nil(t, err)
+	if err != nil {
+		return
+	}
+	defer reader.Close()
+
+	readPayload, err := io.ReadAll(reader)
+	assert.Nil(t, err)
+	assert.Equal(t, payload, readPayload)
 }
