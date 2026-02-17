@@ -15,11 +15,14 @@ package factory
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/ccontavalli/enkit/lib/config/bbolt"
 	"github.com/ccontavalli/enkit/lib/config/datastore"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
+	"github.com/ccontavalli/enkit/lib/config/memory"
 	"github.com/ccontavalli/enkit/lib/config/sqlite"
 	"github.com/ccontavalli/enkit/lib/kflags"
 )
@@ -48,6 +51,11 @@ type Flags struct {
 	DirectoryFormat string
 	// SQLite holds SQLite-specific configuration.
 	SQLite *sqlite.Flags
+
+	// BboltPath specifies the path of the bbolt database.
+	BboltPath string
+	// BboltTimeout sets the bbolt file lock timeout.
+	BboltTimeout time.Duration
 }
 
 // DefaultFlags returns a new Flags struct with sensible default values.
@@ -68,11 +76,13 @@ func DefaultFlags() *Flags {
 // The flags will be prefixed with the given string.
 // For example, if prefix is "server-", the flags will be "--server-config-store", etc.
 func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
-	set.StringVar(&f.StoreType, prefix+"config-store", f.StoreType, "Type of config store to use (datastore, directory, sqlite)")
+	set.StringVar(&f.StoreType, prefix+"config-store", f.StoreType, "Type of config store to use (datastore, directory, sqlite, bbolt, memory, memory-raw)")
 	set.StringVar(&f.DatastoreProject, prefix+"config-store-datastore-project", f.DatastoreProject, "Project ID for Datastore config backend (optional, defaults to auto-detect)")
 	set.StringVar(&f.DirectoryPath, prefix+"config-store-directory-path", f.DirectoryPath, "Custom path for Directory config backend (optional, defaults to user config dir)")
 	set.StringVar(&f.DirectoryMode, prefix+"config-store-directory-mode", f.DirectoryMode, "Directory store mode (simple or multi)")
 	set.StringVar(&f.DirectoryFormat, prefix+"config-store-directory-format", f.DirectoryFormat, "Directory store format for simple mode (toml, json, yaml, gob)")
+	set.StringVar(&f.BboltPath, prefix+"config-store-bbolt-path", f.BboltPath, "Path to bbolt database (required when using bbolt)")
+	set.DurationVar(&f.BboltTimeout, prefix+"config-store-bbolt-timeout", f.BboltTimeout, "bbolt file lock timeout (optional)")
 	f.SQLite.Register(set, prefix)
 	return f
 }
@@ -209,6 +219,38 @@ func New(mods ...Modifier) (config.Opener, error) {
 			default:
 				return nil, fmt.Errorf("unknown directory mode: %s", opts.Flags.DirectoryMode)
 			}
+		}, nil
+	case "memory":
+		return func(name string, namespace ...string) (config.Store, error) {
+			loader := memory.New()
+			marshaller, err := directoryMarshaller(opts.Flags.DirectoryFormat)
+			if err != nil {
+				return nil, err
+			}
+			return config.NewSimple(loader, marshaller), nil
+		}, nil
+	case "memory-raw":
+		return func(name string, namespace ...string) (config.Store, error) {
+			return memory.NewStore(), nil
+		}, nil
+	case "bbolt":
+		return func(name string, namespace ...string) (config.Store, error) {
+			path := opts.Flags.BboltPath
+			if path == "" {
+				var err error
+				path, err = bbolt.DefaultPath(name, namespace...)
+				if err != nil {
+					return nil, err
+				}
+			}
+			db, err := bbolt.New(
+				bbolt.WithPath(path),
+				bbolt.WithTimeout(opts.Flags.BboltTimeout),
+			)
+			if err != nil {
+				return nil, err
+			}
+			return db.Open(name, namespace...)
 		}, nil
 
 	case "sqlite":

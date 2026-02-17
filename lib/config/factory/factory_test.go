@@ -140,3 +140,28 @@ func TestDirectorySimpleWithFormat(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "baz", loaded.Value)
 }
+
+func TestNewMemoryRawStore(t *testing.T) {
+	flags := &Flags{
+		StoreType: "memory-raw",
+	}
+
+	opener, err := New(FromFlags(flags))
+	assert.NoError(t, err)
+	assert.NotNil(t, opener)
+
+	store, err := opener("myapp", "testns")
+	assert.NoError(t, err)
+	assert.NotNil(t, store)
+
+	type TestConfig struct {
+		Value string
+	}
+	err = store.Marshal(config.Key("test-key"), &TestConfig{Value: "mem"})
+	assert.NoError(t, err)
+
+	var loaded TestConfig
+	_, err = store.Unmarshal(config.Key("test-key"), &loaded)
+	assert.NoError(t, err)
+	assert.Equal(t, "mem", loaded.Value)
+}

@@ -7,9 +7,11 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//lib/config",
+        "//lib/config/bbolt",
         "//lib/config/datastore",
         "//lib/config/directory",
         "//lib/config/marshal",
+        "//lib/config/memory",
         "//lib/config/sqlite",
         "//lib/kflags",
     ],
