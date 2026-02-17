@@ -11,6 +11,7 @@ import (
 	"github.com/ccontavalli/enkit/lib/config/bbolt"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
+	"github.com/ccontavalli/enkit/lib/config/memory"
 	"github.com/ccontavalli/enkit/lib/config/sqlite"
 	"github.com/stretchr/testify/assert"
 )
@@ -112,6 +113,21 @@ func TestStoreConformance(t *testing.T) {
 				return store, cleanup
 			},
 		},
+		{
+			name: "memory",
+			open: func(t *testing.T) (config.Store, func()) {
+				t.Helper()
+				return memory.NewStore(), func() {}
+			},
+		},
+		{
+			name: "memory-loader-json",
+			open: func(t *testing.T) (config.Store, func()) {
+				t.Helper()
+				loader := memory.New()
+				return config.NewSimple(loader, marshal.Json), func() {}
+			},
+		},
 	}
 
 	for _, factory := range factories {
@@ -152,6 +168,8 @@ func TestStoreConformance(t *testing.T) {
 			assert.NoError(t, store.Delete(config.Key(keys[0])))
 			_, err = store.Unmarshal(config.Key(keys[0]), &loaded)
 			assert.True(t, err != nil && os.IsNotExist(err), "expected not exist, got %v", err)
+			err = store.Delete(config.Key(keys[0]))
+			assert.True(t, err != nil && os.IsNotExist(err), "expected not exist delete, got %v", err)
 			remaining := want[1:]
 
 			var seen []string

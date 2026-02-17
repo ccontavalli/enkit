@@ -8,6 +8,7 @@ go_library(
     ],
     importpath = "github.com/ccontavalli/enkit/lib/config/memory",
     visibility = ["//visibility:public"],
+    deps = ["//lib/config"],
 )
 
 go_test(

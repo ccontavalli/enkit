@@ -34,6 +34,7 @@ go_test(
         "//lib/config/bbolt",
         "//lib/config/directory",
         "//lib/config/marshal",
+        "//lib/config/memory",
         "//lib/config/sqlite",
         "@com_github_stretchr_testify//assert",
     ],
