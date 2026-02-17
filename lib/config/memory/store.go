@@ -104,3 +104,7 @@ func (s *Store) Delete(desc config.Descriptor) error {
 	s.mu.Unlock()
 	return nil
 }
+
+func (s *Store) Close() error {
+	return nil
+}

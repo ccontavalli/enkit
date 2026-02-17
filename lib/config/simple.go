@@ -80,6 +80,10 @@ func (ss *SimpleStore) Delete(desc Descriptor) error {
 	return ss.loader.Delete(name)
 }
 
+func (ss *SimpleStore) Close() error {
+	return nil
+}
+
 func (ss *SimpleStore) pathForKey(key string) string {
 	encoded := ss.encodeKey(key)
 	return encoded + "." + ss.marshaller.Extension()

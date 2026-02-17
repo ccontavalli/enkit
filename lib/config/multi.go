@@ -131,6 +131,10 @@ func (ss *MultiFormat) Delete(desc Descriptor) error {
 	return multierror.New(errors)
 }
 
+func (ss *MultiFormat) Close() error {
+	return nil
+}
+
 func (ss *MultiFormat) encodeKey(name string) string {
 	return ss.keyCodec.Encode(name)
 }

@@ -232,6 +232,10 @@ func (s *BoltStore) Delete(desc config.Descriptor) error {
 	return s.loader.Delete(name)
 }
 
+func (s *BoltStore) Close() error {
+	return s.loader.db.Close()
+}
+
 func descriptorName(desc config.Descriptor) (string, error) {
 	if desc == nil {
 		return "", fmt.Errorf("bbolt store expects non-nil descriptor")

@@ -226,6 +226,13 @@ func (t *tracedStore) Delete(desc config.Descriptor) error {
 	return err
 }
 
+func (t *tracedStore) Close() error {
+	t.logStart("Close", "")
+	err := t.store.Close()
+	t.logEnd("Close", "", err, nil)
+	return err
+}
+
 func (t *tracedStore) logStart(operation string, key string) {
 	if !t.logRequests {
 		return

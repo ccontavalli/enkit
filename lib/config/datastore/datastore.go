@@ -290,3 +290,7 @@ func (s *Storer) Delete(descriptor config.Descriptor) error {
 
 	return nil
 }
+
+func (s *Storer) Close() error {
+	return nil
+}

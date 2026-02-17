@@ -13,6 +13,7 @@ func (s listTestStore) Unmarshal(desc Descriptor, value interface{}) (Descriptor
 	return desc, nil
 }
 func (s listTestStore) Delete(Descriptor) error { return nil }
+func (s listTestStore) Close() error            { return nil }
 
 func makeDescs(n int) []Descriptor {
 	out := make([]Descriptor, n)

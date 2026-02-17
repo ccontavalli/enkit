@@ -95,6 +95,9 @@ type Store interface {
 	//
 	// If the object does not exist, os.IsNotExist(error) will return true.
 	Delete(descriptor Descriptor) error
+
+	// Close releases any resources owned by the store.
+	Close() error
 }
 
 // Implement the Loader interface to prvoide mechanisms to read and write configuration files.
