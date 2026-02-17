@@ -2,6 +2,7 @@ package memory
 
 import (
 	"io"
+	"os"
 	"sort"
 	"testing"
 
@@ -29,8 +30,13 @@ func TestLoaderReadWriteDelete(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("one"), data)
 
+	_, err = loader.Read("missing")
+	assert.True(t, os.IsNotExist(err))
+
 	err = loader.Delete("a")
 	assert.NoError(t, err)
+	err = loader.Delete("missing")
+	assert.True(t, os.IsNotExist(err))
 	keys, err = loader.List()
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"b"}, keys)
