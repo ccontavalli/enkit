@@ -92,6 +92,8 @@ type Store interface {
 	// by that string are deleted.
 	//
 	// When specifying a Descriptor, Delete will only delete that one instance of the object.
+	//
+	// If the object does not exist, os.IsNotExist(error) will return true.
 	Delete(descriptor Descriptor) error
 }
 
@@ -101,7 +103,17 @@ type Store interface {
 // NewSimple() or NewMulti() to turn it into a Store.
 type Loader interface {
 	List() ([]string, error)
+
+	// Read returns the raw stored bytes for a key.
+	//
+	// If the object does not exist, os.IsNotExist(error) will return true.
 	Read(name string) ([]byte, error)
+
+	// Write stores raw bytes for a key.
 	Write(name string, data []byte) error
+
+	// Delete removes a stored object.
+	//
+	// If the object does not exist, os.IsNotExist(error) will return true.
 	Delete(name string) error
 }

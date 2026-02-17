@@ -29,16 +29,34 @@ type Key = config.Key
 // Store is a URL-first interface for large blobs.
 type Store interface {
 	List() ([]Descriptor, error)
+
+	// DownloadURL returns a URL to download the blob content.
 	DownloadURL(desc Descriptor, opts ...TransferOption) (*url.URL, error)
+
+	// UploadURL returns a URL to upload blob content.
 	UploadURL(desc Descriptor, opts ...TransferOption) (*url.URL, error)
+
+	// Delete removes a blob.
+	//
+	// If the object does not exist, os.IsNotExist(error) will return true.
 	Delete(desc Descriptor) error
 }
 
 // StreamLoader provides streaming access to a backend.
 type StreamLoader interface {
 	List() ([]string, error)
+
+	// Reader returns a stream for a blob key.
+	//
+	// If the object does not exist, os.IsNotExist(error) will return true.
 	Reader(name string) (io.ReadCloser, error)
+
+	// Writer returns a stream writer for a blob key.
 	Writer(name string) (io.WriteCloser, error)
+
+	// Delete removes a blob.
+	//
+	// If the object does not exist, os.IsNotExist(error) will return true.
 	Delete(name string) error
 }
 
