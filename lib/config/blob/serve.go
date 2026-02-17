@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -201,7 +202,11 @@ func (s *ServeStore) handleDownload(w http.ResponseWriter, r *http.Request) {
 
 	reader, err := s.loader.Reader(key)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		if os.IsNotExist(err) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer reader.Close()
