@@ -247,6 +247,14 @@ func benchMemoryBackends() []backend {
 				return store, func() {}, nil
 			},
 		},
+		{
+			name: "memory-store",
+			open: func(tb testing.TB) (config.Store, func(), error) {
+				tb.Helper()
+				store := memory.NewStore()
+				return store, func() {}, nil
+			},
+		},
 	}
 }
 
