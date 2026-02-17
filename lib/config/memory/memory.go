@@ -65,6 +65,10 @@ func (m *Loader) Delete(name string) error {
 	return nil
 }
 
+func (m *Loader) Close() error {
+	return nil
+}
+
 // Reader returns a seekable reader for the stored data.
 func (m *Loader) Reader(name string) (io.ReadCloser, error) {
 	data, err := m.Read(name)

@@ -76,7 +76,6 @@ func TestStoreConformance(t *testing.T) {
 					t.Fatalf("open store: %v", err)
 				}
 				cleanup := func() {
-					_ = db.Close()
 					_ = os.Remove(path)
 				}
 				return store, cleanup
@@ -107,7 +106,6 @@ func TestStoreConformance(t *testing.T) {
 					t.Fatalf("open store: %v", err)
 				}
 				cleanup := func() {
-					_ = db.Close()
 					_ = os.Remove(path)
 				}
 				return store, cleanup
@@ -134,6 +132,9 @@ func TestStoreConformance(t *testing.T) {
 		factory := factory
 		t.Run(factory.name, func(t *testing.T) {
 			store, cleanup := factory.open(t)
+			defer func() {
+				assert.NoError(t, store.Close())
+			}()
 			defer cleanup()
 
 			keys := make([]string, 1000)

@@ -172,6 +172,10 @@ func (s *ServeStore) Delete(desc Descriptor) error {
 	return s.loader.Delete(desc.Key())
 }
 
+func (s *ServeStore) Close() error {
+	return s.loader.Close()
+}
+
 func (s *ServeStore) buildURL(path string, params url.Values) *url.URL {
 	u := *s.baseURL
 	u.Path = khttp.JoinPreserve(u.Path, path)

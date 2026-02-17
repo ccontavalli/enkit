@@ -81,7 +81,7 @@ func (ss *SimpleStore) Delete(desc Descriptor) error {
 }
 
 func (ss *SimpleStore) Close() error {
-	return nil
+	return ss.loader.Close()
 }
 
 func (ss *SimpleStore) pathForKey(key string) string {

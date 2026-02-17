@@ -307,6 +307,10 @@ func (l *Loader) Delete(name string) error {
 	return nil
 }
 
+func (l *Loader) Close() error {
+	return l.db.Close()
+}
+
 type SQLiteStore struct {
 	loader *Loader
 }

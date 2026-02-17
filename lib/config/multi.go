@@ -132,7 +132,7 @@ func (ss *MultiFormat) Delete(desc Descriptor) error {
 }
 
 func (ss *MultiFormat) Close() error {
-	return nil
+	return ss.loader.Close()
 }
 
 func (ss *MultiFormat) encodeKey(name string) string {

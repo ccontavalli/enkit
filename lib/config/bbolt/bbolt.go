@@ -147,6 +147,10 @@ func (l *Loader) Delete(name string) error {
 	})
 }
 
+func (l *Loader) Close() error {
+	return l.db.Close()
+}
+
 func (s *BoltStore) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
 	opts := &config.ListOptions{}
 	if err := config.ListModifiers(mods).Apply(opts); err != nil {

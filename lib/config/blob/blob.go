@@ -40,6 +40,9 @@ type Store interface {
 	//
 	// If the object does not exist, os.IsNotExist(error) will return true.
 	Delete(desc Descriptor) error
+
+	// Close releases any resources owned by the store.
+	Close() error
 }
 
 // StreamLoader provides streaming access to a backend.
@@ -58,6 +61,9 @@ type StreamLoader interface {
 	//
 	// If the object does not exist, os.IsNotExist(error) will return true.
 	Delete(name string) error
+
+	// Close releases any resources owned by the loader.
+	Close() error
 }
 
 type transferOptions struct {

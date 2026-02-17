@@ -119,4 +119,7 @@ type Loader interface {
 	//
 	// If the object does not exist, os.IsNotExist(error) will return true.
 	Delete(name string) error
+
+	// Close releases any resources owned by the loader.
+	Close() error
 }

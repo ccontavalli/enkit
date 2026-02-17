@@ -112,6 +112,10 @@ func (hd *Directory) Write(name string, data []byte) error {
 	return os.Rename(tmp.Name(), filepath.Join(hd.path, name))
 }
 
+func (hd *Directory) Close() error {
+	return nil
+}
+
 func (hd *Directory) Reader(name string) (io.ReadCloser, error) {
 	path := filepath.Join(hd.path, name)
 	return os.Open(path)
