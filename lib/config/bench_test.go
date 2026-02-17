@@ -13,6 +13,7 @@ import (
 	"github.com/ccontavalli/enkit/lib/config/bbolt"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
+	"github.com/ccontavalli/enkit/lib/config/memory"
 	"github.com/ccontavalli/enkit/lib/config/sqlite"
 )
 
@@ -227,11 +228,26 @@ func benchOps() []op {
 
 func benchBackends() []backend {
 	backends := []backend{}
+	backends = append(backends, benchMemoryBackends()...)
 	backends = append(backends, benchDirectorySimpleBackends()...)
 	backends = append(backends, benchDirectoryMultiBackends()...)
 	backends = append(backends, benchSQLiteBackends()...)
 	backends = append(backends, benchBboltBackends()...)
 	return backends
+}
+
+func benchMemoryBackends() []backend {
+	return []backend{
+		{
+			name: "memory-simple-json",
+			open: func(tb testing.TB) (config.Store, func(), error) {
+				tb.Helper()
+				loader := memory.New()
+				store := config.NewSimple(loader, marshal.Json)
+				return store, func() {}, nil
+			},
+		},
+	}
 }
 
 func benchDirectorySimpleBackends() []backend {

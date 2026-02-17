@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "memory",
+    srcs = ["memory.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/config/memory",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "memory_test",
+    srcs = ["memory_test.go"],
+    embed = [":memory"],
+    deps = ["@com_github_stretchr_testify//assert"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":memory",
+    visibility = ["//visibility:public"],
+)
