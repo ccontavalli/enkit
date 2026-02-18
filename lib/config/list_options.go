@@ -146,15 +146,20 @@ func ApplyOffsetLimit(descs []Descriptor, offset int, limit int) []Descriptor {
 	return descs[start:end]
 }
 
-func FinalizeList(store Store, descs []Descriptor, opts *ListOptions, optimized ListOptimized) ([]Descriptor, error) {
-	needsStartFromFallback := optimized&OptimizedStartFrom == 0
-	needsOffsetLimitFallback := optimized&OptimizedOffsetLimit == 0
-	if needsStartFromFallback {
+// Apply applies list options, honoring the optimization bitmask.
+func (opts *ListOptions) Apply(descs []Descriptor, optimized ListOptimized) []Descriptor {
+	if optimized&OptimizedStartFrom == 0 {
 		descs = ApplyStartFrom(descs, opts.StartFrom)
 	}
-	if needsOffsetLimitFallback {
+	if optimized&OptimizedOffsetLimit == 0 {
 		descs = ApplyOffsetLimit(descs, opts.Offset, opts.Limit)
 	}
+	return descs
+}
+
+// Finalize applies list options and performs unmarshal fallbacks.
+func (opts *ListOptions) Finalize(store Store, descs []Descriptor, optimized ListOptimized) ([]Descriptor, error) {
+	descs = opts.Apply(descs, optimized)
 
 	if opts.Unmarshal != nil && optimized&OptimizedUnmarshal == 0 {
 		for _, desc := range descs {

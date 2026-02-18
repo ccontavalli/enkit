@@ -176,6 +176,131 @@ func (ds *Datastore) Open(app string, namespaces ...string) (config.Store, error
 	return &Storer{Parent: ds, GenerateKey: generator, GenerateContext: ds.GenerateContext}, nil
 }
 
+// Explore returns a store that lists child namespaces under the provided path.
+func (ds *Datastore) Explore(app string, namespaces ...string) (config.Explorator, error) {
+	generator, err := ds.InitializeKey(app, namespaces...)
+	if err != nil {
+		return nil, err
+	}
+	return &explorator{
+		parent:          ds,
+		app:             app,
+		base:            append([]string(nil), namespaces...),
+		GenerateKey:     generator,
+		GenerateContext: ds.GenerateContext,
+	}, nil
+}
+
+type explorator struct {
+	parent          *Datastore
+	app             string
+	base            []string
+	GenerateKey     KeyGenerator
+	GenerateContext ContextGenerator
+}
+
+func (s *explorator) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
+	if opts.Unmarshal != nil {
+		return nil, fmt.Errorf("namespace list does not support unmarshal")
+	}
+
+	baseKey, err := s.GenerateKey("")
+	if err != nil {
+		return nil, err
+	}
+	if baseKey.Parent == nil {
+		return nil, fmt.Errorf("namespace base key missing parent")
+	}
+
+	q := datastore.NewQuery(baseKey.Kind).Ancestor(baseKey.Parent).KeysOnly()
+	keys, err := s.parent.Client.GetAll(s.GenerateContext(), q, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	childSet := map[string]struct{}{}
+	for _, key := range keys {
+		if child := namespaceChild(baseKey.Parent, key); child != "" {
+			childSet[child] = struct{}{}
+		}
+	}
+
+	descs := config.SortedNamespaceDescriptors(s.base, config.KeysFromSet(childSet))
+	return opts.Apply(descs, 0), nil
+}
+
+func (s *explorator) Delete(desc config.Descriptor) error {
+	path := config.NamespacePathFromDescriptor(s.base, desc)
+	generator, err := s.parent.InitializeKey(s.app, path...)
+	if err != nil {
+		return err
+	}
+	targetKey, err := generator("")
+	if err != nil {
+		return err
+	}
+	if targetKey.Parent == nil {
+		return fmt.Errorf("namespace key missing parent")
+	}
+
+	q := datastore.NewQuery(targetKey.Kind).Ancestor(targetKey.Parent).KeysOnly()
+	keys, err := s.parent.Client.GetAll(s.GenerateContext(), q, nil)
+	if err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		return os.ErrNotExist
+	}
+	return s.parent.Client.DeleteMulti(s.GenerateContext(), keys)
+}
+
+func (s *explorator) Close() error { return nil }
+
+func namespaceChild(base *datastore.Key, key *datastore.Key) string {
+	parent := key.Parent
+	if parent == nil {
+		return ""
+	}
+	path := make([]*datastore.Key, 0, 4)
+	for k := parent; k != nil; k = k.Parent {
+		path = append(path, k)
+		if datastoreKeyEqual(k, base) {
+			break
+		}
+	}
+	if len(path) == 0 || !datastoreKeyEqual(path[len(path)-1], base) {
+		return ""
+	}
+	if len(path) < 2 {
+		return ""
+	}
+	return datastoreKeyString(path[len(path)-2])
+}
+
+func datastoreKeyString(key *datastore.Key) string {
+	if key.Name != "" {
+		return key.Name
+	}
+	return fmt.Sprintf("%d", key.ID)
+}
+
+func datastoreKeyEqual(a, b *datastore.Key) bool {
+	if a == b {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if a.Kind != b.Kind || a.Name != b.Name || a.ID != b.ID || a.Namespace != b.Namespace {
+		return false
+	}
+	return datastoreKeyEqual(a.Parent, b.Parent)
+}
+
 type Storer struct {
 	Parent          *Datastore
 	GenerateKey     KeyGenerator
@@ -219,7 +344,7 @@ func (s *Storer) List(mods ...config.ListModifier) ([]config.Descriptor, error) 
 				return nil, err
 			}
 		}
-		return config.FinalizeList(s, []config.Descriptor{}, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+		return opts.Finalize(s, []config.Descriptor{}, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 	}
 
 	keys, err := s.Parent.Client.GetAll(s.GenerateContext(), q.KeysOnly(), nil)
@@ -231,7 +356,7 @@ func (s *Storer) List(mods ...config.ListModifier) ([]config.Descriptor, error) 
 	for _, key := range keys {
 		result = append(result, config.Key(key.Name))
 	}
-	return config.FinalizeList(s, result, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+	return opts.Finalize(s, result, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 func (s *Storer) Marshal(descriptor config.Descriptor, value interface{}) error {
 	if reflect.ValueOf(value).Kind() != reflect.Ptr {

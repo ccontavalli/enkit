@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"sort"
 	"sync"
 
 	"github.com/ccontavalli/enkit/lib/config"
@@ -35,13 +34,9 @@ func (s *Store) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
 	}
 	s.mu.RUnlock()
 
-	sort.Strings(keys)
-	descs := make([]config.Descriptor, len(keys))
-	for i, key := range keys {
-		descs[i] = config.Key(key)
-	}
+	descs := config.SortedDescriptorsFromKeys(keys)
 
-	return config.FinalizeList(s, descs, opts, 0)
+	return opts.Finalize(s, descs, 0)
 }
 
 // Marshal stores a reference to value under descriptor.

@@ -244,6 +244,81 @@ func (s *SQLite) Open(app string, namespaces ...string) (config.Store, error) {
 	return &SQLiteStore{loader: loader}, nil
 }
 
+// Explore returns a store that lists child namespaces under the provided path.
+func (s *SQLite) Explore(app string, namespaces ...string) (config.Explorator, error) {
+	return &explorator{db: s.db, app: app, base: append([]string(nil), namespaces...)}, nil
+}
+
+type explorator struct {
+	db   *sql.DB
+	app  string
+	base []string
+}
+
+func (s *explorator) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
+	if opts.Unmarshal != nil {
+		return nil, fmt.Errorf("namespace list does not support unmarshal")
+	}
+
+	prefix := storeScope(s.app, s.base...)
+	if prefix != "" {
+		prefix += "/"
+	}
+	rows, err := s.db.Query(`SELECT DISTINCT scope FROM configs WHERE scope LIKE ?`, prefix+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	childSet := map[string]struct{}{}
+	for rows.Next() {
+		var scope string
+		if err := rows.Scan(&scope); err != nil {
+			return nil, err
+		}
+		rest := strings.TrimPrefix(scope, prefix)
+		if rest == "" {
+			continue
+		}
+		parts := strings.Split(rest, "/")
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
+		childSet[parts[0]] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	descs := config.SortedNamespaceDescriptors(s.base, config.KeysFromSet(childSet))
+	return opts.Apply(descs, 0), nil
+}
+
+func (s *explorator) Delete(desc config.Descriptor) error {
+	path := config.NamespacePathFromDescriptor(s.base, desc)
+	target := storeScope(s.app, path...)
+	prefix := target + "/"
+
+	res, err := s.db.Exec(`DELETE FROM configs WHERE scope = ? OR scope LIKE ?`, target, prefix+"%")
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return os.ErrNotExist
+	}
+	return nil
+}
+
+func (s *explorator) Close() error { return nil }
+
 type Loader struct {
 	db    *sql.DB
 	scope string
@@ -354,7 +429,7 @@ func (s *SQLiteStore) listKeys(opts *config.ListOptions) ([]config.Descriptor, e
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return config.FinalizeList(s, descs, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+	return opts.Finalize(s, descs, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 
 func (s *SQLiteStore) listKeyData(opts *config.ListOptions) ([]config.Descriptor, error) {
@@ -388,7 +463,7 @@ func (s *SQLiteStore) listKeyData(opts *config.ListOptions) ([]config.Descriptor
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return config.FinalizeList(s, []config.Descriptor{}, opts, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
+	return opts.Finalize(s, []config.Descriptor{}, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
 }
 
 func (s *SQLiteStore) Marshal(desc config.Descriptor, value interface{}) error {

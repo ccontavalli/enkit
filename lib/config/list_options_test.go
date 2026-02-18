@@ -33,7 +33,7 @@ func TestFinalizeListOffsetLimit(t *testing.T) {
 	}
 
 	descs := makeDescs(10)
-	got, err := FinalizeList(listTestStore{}, descs, opts, 0)
+	got, err := opts.Finalize(listTestStore{}, descs, 0)
 	if err != nil {
 		t.Fatalf("finalize: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestFinalizeListStartFrom(t *testing.T) {
 	}
 
 	descs := makeDescs(8)
-	got, err := FinalizeList(listTestStore{}, descs, opts, 0)
+	got, err := opts.Finalize(listTestStore{}, descs, 0)
 	if err != nil {
 		t.Fatalf("finalize: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestFinalizeListUnmarshalFallback(t *testing.T) {
 		t.Fatalf("apply options: %v", err)
 	}
 	descs := makeDescs(4)
-	got, err := FinalizeList(listTestStore{}, descs, opts, 0)
+	got, err := opts.Finalize(listTestStore{}, descs, 0)
 	if err != nil {
 		t.Fatalf("finalize: %v", err)
 	}

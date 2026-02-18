@@ -41,7 +41,7 @@ func (ss *SimpleStore) List(mods ...ListModifier) ([]Descriptor, error) {
 		key = ss.decodeKey(key)
 		descs[i] = Key(key)
 	}
-	return FinalizeList(ss, descs, opts, 0)
+	return opts.Finalize(ss, descs, 0)
 }
 
 func (ss *SimpleStore) Marshal(desc Descriptor, value interface{}) error {

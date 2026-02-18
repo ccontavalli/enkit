@@ -62,7 +62,7 @@ func (ss *MultiFormat) List(mods ...ListModifier) ([]Descriptor, error) {
 	for i, name := range list {
 		descs[i] = newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
 	}
-	return FinalizeList(ss, descs, opts, 0)
+	return opts.Finalize(ss, descs, 0)
 }
 
 func (ss *MultiFormat) Marshal(desc Descriptor, value interface{}) error {

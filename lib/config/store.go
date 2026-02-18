@@ -58,6 +58,22 @@ func (k Key) Key() string {
 // Opener is any function that is capable of opening a store.
 type Opener func(name string, namespace ...string) (Store, error)
 
+// Explorator lists and deletes child namespaces.
+type Explorator interface {
+	// List returns child namespaces available under the current path.
+	List(mods ...ListModifier) ([]Descriptor, error)
+	// Delete removes the namespace represented by the descriptor.
+	Delete(descriptor Descriptor) error
+	// Close releases any resources owned by the namespace store.
+	Close() error
+}
+
+// Explorer opens namespace stores that list child namespaces.
+type Explorer interface {
+	Open(name string, namespace ...string) (Store, error)
+	Explore(name string, namespace ...string) (Explorator, error)
+}
+
 // Store is the interface normally used from this library.
 //
 // It allows to load config files and store them, by using the Marshal and Unmarshal interface.
