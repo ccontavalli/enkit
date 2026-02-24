@@ -74,6 +74,10 @@ func (d *Workspace) Explore(app string, namespaces ...string) (config.Explorer, 
 	return &explorator{backend: d, app: app, base: append([]string(nil), namespaces...)}, nil
 }
 
+func (d *Workspace) Close() error {
+	return nil
+}
+
 func (d *Workspace) namespacePath(app string, namespaces ...string) (string, error) {
 	if d.root == "" {
 		return GetConfigDir(app, namespaces...)

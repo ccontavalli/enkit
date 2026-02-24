@@ -47,6 +47,10 @@ func (m *multiWorkspace) Explore(name string, namespace ...string) (Explorer, er
 	return m.workspace.Explore(name, namespace...)
 }
 
+func (m *multiWorkspace) Close() error {
+	return m.workspace.Close()
+}
+
 // NewMulti returns a StoreWorkspace that wraps a LoaderWorkspace with a Multi store.
 func NewMulti(workspace LoaderWorkspace, marshaller ...marshal.FileMarshaller) StoreWorkspace {
 	return &multiWorkspace{

@@ -172,8 +172,12 @@ func (t *Tracer) WrapWorkspace(workspace config.StoreWorkspace) config.StoreWork
 		return nil
 	}
 	return &tracedWorkspace{
-		workspace: workspace,
-		tracer:    t,
+		workspace:    workspace,
+		tracer:       t,
+		log:          t.log,
+		logEnabled:   t.flags.Enabled,
+		logRequests:  t.flags.LogRequests,
+		logResponses: t.flags.LogResponses,
 	}
 }
 
@@ -292,24 +296,83 @@ func storeName(app string, namespace []string) string {
 }
 
 type tracedWorkspace struct {
-	workspace config.StoreWorkspace
-	tracer    *Tracer
+	workspace    config.StoreWorkspace
+	tracer       *Tracer
+	log          logger.Logger
+	logEnabled   bool
+	logRequests  bool
+	logResponses bool
 }
 
 func (t *tracedWorkspace) Open(app string, namespace ...string) (config.Store, error) {
+	key := storeName(app, namespace)
+	t.logStart("WorkspaceOpen", key)
 	store, err := t.workspace.Open(app, namespace...)
 	if err != nil {
+		t.logEnd("WorkspaceOpen", key, err, nil)
 		return nil, err
 	}
+	t.logEnd("WorkspaceOpen", key, nil, nil)
 	return t.tracer.WrapStore(storeName(app, namespace), store), nil
 }
 
 func (t *tracedWorkspace) Explore(app string, namespace ...string) (config.Explorer, error) {
+	key := storeName(app, namespace)
+	t.logStart("WorkspaceExplore", key)
 	explorer, err := t.workspace.Explore(app, namespace...)
 	if err != nil {
+		t.logEnd("WorkspaceExplore", key, err, nil)
 		return nil, err
 	}
+	t.logEnd("WorkspaceExplore", key, nil, nil)
 	return t.tracer.WrapExplorer(storeName(app, namespace), explorer), nil
+}
+
+func (t *tracedWorkspace) Close() error {
+	t.logStart("WorkspaceClose", "")
+	err := t.workspace.Close()
+	t.logEnd("WorkspaceClose", "", err, nil)
+	return err
+}
+
+func (t *tracedWorkspace) logStart(operation string, key string) {
+	if !t.logRequests {
+		return
+	}
+	t.logLine(operation, key, "start", nil, nil)
+}
+
+func (t *tracedWorkspace) logEnd(operation string, key string, err error, value interface{}) {
+	if !t.logEnabled && !t.logResponses && err == nil {
+		return
+	}
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	if err != nil {
+		t.logLine(operation, key, status, nil, err)
+		return
+	}
+	if t.logResponses && value != nil {
+		t.logLine(operation, key, status, value, nil)
+		return
+	}
+	t.logLine(operation, key, status, nil, nil)
+}
+
+func (t *tracedWorkspace) logLine(operation string, key string, status string, value interface{}, err error) {
+	msg := "workspace operation=" + operation + " status=" + status
+	if key != "" {
+		msg += " namespace=" + key
+	}
+	if err != nil {
+		msg += fmt.Sprintf(" error=%v", err)
+	}
+	if value != nil {
+		msg += fmt.Sprintf(" response=%+v", value)
+	}
+	t.log.Infof("%s", msg)
 }
 
 // WrapExplorer returns a traced explorer if enabled for name.

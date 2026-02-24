@@ -75,6 +75,14 @@ type Datastore struct {
 	GenerateContext ContextGenerator
 }
 
+// Close releases any resources owned by the datastore client.
+func (ds *Datastore) Close() error {
+	if ds.Client == nil {
+		return nil
+	}
+	return ds.Client.Close()
+}
+
 var KindApp = "app"
 var KindNs = "ns"
 var KindEl = "el"

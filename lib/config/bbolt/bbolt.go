@@ -292,7 +292,7 @@ func (l *Loader) Delete(name string) error {
 }
 
 func (l *Loader) Close() error {
-	return l.db.Close()
+	return nil
 }
 
 func openDB(mods ...Modifier) (*bolt.DB, error) {

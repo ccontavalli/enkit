@@ -46,6 +46,10 @@ func (s *simpleWorkspace) Explore(name string, namespace ...string) (Explorer, e
 	return s.workspace.Explore(name, namespace...)
 }
 
+func (s *simpleWorkspace) Close() error {
+	return s.workspace.Close()
+}
+
 // NewSimple returns a StoreWorkspace that wraps a LoaderWorkspace with a Simple store.
 func NewSimple(workspace LoaderWorkspace, marshaller marshal.FileMarshaller, opts ...StoreOption) StoreWorkspace {
 	return &simpleWorkspace{

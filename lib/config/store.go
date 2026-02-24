@@ -94,12 +94,14 @@ type Explorer interface {
 type LoaderWorkspace interface {
 	Open(name string, namespace ...string) (Loader, error)
 	Explore(name string, namespace ...string) (Explorer, error)
+	Close() error
 }
 
 // StoreWorkspace opens namespace stores and provides namespace exploration.
 type StoreWorkspace interface {
 	Open(name string, namespace ...string) (Store, error)
 	Explore(name string, namespace ...string) (Explorer, error)
+	Close() error
 }
 
 // Store is the interface normally used from this library.
