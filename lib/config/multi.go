@@ -15,16 +15,44 @@ type MultiFormat struct {
 	keyCodec   KeyCodec
 }
 
-func NewMulti(loader Loader, marshaller ...marshal.FileMarshaller) *MultiFormat {
-	return NewMultiWithOptions(loader, marshaller)
+// OpenMulti returns a Store backed by the provided Loader.
+func OpenMulti(loader Loader, marshaller ...marshal.FileMarshaller) *MultiFormat {
+	return OpenMultiWithOptions(loader, marshaller)
 }
 
-func NewMultiWithOptions(loader Loader, marshaller []marshal.FileMarshaller, opts ...StoreOption) *MultiFormat {
+// OpenMultiWithOptions returns a Store backed by the provided Loader and options.
+func OpenMultiWithOptions(loader Loader, marshaller []marshal.FileMarshaller, opts ...StoreOption) *MultiFormat {
 	if len(marshaller) <= 0 {
 		marshaller = marshal.Known
 	}
 	options := applyStoreOptions(opts...)
 	return &MultiFormat{loader: loader, marshaller: marshaller, keyCodec: options.keyCodec}
+}
+
+type multiWorkspace struct {
+	workspace  LoaderWorkspace
+	marshaller []marshal.FileMarshaller
+	options    []StoreOption
+}
+
+func (m *multiWorkspace) Open(name string, namespace ...string) (Store, error) {
+	loader, err := m.workspace.Open(name, namespace...)
+	if err != nil {
+		return nil, err
+	}
+	return OpenMultiWithOptions(loader, m.marshaller, m.options...), nil
+}
+
+func (m *multiWorkspace) Explore(name string, namespace ...string) (Explorer, error) {
+	return m.workspace.Explore(name, namespace...)
+}
+
+// NewMulti returns a StoreWorkspace that wraps a LoaderWorkspace with a Multi store.
+func NewMulti(workspace LoaderWorkspace, marshaller ...marshal.FileMarshaller) StoreWorkspace {
+	return &multiWorkspace{
+		workspace:  workspace,
+		marshaller: marshaller,
+	}
 }
 
 // List returns the list of configs the loader knows about.
@@ -54,15 +82,36 @@ func (ss *MultiFormat) List(mods ...ListModifier) ([]Descriptor, error) {
 	if err := ListModifiers(mods).Apply(opts); err != nil {
 		return nil, err
 	}
-	list, err := ss.loader.List()
+	loaderOpts := *opts
+	loaderOpts.Unmarshal = nil
+	if opts.StartFrom != "" {
+		loaderOpts.StartFrom = ss.encodeKey(opts.StartFrom)
+	}
+	if opts.Unmarshal != nil {
+		loaderOpts.Data = func(desc Descriptor, data []byte) error {
+			name := desc.Key()
+			d := newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
+			return opts.Unmarshal.UnmarshalAndCall(d, data, d.m.Unmarshal)
+		}
+	} else if opts.Data != nil {
+		loaderOpts.Data = func(desc Descriptor, data []byte) error {
+			name := desc.Key()
+			d := newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
+			return opts.Data(d, data)
+		}
+	}
+	list, err := ss.loader.List(WithListOptions(loaderOpts))
 	if err != nil {
 		return nil, err
+	}
+	if loaderOpts.Data != nil && len(list) == 0 {
+		return []Descriptor{}, nil
 	}
 	descs := make([]Descriptor, len(list))
 	for i, name := range list {
 		descs[i] = newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
 	}
-	return opts.Finalize(ss, descs, 0)
+	return opts.Finalize(ss, descs, OptimizedStartFrom|OptimizedOffsetLimit|OptimizedUnmarshal)
 }
 
 func (ss *MultiFormat) Marshal(desc Descriptor, value interface{}) error {

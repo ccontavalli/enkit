@@ -11,5 +11,5 @@ func Open(app string, namespace ...string) (config.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return config.NewMulti(store), nil
+	return config.OpenMulti(store), nil
 }

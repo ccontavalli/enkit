@@ -54,6 +54,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/ccontavalli/enkit/lib/kflags"
 	"google.golang.org/api/option"
 	"os"
 	"reflect"
@@ -105,6 +106,36 @@ type options struct {
 
 type Modifier func(opt *options) error
 type Modifiers []Modifier
+
+// Flags holds configuration options for datastore stores.
+type Flags struct {
+	// Project specifies the Google Cloud Project ID.
+	Project string
+}
+
+// DefaultFlags returns a new Flags struct with default values.
+func DefaultFlags() *Flags {
+	return &Flags{}
+}
+
+// Register registers the datastore flags with the provided FlagSet.
+func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
+	set.StringVar(&f.Project, prefix+"config-store-datastore-project", f.Project, "Project ID for Datastore config backend (optional, defaults to auto-detect)")
+	return f
+}
+
+// FromFlags returns a Modifier that applies datastore flags.
+func FromFlags(flags *Flags) Modifier {
+	return func(opt *options) error {
+		if flags == nil {
+			return nil
+		}
+		if flags.Project != "" {
+			opt.project = flags.Project
+		}
+		return nil
+	}
+}
 
 // WithProject specifies the datastore project name.
 func WithProject(project string) Modifier {
@@ -177,7 +208,7 @@ func (ds *Datastore) Open(app string, namespaces ...string) (config.Store, error
 }
 
 // Explore returns a store that lists child namespaces under the provided path.
-func (ds *Datastore) Explore(app string, namespaces ...string) (config.Explorator, error) {
+func (ds *Datastore) Explore(app string, namespaces ...string) (config.Explorer, error) {
 	generator, err := ds.InitializeKey(app, namespaces...)
 	if err != nil {
 		return nil, err

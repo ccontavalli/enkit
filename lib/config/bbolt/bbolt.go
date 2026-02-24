@@ -4,7 +4,6 @@
 package bbolt
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/config/directory"
+	"github.com/ccontavalli/enkit/lib/kflags"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -25,16 +25,48 @@ type Loader struct {
 	scope []byte
 }
 
-type BoltStore struct {
-	loader *Loader
-}
-
 type options struct {
 	path    string
 	timeout time.Duration
 }
 
 type Modifier func(*options) error
+
+// Flags holds configuration options for bbolt stores.
+type Flags struct {
+	// Path specifies a filesystem path to the bbolt database.
+	Path string
+	// Timeout sets the bbolt file lock timeout.
+	Timeout time.Duration
+}
+
+// DefaultFlags returns a new Flags struct with default values.
+func DefaultFlags() *Flags {
+	return &Flags{}
+}
+
+// Register registers the bbolt flags with the provided FlagSet.
+func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
+	set.StringVar(&f.Path, prefix+"config-store-bbolt-path", f.Path, "Path to bbolt database (required when using bbolt)")
+	set.DurationVar(&f.Timeout, prefix+"config-store-bbolt-timeout", f.Timeout, "bbolt file lock timeout (optional)")
+	return f
+}
+
+// FromFlags returns a Modifier that applies bbolt flags.
+func FromFlags(flags *Flags) Modifier {
+	return func(o *options) error {
+		if flags == nil {
+			return nil
+		}
+		if flags.Path != "" {
+			o.path = flags.Path
+		}
+		if flags.Timeout != 0 {
+			o.timeout = flags.Timeout
+		}
+		return nil
+	}
+}
 
 // WithPath specifies the filesystem path for the bbolt database.
 func WithPath(path string) Modifier {
@@ -75,18 +107,18 @@ func (b *Bolt) Close() error {
 	return b.db.Close()
 }
 
-// Open returns a JSON-backed config store scoped to the provided app and namespaces.
-func (b *Bolt) Open(app string, namespaces ...string) (config.Store, error) {
+// Open returns a Loader scoped to the provided app and namespaces.
+func (b *Bolt) Open(app string, namespaces ...string) (config.Loader, error) {
 	scope := storeScope(app, namespaces...)
 	loader, err := newLoader(b.db, scope)
 	if err != nil {
 		return nil, err
 	}
-	return &BoltStore{loader: loader}, nil
+	return loader, nil
 }
 
 // Explore returns a store that lists child namespaces under the provided path.
-func (b *Bolt) Explore(app string, namespaces ...string) (config.Explorator, error) {
+func (b *Bolt) Explore(app string, namespaces ...string) (config.Explorer, error) {
 	return &explorator{db: b.db, app: app, base: append([]string(nil), namespaces...)}, nil
 }
 
@@ -167,25 +199,55 @@ func (s *explorator) Delete(desc config.Descriptor) error {
 
 func (s *explorator) Close() error { return nil }
 
-func (l *Loader) List() ([]string, error) {
+func (l *Loader) List(mods ...config.ListModifier) ([]string, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
 	var names []string
+	index := 0
+	seen := 0
 	err := l.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(l.scope)
 		if bucket == nil {
 			return nil
 		}
-		return bucket.ForEach(func(key, value []byte) error {
+		cursor := bucket.Cursor()
+		var key, value []byte
+		if opts.StartFrom != "" {
+			key, value = cursor.Seek([]byte(opts.StartFrom))
+		} else {
+			key, value = cursor.First()
+		}
+		for ; key != nil; key, value = cursor.Next() {
 			if value == nil {
-				return nil
+				continue
 			}
-			names = append(names, string(key))
-			return nil
-		})
+			if index < opts.Offset {
+				index++
+				continue
+			}
+			if opts.Limit > 0 && seen >= opts.Limit {
+				break
+			}
+			name := string(key)
+			if opts.Data != nil {
+				if err := opts.Data(config.Key(name), value); err != nil {
+					return err
+				}
+			} else {
+				names = append(names, name)
+			}
+			index++
+			seen++
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return names, nil
+	optimized := config.OptimizedStartFrom | config.OptimizedOffsetLimit | config.OptimizedData
+	return opts.FinalizeKeys(l, names, optimized)
 }
 
 func (l *Loader) Read(name string) ([]byte, error) {
@@ -231,102 +293,6 @@ func (l *Loader) Delete(name string) error {
 
 func (l *Loader) Close() error {
 	return l.db.Close()
-}
-
-func (s *BoltStore) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
-	opts := &config.ListOptions{}
-	if err := config.ListModifiers(mods).Apply(opts); err != nil {
-		return nil, err
-	}
-	var out []config.Descriptor
-	index := 0
-	seen := 0
-	err := s.loader.db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(s.loader.scope)
-		if bucket == nil {
-			return nil
-		}
-		cursor := bucket.Cursor()
-		var key, value []byte
-		if opts.StartFrom != "" {
-			key, value = cursor.Seek([]byte(opts.StartFrom))
-		} else {
-			key, value = cursor.First()
-		}
-		for ; key != nil; key, value = cursor.Next() {
-			if value == nil {
-				continue
-			}
-			if index < opts.Offset {
-				index++
-				continue
-			}
-			if opts.Limit > 0 && seen >= opts.Limit {
-				break
-			}
-			desc := config.Key(string(key))
-			if opts.Unmarshal != nil {
-				if err := opts.Unmarshal.UnmarshalAndCall(desc, value, json.Unmarshal); err != nil {
-					return err
-				}
-			} else {
-				out = append(out, desc)
-			}
-			index++
-			seen++
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return opts.Finalize(s, out, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
-}
-
-func (s *BoltStore) Marshal(desc config.Descriptor, value interface{}) error {
-	name, err := descriptorName(desc)
-	if err != nil {
-		return err
-	}
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	return s.loader.Write(name, data)
-}
-
-func (s *BoltStore) Unmarshal(desc config.Descriptor, value interface{}) (config.Descriptor, error) {
-	name, err := descriptorName(desc)
-	if err != nil {
-		return nil, err
-	}
-	data, err := s.loader.Read(name)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return config.Key(name), nil
-	}
-	return config.Key(name), json.Unmarshal(data, value)
-}
-
-func (s *BoltStore) Delete(desc config.Descriptor) error {
-	name, err := descriptorName(desc)
-	if err != nil {
-		return err
-	}
-	return s.loader.Delete(name)
-}
-
-func (s *BoltStore) Close() error {
-	return s.loader.db.Close()
-}
-
-func descriptorName(desc config.Descriptor) (string, error) {
-	if desc == nil {
-		return "", fmt.Errorf("bbolt store expects non-nil descriptor")
-	}
-	return desc.Key(), nil
 }
 
 func openDB(mods ...Modifier) (*bolt.DB, error) {

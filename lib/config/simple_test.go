@@ -1,9 +1,10 @@
-package config
+package config_test
 
 import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/stretchr/testify/assert"
@@ -18,9 +19,9 @@ func TestSimpleStoreEncodesKeys(t *testing.T) {
 	loader, err := directory.OpenDir(base)
 	assert.NoError(t, err)
 
-	store := NewSimple(loader, marshal.Toml)
+	store := config.OpenSimple(loader, marshal.Toml)
 	key := "a/b%"
-	err = store.Marshal(Key(key), simpleTestConfig{Value: "test"})
+	err = store.Marshal(config.Key(key), simpleTestConfig{Value: "test"})
 	assert.NoError(t, err)
 
 	files, err := loader.List()
@@ -29,7 +30,7 @@ func TestSimpleStoreEncodesKeys(t *testing.T) {
 	assert.Equal(t, "a%2Fb%25.toml", files[0])
 
 	var cfg simpleTestConfig
-	_, err = store.Unmarshal(Key(key), &cfg)
+	_, err = store.Unmarshal(config.Key(key), &cfg)
 	assert.NoError(t, err)
 	assert.Equal(t, "test", cfg.Value)
 
@@ -40,10 +41,10 @@ func TestSimpleStoreEncodesKeys(t *testing.T) {
 }
 
 func TestDecodeKeyTolerance(t *testing.T) {
-	assert.Equal(t, "a/b", DecodeKey("a%2Fb"))
-	assert.Equal(t, "%zz", DecodeKey("%zz"))
-	assert.Equal(t, "100%", DecodeKey("100%25"))
-	assert.Equal(t, string([]byte{0}), DecodeKey("%00"))
+	assert.Equal(t, "a/b", config.DecodeKey("a%2Fb"))
+	assert.Equal(t, "%zz", config.DecodeKey("%zz"))
+	assert.Equal(t, "100%", config.DecodeKey("100%25"))
+	assert.Equal(t, string([]byte{0}), config.DecodeKey("%00"))
 }
 
 func TestSimpleStoreKeyWithExtension(t *testing.T) {
@@ -51,9 +52,9 @@ func TestSimpleStoreKeyWithExtension(t *testing.T) {
 	loader, err := directory.OpenDir(base)
 	assert.NoError(t, err)
 
-	store := NewSimple(loader, marshal.Toml)
+	store := config.OpenSimple(loader, marshal.Toml)
 	key := "foo.toml"
-	err = store.Marshal(Key(key), simpleTestConfig{Value: "value"})
+	err = store.Marshal(config.Key(key), simpleTestConfig{Value: "value"})
 	assert.NoError(t, err)
 
 	files, err := loader.List()
@@ -62,7 +63,7 @@ func TestSimpleStoreKeyWithExtension(t *testing.T) {
 	assert.Equal(t, "foo.toml.toml", files[0])
 
 	var cfg simpleTestConfig
-	_, err = store.Unmarshal(Key(key), &cfg)
+	_, err = store.Unmarshal(config.Key(key), &cfg)
 	assert.NoError(t, err)
 	assert.Equal(t, "value", cfg.Value)
 }
@@ -72,9 +73,9 @@ func TestSimpleStoreKeyWithColon(t *testing.T) {
 	loader, err := directory.OpenDir(base)
 	assert.NoError(t, err)
 
-	store := NewSimple(loader, marshal.Toml)
+	store := config.OpenSimple(loader, marshal.Toml)
 	key := "user:123"
-	err = store.Marshal(Key(key), simpleTestConfig{Value: "value"})
+	err = store.Marshal(config.Key(key), simpleTestConfig{Value: "value"})
 	assert.NoError(t, err)
 
 	files, err := loader.List()
@@ -83,7 +84,7 @@ func TestSimpleStoreKeyWithColon(t *testing.T) {
 	assert.Equal(t, "user:123.toml", files[0])
 
 	var cfg simpleTestConfig
-	_, err = store.Unmarshal(Key(key), &cfg)
+	_, err = store.Unmarshal(config.Key(key), &cfg)
 	assert.NoError(t, err)
 	assert.Equal(t, "value", cfg.Value)
 

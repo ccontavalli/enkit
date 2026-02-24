@@ -11,7 +11,6 @@ package sqlite
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,7 +53,6 @@ type Modifier func(*options) error
 // Flags holds configuration options for SQLite stores.
 type Flags struct {
 	// Path specifies a filesystem path to the SQLite database.
-	// If empty, DefaultPath is used.
 	Path string
 	// JournalMode configures PRAGMA journal_mode (for example, WAL).
 	JournalMode string
@@ -103,21 +101,13 @@ func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
 }
 
 // FromFlags returns a Modifier that applies SQLite flags.
-func FromFlags(flags *Flags, app string, namespaces ...string) Modifier {
+func FromFlags(flags *Flags) Modifier {
 	return func(o *options) error {
 		if flags == nil {
 			return nil
 		}
 		if flags.Path != "" {
 			o.dsn = flags.Path
-			return nil
-		}
-		if o.dsn == "" {
-			path, err := DefaultPath(app, namespaces...)
-			if err != nil {
-				return err
-			}
-			o.dsn = path
 		}
 		o.journalMode = flags.JournalMode
 		o.synchronous = flags.Synchronous
@@ -234,18 +224,18 @@ func (s *SQLite) Close() error {
 	return s.db.Close()
 }
 
-// Open returns a JSON-backed config store scoped to the provided app and namespaces.
-func (s *SQLite) Open(app string, namespaces ...string) (config.Store, error) {
+// Open returns a Loader scoped to the provided app and namespaces.
+func (s *SQLite) Open(app string, namespaces ...string) (config.Loader, error) {
 	scope := storeScope(app, namespaces...)
 	loader, err := newLoader(s.db, scope)
 	if err != nil {
 		return nil, err
 	}
-	return &SQLiteStore{loader: loader}, nil
+	return loader, nil
 }
 
 // Explore returns a store that lists child namespaces under the provided path.
-func (s *SQLite) Explore(app string, namespaces ...string) (config.Explorator, error) {
+func (s *SQLite) Explore(app string, namespaces ...string) (config.Explorer, error) {
 	return &explorator{db: s.db, app: app, base: append([]string(nil), namespaces...)}, nil
 }
 
@@ -332,8 +322,51 @@ type Loader struct {
 	deleteStmt             *sql.Stmt
 }
 
-func (l *Loader) List() ([]string, error) {
-	rows, err := l.listStmtLimit.Query(l.scope, -1, 0)
+func (l *Loader) List(mods ...config.ListModifier) ([]string, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
+	limit := -1
+	if opts.Limit > 0 {
+		limit = opts.Limit
+	}
+	stmt := l.listStmtLimit
+	args := []interface{}{l.scope, limit, opts.Offset}
+	if opts.StartFrom != "" {
+		stmt = l.listStmtStartLimit
+		args = []interface{}{l.scope, opts.StartFrom, limit, opts.Offset}
+	}
+	if opts.Data != nil {
+		stmt = l.listDataStmtLimit
+		args = []interface{}{l.scope, limit, opts.Offset}
+		if opts.StartFrom != "" {
+			stmt = l.listDataStmtStartLimit
+			args = []interface{}{l.scope, opts.StartFrom, limit, opts.Offset}
+		}
+		rows, err := stmt.Query(args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			var data []byte
+			if err := rows.Scan(&name, &data); err != nil {
+				return nil, err
+			}
+			if err := opts.Data(config.Key(name), data); err != nil {
+				return nil, err
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		optimized := config.OptimizedStartFrom | config.OptimizedOffsetLimit | config.OptimizedData
+		return opts.FinalizeKeys(l, nil, optimized)
+	}
+
+	rows, err := stmt.Query(args...)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +383,8 @@ func (l *Loader) List() ([]string, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return names, nil
+	optimized := config.OptimizedStartFrom | config.OptimizedOffsetLimit
+	return opts.FinalizeKeys(l, names, optimized)
 }
 
 func (l *Loader) Read(name string) ([]byte, error) {
@@ -384,132 +418,6 @@ func (l *Loader) Delete(name string) error {
 
 func (l *Loader) Close() error {
 	return l.db.Close()
-}
-
-type SQLiteStore struct {
-	loader *Loader
-}
-
-func (s *SQLiteStore) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
-	opts := &config.ListOptions{}
-	if err := config.ListModifiers(mods).Apply(opts); err != nil {
-		return nil, err
-	}
-	if opts.Unmarshal != nil {
-		return s.listKeyData(opts)
-	}
-	return s.listKeys(opts)
-}
-
-func (s *SQLiteStore) listKeys(opts *config.ListOptions) ([]config.Descriptor, error) {
-	limit := -1
-	if opts.Limit > 0 {
-		limit = opts.Limit
-	}
-	stmt := s.loader.listStmtLimit
-	args := []interface{}{s.loader.scope, limit, opts.Offset}
-	if opts.StartFrom != "" {
-		stmt = s.loader.listStmtStartLimit
-		args = []interface{}{s.loader.scope, opts.StartFrom, limit, opts.Offset}
-	}
-	rows, err := stmt.Query(args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var descs []config.Descriptor
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
-		}
-		descs = append(descs, config.Key(name))
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return opts.Finalize(s, descs, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
-}
-
-func (s *SQLiteStore) listKeyData(opts *config.ListOptions) ([]config.Descriptor, error) {
-	limit := -1
-	if opts.Limit > 0 {
-		limit = opts.Limit
-	}
-	stmt := s.loader.listDataStmtLimit
-	args := []interface{}{s.loader.scope, limit, opts.Offset}
-	if opts.StartFrom != "" {
-		stmt = s.loader.listDataStmtStartLimit
-		args = []interface{}{s.loader.scope, opts.StartFrom, limit, opts.Offset}
-	}
-	rows, err := stmt.Query(args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var name string
-		var data []byte
-		if err := rows.Scan(&name, &data); err != nil {
-			return nil, err
-		}
-		desc := config.Key(name)
-		if err := opts.Unmarshal.UnmarshalAndCall(desc, data, json.Unmarshal); err != nil {
-			return nil, err
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return opts.Finalize(s, []config.Descriptor{}, config.OptimizedStartFrom|config.OptimizedOffsetLimit|config.OptimizedUnmarshal)
-}
-
-func (s *SQLiteStore) Marshal(desc config.Descriptor, value interface{}) error {
-	name, err := descriptorName(desc)
-	if err != nil {
-		return err
-	}
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	return s.loader.Write(name, data)
-}
-
-func (s *SQLiteStore) Unmarshal(desc config.Descriptor, value interface{}) (config.Descriptor, error) {
-	name, err := descriptorName(desc)
-	if err != nil {
-		return nil, err
-	}
-	data, err := s.loader.Read(name)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return config.Key(name), nil
-	}
-	return config.Key(name), json.Unmarshal(data, value)
-}
-
-func (s *SQLiteStore) Delete(desc config.Descriptor) error {
-	name, err := descriptorName(desc)
-	if err != nil {
-		return err
-	}
-	return s.loader.Delete(name)
-}
-
-func (s *SQLiteStore) Close() error {
-	return s.loader.db.Close()
-}
-
-func descriptorName(desc config.Descriptor) (string, error) {
-	if desc == nil {
-		return "", fmt.Errorf("sqlite store expects non-nil descriptor")
-	}
-	return desc.Key(), nil
 }
 
 func openDB(mods ...Modifier) (*sql.DB, error) {

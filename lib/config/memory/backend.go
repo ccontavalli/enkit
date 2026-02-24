@@ -15,8 +15,8 @@ type Backend struct {
 	stores map[string]*Store
 }
 
-// NewBackend returns a new in-memory backend.
-func NewBackend() *Backend {
+// NewRaw returns a new in-memory backend with raw stores.
+func NewRaw() *Backend {
 	return &Backend{stores: make(map[string]*Store)}
 }
 
@@ -34,7 +34,7 @@ func (b *Backend) Open(app string, namespace ...string) (config.Store, error) {
 }
 
 // Explore returns a Store that lists child namespaces under the provided path.
-func (b *Backend) Explore(app string, namespace ...string) (config.Explorator, error) {
+func (b *Backend) Explore(app string, namespace ...string) (config.Explorer, error) {
 	return &explorator{backend: b, app: app, base: append([]string(nil), namespace...)}, nil
 }
 

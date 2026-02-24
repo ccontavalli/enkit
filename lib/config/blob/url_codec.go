@@ -18,36 +18,36 @@ import (
 //
 // Common usage patterns:
 //
-// 1) Default encrypted key + params in query:
-//    rng := rand.New(rand.NewSource(seed))
-//    codec, err := NewTokenCodec(WithTokenRand(rng))
+//  1. Default encrypted key + params in query:
+//     rng := rand.New(rand.NewSource(seed))
+//     codec, err := NewTokenCodec(WithTokenRand(rng))
 //
-// 2) Encode everything in the path (no query parameters):
-//    rng := rand.New(rand.NewSource(seed))
-//    path, err := NewTokenPathCodec(rng)
-//    codec, err := NewTokenCodec(WithTokenPathCodec(path))
+//  2. Encode everything in the path (no query parameters):
+//     rng := rand.New(rand.NewSource(seed))
+//     path, err := NewTokenPathCodec(rng)
+//     codec, err := NewTokenCodec(WithTokenPathCodec(path))
 //
-// 3) Reuse a specific key (so tokens are stable across restarts):
-//    rng := rand.New(rand.NewSource(seed))
-//    enc, err := BuildTokenEncoder(rng, WithEncoderSetters(token.UseSymmetricKey(keyBytes)))
-//    codec, err := NewTokenCodec(WithTokenEncoder(enc))
+//  3. Reuse a specific key (so tokens are stable across restarts):
+//     rng := rand.New(rand.NewSource(seed))
+//     enc, err := BuildTokenEncoder(rng, WithEncoderSetters(token.UseSymmetricKey(keyBytes)))
+//     codec, err := NewTokenCodec(WithTokenEncoder(enc))
 //
-// 4) Configure from flags (key + optional validity):
-//    flags := DefaultTokenCodecFlags()
-//    flags.Register(flagSet, "blob-")
-//    // After flag parsing:
-//    rng := rand.New(rand.NewSource(seed))
-//    codec, err := NewTokenCodec(WithTokenRand(rng), WithTokenFlags(flags))
+//  4. Configure from flags (key + optional validity):
+//     flags := DefaultTokenCodecFlags()
+//     flags.Register(flagSet, "blob-")
+//     // After flag parsing:
+//     rng := rand.New(rand.NewSource(seed))
+//     codec, err := NewTokenCodec(WithTokenRand(rng), WithTokenFlags(flags))
 //
-// 5) Stable encryption (fixed nonce; deterministic output):
-//    rng := rand.New(rand.NewSource(seed))
-//    enc, err := NewSymmetricTokenEncoder(rng, WithEncoderSetters(token.UseFixedNonce(nil)))
-//    codec, err := NewTokenCodec(WithTokenEncoder(enc))
+//  5. Stable encryption (fixed nonce; deterministic output):
+//     rng := rand.New(rand.NewSource(seed))
+//     enc, err := NewSymmetricTokenEncoder(rng, WithEncoderSetters(token.UseFixedNonce(nil)))
+//     codec, err := NewTokenCodec(WithTokenEncoder(enc))
 //
-// 6) Build key/params codecs directly from modifiers:
-//    rng := rand.New(rand.NewSource(seed))
-//    keyCodec, err := NewTokenKeyCodec(rng, WithEncoderValidity(time.Hour))
-//    paramsCodec, err := NewTokenParamsCodec(rng, "token", WithEncoderValidity(time.Hour))
+//  6. Build key/params codecs directly from modifiers:
+//     rng := rand.New(rand.NewSource(seed))
+//     keyCodec, err := NewTokenKeyCodec(rng, WithEncoderValidity(time.Hour))
+//     paramsCodec, err := NewTokenParamsCodec(rng, "token", WithEncoderValidity(time.Hour))
 //
 // URLCodec encodes and decodes URL paths and query parameters.
 //
@@ -437,9 +437,9 @@ func (mods TokenEncoderOptions) Apply(opts *tokenEncoderOptions) {
 }
 
 type tokenEncoderOptions struct {
-	validity time.Duration
-	setters  []token.SymmetricSetter
-	encoder  token.BinaryEncoder
+	validity    time.Duration
+	setters     []token.SymmetricSetter
+	encoder     token.BinaryEncoder
 	typeSetters []token.TypeEncoderSetter
 }
 

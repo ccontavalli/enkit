@@ -13,11 +13,13 @@ type SimpleStore struct {
 	keyCodec   KeyCodec
 }
 
-func NewSimple(loader Loader, marshaller marshal.FileMarshaller) *SimpleStore {
-	return NewSimpleWithOptions(loader, marshaller)
+// OpenSimple returns a Store backed by the provided Loader.
+func OpenSimple(loader Loader, marshaller marshal.FileMarshaller) *SimpleStore {
+	return OpenSimpleWithOptions(loader, marshaller)
 }
 
-func NewSimpleWithOptions(loader Loader, marshaller marshal.FileMarshaller, opts ...StoreOption) *SimpleStore {
+// OpenSimpleWithOptions returns a Store backed by the provided Loader and options.
+func OpenSimpleWithOptions(loader Loader, marshaller marshal.FileMarshaller, opts ...StoreOption) *SimpleStore {
 	options := applyStoreOptions(opts...)
 	return &SimpleStore{
 		loader:     loader,
@@ -26,14 +28,64 @@ func NewSimpleWithOptions(loader Loader, marshaller marshal.FileMarshaller, opts
 	}
 }
 
+type simpleWorkspace struct {
+	workspace  LoaderWorkspace
+	marshaller marshal.FileMarshaller
+	options    []StoreOption
+}
+
+func (s *simpleWorkspace) Open(name string, namespace ...string) (Store, error) {
+	loader, err := s.workspace.Open(name, namespace...)
+	if err != nil {
+		return nil, err
+	}
+	return OpenSimpleWithOptions(loader, s.marshaller, s.options...), nil
+}
+
+func (s *simpleWorkspace) Explore(name string, namespace ...string) (Explorer, error) {
+	return s.workspace.Explore(name, namespace...)
+}
+
+// NewSimple returns a StoreWorkspace that wraps a LoaderWorkspace with a Simple store.
+func NewSimple(workspace LoaderWorkspace, marshaller marshal.FileMarshaller, opts ...StoreOption) StoreWorkspace {
+	return &simpleWorkspace{
+		workspace:  workspace,
+		marshaller: marshaller,
+		options:    opts,
+	}
+}
+
 func (ss *SimpleStore) List(mods ...ListModifier) ([]Descriptor, error) {
 	opts := &ListOptions{}
 	if err := ListModifiers(mods).Apply(opts); err != nil {
 		return nil, err
 	}
-	list, err := ss.loader.List()
+	loaderOpts := *opts
+	loaderOpts.Unmarshal = nil
+	if opts.StartFrom != "" {
+		loaderOpts.StartFrom = ss.encodeKey(opts.StartFrom)
+	}
+	if opts.Unmarshal != nil {
+		loaderOpts.Data = func(desc Descriptor, data []byte) error {
+			name := desc.Key()
+			key := strings.TrimSuffix(name, "."+ss.marshaller.Extension())
+			key = ss.decodeKey(key)
+			return opts.Unmarshal.UnmarshalAndCall(Key(key), data, ss.marshaller.Unmarshal)
+		}
+	} else if opts.Data != nil {
+		loaderOpts.Data = func(desc Descriptor, data []byte) error {
+			name := desc.Key()
+			key := strings.TrimSuffix(name, "."+ss.marshaller.Extension())
+			key = ss.decodeKey(key)
+			return opts.Data(Key(key), data)
+		}
+	}
+	list, err := ss.loader.List(WithListOptions(loaderOpts))
 	if err != nil {
 		return nil, err
+	}
+	if loaderOpts.Data != nil && len(list) == 0 {
+		return []Descriptor{}, nil
 	}
 	descs := make([]Descriptor, len(list))
 	for i, name := range list {
@@ -41,7 +93,7 @@ func (ss *SimpleStore) List(mods ...ListModifier) ([]Descriptor, error) {
 		key = ss.decodeKey(key)
 		descs[i] = Key(key)
 	}
-	return opts.Finalize(ss, descs, 0)
+	return opts.Finalize(ss, descs, OptimizedStartFrom|OptimizedOffsetLimit|OptimizedUnmarshal)
 }
 
 func (ss *SimpleStore) Marshal(desc Descriptor, value interface{}) error {

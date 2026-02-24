@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/sqlite"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,15 +23,15 @@ func TestNewDirectoryStore(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	flags := &Flags{
-		StoreType:     "directory",
-		DirectoryPath: tmpDir,
+		StoreType: "directory:toml",
+		Directory: &directory.Flags{Path: tmpDir},
 	}
 
-	opener, err := New(FromFlags(flags))
+	workspace, err := NewStore(FromFlags(flags))
 	assert.Nil(t, err)
-	assert.NotNil(t, opener)
+	assert.NotNil(t, workspace)
 
-	store, err := opener("myapp", "testns")
+	store, err := workspace.Open("myapp", "testns")
 	assert.Nil(t, err)
 	assert.NotNil(t, store)
 
@@ -58,7 +59,7 @@ func TestNewUnknownStore(t *testing.T) {
 	flags := &Flags{
 		StoreType: "unknown-type",
 	}
-	_, err := New(FromFlags(flags))
+	_, err := NewStore(FromFlags(flags))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown config store type")
 }
@@ -70,17 +71,17 @@ func TestNewSQLiteStore(t *testing.T) {
 
 	dbPath := filepath.Join(tmpDir, "config.db")
 	flags := &Flags{
-		StoreType: "sqlite",
+		StoreType: "sqlite:json",
 		SQLite: &sqlite.Flags{
 			Path: dbPath,
 		},
 	}
 
-	opener, err := New(FromFlags(flags))
+	workspace, err := NewStore(FromFlags(flags))
 	assert.NoError(t, err)
-	assert.NotNil(t, opener)
+	assert.NotNil(t, workspace)
 
-	store, err := opener("myapp", "testns")
+	store, err := workspace.Open("myapp", "testns")
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
 
@@ -95,37 +96,21 @@ func TestNewSQLiteStore(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "bar", loaded.Value)
 }
-func TestDirectoryMultiRejectsFormat(t *testing.T) {
-	flags := &Flags{
-		StoreType:       "directory",
-		DirectoryMode:   "multi",
-		DirectoryFormat: "toml",
-	}
-
-	opener, err := New(FromFlags(flags))
-	assert.NoError(t, err)
-	_, err = opener("myapp", "testns")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "directory format is only valid for simple mode")
-}
-
 func TestDirectorySimpleWithFormat(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "config-factory-test")
 	assert.Nil(t, err)
 	defer os.RemoveAll(tmpDir)
 
 	flags := &Flags{
-		StoreType:       "directory",
-		DirectoryMode:   "simple",
-		DirectoryFormat: "json",
-		DirectoryPath:   tmpDir,
+		StoreType: "directory:json",
+		Directory: &directory.Flags{Path: tmpDir},
 	}
 
-	opener, err := New(FromFlags(flags))
+	workspace, err := NewStore(FromFlags(flags))
 	assert.Nil(t, err)
-	assert.NotNil(t, opener)
+	assert.NotNil(t, workspace)
 
-	store, err := opener("myapp", "testns")
+	store, err := workspace.Open("myapp", "testns")
 	assert.Nil(t, err)
 	assert.NotNil(t, store)
 
@@ -143,14 +128,14 @@ func TestDirectorySimpleWithFormat(t *testing.T) {
 
 func TestNewMemoryRawStore(t *testing.T) {
 	flags := &Flags{
-		StoreType: "memory-raw",
+		StoreType: "memory:raw",
 	}
 
-	opener, err := New(FromFlags(flags))
+	workspace, err := NewStore(FromFlags(flags))
 	assert.NoError(t, err)
-	assert.NotNil(t, opener)
+	assert.NotNil(t, workspace)
 
-	store, err := opener("myapp", "testns")
+	store, err := workspace.Open("myapp", "testns")
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
 
@@ -164,4 +149,37 @@ func TestNewMemoryRawStore(t *testing.T) {
 	_, err = store.Unmarshal(config.Key("test-key"), &loaded)
 	assert.NoError(t, err)
 	assert.Equal(t, "mem", loaded.Value)
+}
+
+func TestNewDirectoryExplorer(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "config-factory-explorer-test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	flags := &Flags{
+		StoreType: "directory:toml",
+		Directory: &directory.Flags{Path: tmpDir},
+	}
+
+	explorer, err := NewStore(FromFlags(flags))
+	assert.NoError(t, err)
+	assert.NotNil(t, explorer)
+
+	store, err := explorer.Open("myapp", "ns1")
+	assert.NoError(t, err)
+	assert.NotNil(t, store)
+	type TestConfig struct {
+		Value string
+	}
+	assert.NoError(t, store.Marshal(config.Key("k"), TestConfig{Value: "v"}))
+	assert.NoError(t, store.Close())
+
+	expl, err := explorer.Explore("myapp")
+	assert.NoError(t, err)
+	descs, err := expl.List()
+	assert.NoError(t, err)
+	if assert.Len(t, descs, 1) {
+		assert.Equal(t, "ns1", descs[0].Key())
+	}
+	assert.NoError(t, expl.Close())
 }

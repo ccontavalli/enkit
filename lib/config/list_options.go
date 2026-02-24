@@ -7,6 +7,7 @@ type ListOptions struct {
 	Offset    int
 	StartFrom string
 	Unmarshal UnmarshalSpec
+	Data      func(Descriptor, []byte) error
 }
 
 type UnmarshalSpec interface {
@@ -66,6 +67,7 @@ const (
 	OptimizedStartFrom ListOptimized = 1 << iota
 	OptimizedOffsetLimit
 	OptimizedUnmarshal
+	OptimizedData
 )
 
 type ListModifier func(*ListOptions) error
@@ -88,6 +90,9 @@ func WithListOptions(opts ListOptions) ListModifier {
 		target.StartFrom = opts.StartFrom
 		if opts.Unmarshal != nil {
 			target.Unmarshal = opts.Unmarshal
+		}
+		if opts.Data != nil {
+			target.Data = opts.Data
 		}
 		return nil
 	}
@@ -124,6 +129,14 @@ func Unmarshal[T any](target *T, fn func(Descriptor, *T) error) ListModifier {
 	}
 }
 
+// WithData configures a callback to receive key and raw data during listing.
+func WithData(fn func(Descriptor, []byte) error) ListModifier {
+	return func(opts *ListOptions) error {
+		opts.Data = fn
+		return nil
+	}
+}
+
 func ApplyStartFrom(descs []Descriptor, start string) []Descriptor {
 	if start == "" || len(descs) == 0 {
 		return descs
@@ -146,6 +159,30 @@ func ApplyOffsetLimit(descs []Descriptor, offset int, limit int) []Descriptor {
 	return descs[start:end]
 }
 
+// ApplyStartFromKeys applies StartFrom on sorted keys.
+func ApplyStartFromKeys(keys []string, start string) []string {
+	if start == "" || len(keys) == 0 {
+		return keys
+	}
+	index := sort.Search(len(keys), func(i int) bool {
+		return keys[i] >= start
+	})
+	return keys[index:]
+}
+
+// ApplyOffsetLimitKeys applies offset/limit on keys.
+func ApplyOffsetLimitKeys(keys []string, offset int, limit int) []string {
+	start := offset
+	if start > len(keys) {
+		start = len(keys)
+	}
+	end := len(keys)
+	if limit > 0 && start+limit < end {
+		end = start + limit
+	}
+	return keys[start:end]
+}
+
 // Apply applies list options, honoring the optimization bitmask.
 func (opts *ListOptions) Apply(descs []Descriptor, optimized ListOptimized) []Descriptor {
 	if optimized&OptimizedStartFrom == 0 {
@@ -155,6 +192,35 @@ func (opts *ListOptions) Apply(descs []Descriptor, optimized ListOptimized) []De
 		descs = ApplyOffsetLimit(descs, opts.Offset, opts.Limit)
 	}
 	return descs
+}
+
+// ApplyKeys applies list options to sorted keys, honoring the optimization bitmask.
+func (opts *ListOptions) ApplyKeys(keys []string, optimized ListOptimized) []string {
+	if optimized&OptimizedStartFrom == 0 {
+		keys = ApplyStartFromKeys(keys, opts.StartFrom)
+	}
+	if optimized&OptimizedOffsetLimit == 0 {
+		keys = ApplyOffsetLimitKeys(keys, opts.Offset, opts.Limit)
+	}
+	return keys
+}
+
+// FinalizeKeys applies list options and data callbacks for loaders.
+func (opts *ListOptions) FinalizeKeys(loader Loader, keys []string, optimized ListOptimized) ([]string, error) {
+	keys = opts.ApplyKeys(keys, optimized)
+	if opts.Data != nil && optimized&OptimizedData == 0 {
+		for _, key := range keys {
+			data, err := loader.Read(key)
+			if err != nil {
+				return nil, err
+			}
+			if err := opts.Data(Key(key), data); err != nil {
+				return nil, err
+			}
+		}
+		return []string{}, nil
+	}
+	return keys, nil
 }
 
 // Finalize applies list options and performs unmarshal fallbacks.

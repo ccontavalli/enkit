@@ -166,6 +166,17 @@ func (t *Tracer) WrapStore(name string, store config.Store) config.Store {
 	}
 }
 
+// WrapWorkspace returns a workspace that wraps returned stores and explorers with tracing.
+func (t *Tracer) WrapWorkspace(workspace config.StoreWorkspace) config.StoreWorkspace {
+	if workspace == nil {
+		return nil
+	}
+	return &tracedWorkspace{
+		workspace: workspace,
+		tracer:    t,
+	}
+}
+
 func (t *Tracer) enabledFor(name string) bool {
 	if !t.flags.Enabled && !t.flags.LogRequests && !t.flags.LogResponses {
 		return false
@@ -278,4 +289,111 @@ func storeName(app string, namespace []string) string {
 		return ""
 	}
 	return path.Join(append([]string{app}, namespace...)...)
+}
+
+type tracedWorkspace struct {
+	workspace config.StoreWorkspace
+	tracer    *Tracer
+}
+
+func (t *tracedWorkspace) Open(app string, namespace ...string) (config.Store, error) {
+	store, err := t.workspace.Open(app, namespace...)
+	if err != nil {
+		return nil, err
+	}
+	return t.tracer.WrapStore(storeName(app, namespace), store), nil
+}
+
+func (t *tracedWorkspace) Explore(app string, namespace ...string) (config.Explorer, error) {
+	explorer, err := t.workspace.Explore(app, namespace...)
+	if err != nil {
+		return nil, err
+	}
+	return t.tracer.WrapExplorer(storeName(app, namespace), explorer), nil
+}
+
+// WrapExplorer returns a traced explorer if enabled for name.
+func (t *Tracer) WrapExplorer(name string, explorer config.Explorer) config.Explorer {
+	if explorer == nil || !t.enabledFor(name) {
+		return explorer
+	}
+	return &tracedExplorator{
+		name:         name,
+		explorator:   explorer,
+		log:          t.log,
+		logEnabled:   t.flags.Enabled,
+		logRequests:  t.flags.LogRequests,
+		logResponses: t.flags.LogResponses,
+	}
+}
+
+type tracedExplorator struct {
+	name         string
+	explorator   config.Explorer
+	log          logger.Logger
+	logEnabled   bool
+	logRequests  bool
+	logResponses bool
+}
+
+func (t *tracedExplorator) List(mods ...config.ListModifier) ([]config.Descriptor, error) {
+	t.logStart("ExploreList", "")
+	descs, err := t.explorator.List(mods...)
+	t.logEnd("ExploreList", "", err, descs)
+	return descs, err
+}
+
+func (t *tracedExplorator) Delete(desc config.Descriptor) error {
+	key := fmt.Sprint(desc)
+	t.logStart("ExploreDelete", key)
+	err := t.explorator.Delete(desc)
+	t.logEnd("ExploreDelete", key, err, nil)
+	return err
+}
+
+func (t *tracedExplorator) Close() error {
+	t.logStart("ExploreClose", "")
+	err := t.explorator.Close()
+	t.logEnd("ExploreClose", "", err, nil)
+	return err
+}
+
+func (t *tracedExplorator) logStart(operation string, key string) {
+	if !t.logRequests {
+		return
+	}
+	t.logLine(operation, key, "start", nil, nil)
+}
+
+func (t *tracedExplorator) logEnd(operation string, key string, err error, value interface{}) {
+	if !t.logEnabled && !t.logResponses && err == nil {
+		return
+	}
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	if err != nil {
+		t.logLine(operation, key, status, nil, err)
+		return
+	}
+	if t.logResponses && value != nil {
+		t.logLine(operation, key, status, value, nil)
+		return
+	}
+	t.logLine(operation, key, status, nil, nil)
+}
+
+func (t *tracedExplorator) logLine(operation string, key string, status string, value interface{}, err error) {
+	msg := "store namespace=" + t.name + " operation=" + operation + " status=" + status
+	if key != "" {
+		msg += " key=" + key
+	}
+	if err != nil {
+		msg += fmt.Sprintf(" error=%v", err)
+	}
+	if value != nil {
+		msg += fmt.Sprintf(" response=%+v", value)
+	}
+	t.log.Infof("%s", msg)
 }

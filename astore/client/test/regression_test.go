@@ -34,7 +34,7 @@ func Open(name string, namespace ...string) (config.Store, error) {
 		return nil, err
 	}
 
-	return config.NewMulti(dir), err
+	return config.OpenMulti(dir), err
 }
 
 func Store() (*astore.Client, error) {

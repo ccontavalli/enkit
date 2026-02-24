@@ -1,4 +1,4 @@
-package config
+package config_test
 
 import (
 	"io/ioutil"
@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/stretchr/testify/assert"
@@ -36,28 +37,27 @@ func TestMulti(t *testing.T) {
 		},
 	}
 
-	m := NewMulti(hd)
+	m := config.OpenMulti(hd)
 
 	found, err := m.List()
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(found))
 
 	var read TestConfig
-	_, err = m.Unmarshal(Key("quote"), &read)
+	_, err = m.Unmarshal(config.Key("quote"), &read)
 	assert.True(t, os.IsNotExist(err))
 
-	err = m.Delete(Key("quote"))
+	err = m.Delete(config.Key("quote"))
 	assert.True(t, os.IsNotExist(err), "%v", err)
-	err = m.Delete(Key("quote.toml"))
+	err = m.Delete(config.Key("quote.toml"))
 	assert.True(t, os.IsNotExist(err))
 
-	err = m.Marshal(Key("quote"), data)
+	err = m.Marshal(config.Key("quote"), data)
 	assert.Nil(t, err)
 
-	desc, err := m.Unmarshal(Key("quote"), &read)
+	desc, err := m.Unmarshal(config.Key("quote"), &read)
 	assert.Nil(t, err)
 	assert.Equal(t, "quote", desc.Key())
-	assert.Equal(t, marshal.Toml, desc.(*multiDescriptor).m)
 	assert.Equal(t, data, read)
 
 	data2 := TestConfig{
@@ -67,24 +67,22 @@ func TestMulti(t *testing.T) {
 		Key: "If you assume that there is no hope, you guarantee that there will be no hope.",
 	}
 
-	err = m.Marshal(FormatKey("quote", marshal.Json), data2)
+	err = m.Marshal(config.FormatKey("quote", marshal.Json), data2)
 	assert.Nil(t, err)
 
 	// Despite writing a quote.json file, the preferred quote is the toml one.
-	desc, err = m.Unmarshal(Key("quote"), &read)
+	desc, err = m.Unmarshal(config.Key("quote"), &read)
 	assert.Nil(t, err)
 	assert.Equal(t, "quote", desc.Key())
-	assert.Equal(t, marshal.Toml, desc.(*multiDescriptor).m)
 	assert.Equal(t, data, read)
 
 	// And writing it affects the toml, but not the json.
-	err = m.Marshal(Key("quote"), data3)
+	err = m.Marshal(config.Key("quote"), data3)
 	assert.Nil(t, err)
 
-	desc, err = m.Unmarshal(FormatKey("quote", marshal.Json), &read)
+	desc, err = m.Unmarshal(config.FormatKey("quote", marshal.Json), &read)
 	assert.Nil(t, err)
 	assert.Equal(t, "quote", desc.Key())
-	assert.Equal(t, marshal.Json, desc.(*multiDescriptor).m)
 	assert.Equal(t, data2, read)
 
 	// Marshalling via descriptor affects the correct file.
@@ -92,12 +90,15 @@ func TestMulti(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Now we add a 3rd format, just so we can delete a file later.
-	err = m.Marshal(FormatKey("quote", marshal.Yaml), data2)
+	err = m.Marshal(config.FormatKey("quote", marshal.Yaml), data2)
 	assert.Nil(t, err)
 
 	found, err = m.List()
 	assert.Nil(t, err)
-	assert.ElementsMatch(t, []string{"quote.json", "quote.toml", "quote.yaml"}, descriptorPaths(found))
+	assert.Len(t, found, 3)
+	files, err := hd.List()
+	assert.Nil(t, err)
+	assert.ElementsMatch(t, []string{"quote.json", "quote.toml", "quote.yaml"}, files)
 
 	// Let's delete a specific file.
 	err = m.Delete(desc)
@@ -106,26 +107,19 @@ func TestMulti(t *testing.T) {
 	// Check that only one file was deleted.
 	found, err = m.List()
 	assert.Nil(t, err)
-	assert.ElementsMatch(t, []string{"quote.toml", "quote.yaml"}, descriptorPaths(found))
+	assert.Len(t, found, 2)
+	files, err = hd.List()
+	assert.Nil(t, err)
+	assert.ElementsMatch(t, []string{"quote.toml", "quote.yaml"}, files)
 
 	// Let's delete the whole key.
-	err = m.Delete(Key("quote"))
+	err = m.Delete(config.Key("quote"))
 	assert.Nil(t, err)
 
 	// No quote anymore.
 	found, err = m.List()
 	assert.Nil(t, err)
 	assert.Empty(t, found)
-}
-
-func descriptorPaths(descs []Descriptor) []string {
-	paths := make([]string, 0, len(descs))
-	for _, desc := range descs {
-		if d, ok := desc.(*multiDescriptor); ok {
-			paths = append(paths, d.k+"."+d.m.Extension())
-		}
-	}
-	return paths
 }
 
 func TestMultiKeyWithExtension(t *testing.T) {
@@ -135,14 +129,14 @@ func TestMultiKeyWithExtension(t *testing.T) {
 	hd, err := directory.OpenDir(filepath.Join(td, "test"))
 	assert.Nil(t, err)
 
-	m := NewMulti(hd, marshal.Toml)
+	m := config.OpenMulti(hd, marshal.Toml)
 	data := TestConfig{Key: "k", Value: "v"}
 	key := "foo.toml"
-	err = m.Marshal(Key(key), data)
+	err = m.Marshal(config.Key(key), data)
 	assert.Nil(t, err)
 
 	var read TestConfig
-	_, err = m.Unmarshal(Key(key), &read)
+	_, err = m.Unmarshal(config.Key(key), &read)
 	assert.Nil(t, err)
 	assert.Equal(t, data, read)
 
@@ -159,14 +153,14 @@ func TestMultiKeyWithColon(t *testing.T) {
 	hd, err := directory.OpenDir(filepath.Join(td, "test"))
 	assert.Nil(t, err)
 
-	m := NewMulti(hd, marshal.Toml)
+	m := config.OpenMulti(hd, marshal.Toml)
 	data := TestConfig{Key: "k", Value: "v"}
 	key := "user:123"
-	err = m.Marshal(Key(key), data)
+	err = m.Marshal(config.Key(key), data)
 	assert.Nil(t, err)
 
 	var read TestConfig
-	_, err = m.Unmarshal(Key(key), &read)
+	_, err = m.Unmarshal(config.Key(key), &read)
 	assert.Nil(t, err)
 	assert.Equal(t, data, read)
 

@@ -47,7 +47,7 @@ type Store interface {
 
 // StreamLoader provides streaming access to a backend.
 type StreamLoader interface {
-	List() ([]string, error)
+	List(mods ...config.ListModifier) ([]string, error)
 
 	// Reader returns a stream for a blob key.
 	//

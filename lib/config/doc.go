@@ -1,10 +1,10 @@
 // Package config provides a unified interface for configuration stores.
 //
 // Backends:
-//   - directory: multi-format files on disk (TOML/JSON/YAML/Gob). Best when configs should be
+//   - directory: files on disk (TOML/JSON/YAML/Gob). Best when configs should be
 //     human-editable or shared with external tools.
-//   - bbolt: JSON-only embedded KV store optimized for local, programmatic access.
-//   - sqlite: JSON-only storage optimized for programmatic access and local queries.
+//   - bbolt: embedded KV store optimized for local, programmatic access.
+//   - sqlite: embedded storage optimized for programmatic access and local queries.
 //   - datastore: Google Cloud Datastore backend for remote config storage.
 //
 // Benchmark notes:

@@ -34,9 +34,9 @@ type Metadata struct {
 // has to be stored separately. A MetadataStore lets ServeStore and StreamLoader
 // agree on where that metadata lives:
 //
-// - Inline metadata is embedded at the front of the blob stream (a fixed header).
-// - Sidecar metadata is stored separately (for example as a parallel file or
-//   separate database record) while the blob stream contains only payload bytes.
+//   - Inline metadata is embedded at the front of the blob stream (a fixed header).
+//   - Sidecar metadata is stored separately (for example as a parallel file or
+//     separate database record) while the blob stream contains only payload bytes.
 //
 // This package currently provides InlineMetadata and NoMetadata. A sidecar
 // implementation can be added by composing WrapReader/WrapWriter with an

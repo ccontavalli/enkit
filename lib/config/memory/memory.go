@@ -8,6 +8,8 @@ import (
 	"os"
 	"sort"
 	"sync"
+
+	"github.com/ccontavalli/enkit/lib/config"
 )
 
 // Loader is an in-memory implementation of config.Loader and blob.StreamLoader.
@@ -18,13 +20,17 @@ type Loader struct {
 	data map[string][]byte
 }
 
-// New returns a new in-memory loader.
-func New() *Loader {
+// Open returns a new in-memory loader.
+func Open() *Loader {
 	return &Loader{data: make(map[string][]byte)}
 }
 
 // List returns the stored keys in sorted order.
-func (m *Loader) List() ([]string, error) {
+func (m *Loader) List(mods ...config.ListModifier) ([]string, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	keys := make([]string, 0, len(m.data))
@@ -32,7 +38,7 @@ func (m *Loader) List() ([]string, error) {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	return keys, nil
+	return opts.FinalizeKeys(m, keys, 0)
 }
 
 // Read returns a copy of the stored data.

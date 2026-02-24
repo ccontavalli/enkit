@@ -1,22 +1,24 @@
-package config
+package config_test
 
 import (
+	"testing"
+
+	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestStoreImplementations(t *testing.T) {
 	hd, err := directory.OpenHomeDir("application")
 	assert.Nil(t, err)
 
-	var _ = []Loader{
+	var _ = []config.Loader{
 		hd,
 	}
 
-	var _ = []Store{
-		NewSimple(hd, marshal.Json),
-		NewMulti(hd, marshal.Toml, marshal.Json),
+	var _ = []config.Store{
+		config.OpenSimple(hd, marshal.Json),
+		config.OpenMulti(hd, marshal.Toml, marshal.Json),
 	}
 }

@@ -34,7 +34,7 @@ func (d namespaceDescriptor) NamespacePath() []string {
 }
 
 // NamespaceList returns the child namespace names under the given path.
-func NamespaceList(explorer Explorer, name string, namespace ...string) ([]string, error) {
+func NamespaceList(explorer StoreWorkspace, name string, namespace ...string) ([]string, error) {
 	store, err := explorer.Explore(name, namespace...)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func NamespaceList(explorer Explorer, name string, namespace ...string) ([]strin
 }
 
 // NamespaceExists reports whether a namespace exists under its parent.
-func NamespaceExists(explorer Explorer, name string, namespace ...string) (bool, error) {
+func NamespaceExists(explorer StoreWorkspace, name string, namespace ...string) (bool, error) {
 	if len(namespace) == 0 {
 		return false, fmt.Errorf("namespace path is required")
 	}
@@ -79,7 +79,7 @@ func NamespaceExists(explorer Explorer, name string, namespace ...string) (bool,
 }
 
 // NamespaceWalk walks namespaces depth-first, calling fn with full paths.
-func NamespaceWalk(explorer Explorer, name string, namespace []string, fn func([]string) error) error {
+func NamespaceWalk(explorer StoreWorkspace, name string, namespace []string, fn func([]string) error) error {
 	store, err := explorer.Explore(name, namespace...)
 	if err != nil {
 		return err
@@ -103,7 +103,7 @@ func NamespaceWalk(explorer Explorer, name string, namespace []string, fn func([
 }
 
 // NamespaceDelete removes a namespace by deleting it from its parent.
-func NamespaceDelete(explorer Explorer, name string, namespace ...string) error {
+func NamespaceDelete(explorer StoreWorkspace, name string, namespace ...string) error {
 	if len(namespace) == 0 {
 		return fmt.Errorf("namespace path is required")
 	}

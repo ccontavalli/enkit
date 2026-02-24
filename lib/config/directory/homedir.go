@@ -3,14 +3,17 @@ package directory
 
 import (
 	"io"
-	"github.com/kirsle/configdir"
 	"io/ioutil"
 	"os"
 	"os/user"
 	"path/filepath"
+	"sort"
+
+	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/kirsle/configdir"
 )
 
-type Directory struct {
+type DirectoryStore struct {
 	path string
 }
 
@@ -37,13 +40,13 @@ func GetConfigDir(app string, namespaces ...string) (string, error) {
 // user.
 //
 // On Linux systems, this generally means ~/.config/<app>/<namespace>/.
-func OpenHomeDir(app string, namespaces ...string) (*Directory, error) {
+func OpenHomeDir(app string, namespaces ...string) (*DirectoryStore, error) {
 	dir, err := GetConfigDir(app, namespaces...)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Directory{path: dir}, nil
+	return &DirectoryStore{path: dir}, nil
 }
 
 // Refresh values cached by OpenHomeDir.
@@ -59,12 +62,16 @@ func Refresh() {
 
 // OpenDir returns a Loader capable of loading and creating config
 // files in the specified directory.
-func OpenDir(base string, sub ...string) (*Directory, error) {
+func OpenDir(base string, sub ...string) (*DirectoryStore, error) {
 	path := filepath.Join(append([]string{base}, sub...)...)
-	return &Directory{path: path}, nil
+	return &DirectoryStore{path: path}, nil
 }
 
-func (hd *Directory) List() ([]string, error) {
+func (hd *DirectoryStore) List(mods ...config.ListModifier) ([]string, error) {
+	opts := &config.ListOptions{}
+	if err := config.ListModifiers(mods).Apply(opts); err != nil {
+		return nil, err
+	}
 	files, err := ioutil.ReadDir(hd.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -79,20 +86,21 @@ func (hd *Directory) List() ([]string, error) {
 		}
 		paths = append(paths, file.Name())
 	}
-	return paths, nil
+	sort.Strings(paths)
+	return opts.FinalizeKeys(hd, paths, 0)
 }
 
-func (hd *Directory) Delete(name string) error {
+func (hd *DirectoryStore) Delete(name string) error {
 	path := filepath.Join(hd.path, name)
 	return os.Remove(path)
 }
 
-func (hd *Directory) Read(name string) ([]byte, error) {
+func (hd *DirectoryStore) Read(name string) ([]byte, error) {
 	path := filepath.Join(hd.path, name)
 	return ioutil.ReadFile(path)
 }
 
-func (hd *Directory) Write(name string, data []byte) error {
+func (hd *DirectoryStore) Write(name string, data []byte) error {
 	if err := os.MkdirAll(hd.path, 0770); err != nil {
 		return err
 	}
@@ -112,18 +120,18 @@ func (hd *Directory) Write(name string, data []byte) error {
 	return os.Rename(tmp.Name(), filepath.Join(hd.path, name))
 }
 
-func (hd *Directory) Close() error {
+func (hd *DirectoryStore) Close() error {
 	return nil
 }
 
-func (hd *Directory) Reader(name string) (io.ReadCloser, error) {
+func (hd *DirectoryStore) Reader(name string) (io.ReadCloser, error) {
 	path := filepath.Join(hd.path, name)
 	return os.Open(path)
 }
 
 type atomicFileWriter struct {
-	file       *os.File
-	finalPath  string
+	file      *os.File
+	finalPath string
 }
 
 func (w *atomicFileWriter) Write(p []byte) (int, error) {
@@ -142,7 +150,7 @@ func (w *atomicFileWriter) Close() error {
 	return nil
 }
 
-func (hd *Directory) Writer(name string) (io.WriteCloser, error) {
+func (hd *DirectoryStore) Writer(name string) (io.WriteCloser, error) {
 	if err := os.MkdirAll(hd.path, 0770); err != nil {
 		return nil, err
 	}

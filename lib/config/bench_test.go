@@ -242,8 +242,8 @@ func benchMemoryBackends() []backend {
 			name: "memory-simple-json",
 			open: func(tb testing.TB) (config.Store, func(), error) {
 				tb.Helper()
-				loader := memory.New()
-				store := config.NewSimple(loader, marshal.Json)
+				loader := memory.Open()
+				store := config.OpenSimple(loader, marshal.Json)
 				return store, func() {}, nil
 			},
 		},
@@ -286,7 +286,7 @@ func benchDirectorySimpleBackends() []backend {
 					return nil, nil, err
 				}
 
-				store := config.NewSimple(loader, m.m)
+				store := config.OpenSimple(loader, m.m)
 				cleanup := func() {
 					_ = os.RemoveAll(dir)
 				}
@@ -325,7 +325,7 @@ func benchDirectoryMultiBackends() []backend {
 					return nil, nil, err
 				}
 
-				store := config.NewMulti(loader, m.m)
+				store := config.OpenMulti(loader, m.m)
 				cleanup := func() {
 					_ = os.RemoveAll(dir)
 				}
@@ -365,12 +365,13 @@ func benchSQLiteBackends() []backend {
 					return nil, nil, err
 				}
 
-				store, err := db.Open("app", "ns")
+				loader, err := db.Open("app", "ns")
 				if err != nil {
 					db.Close()
 					_ = os.Remove(path)
 					return nil, nil, err
 				}
+				store := config.OpenSimple(loader, marshal.Json)
 
 				cleanup := func() {
 					_ = db.Close()
@@ -404,12 +405,13 @@ func benchBboltBackends() []backend {
 					return nil, nil, err
 				}
 
-				store, err := db.Open("app", "ns")
+				loader, err := db.Open("app", "ns")
 				if err != nil {
 					db.Close()
 					_ = os.Remove(path)
 					return nil, nil, err
 				}
+				store := config.OpenSimple(loader, marshal.Json)
 
 				cleanup := func() {
 					_ = db.Close()

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,8 +21,9 @@ func TestBoltStoreRoundTrip(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 
-	store, err := db.Open("myapp", "testns")
+	loader, err := db.Open("myapp", "testns")
 	assert.NoError(t, err)
+	store := config.OpenSimple(loader, marshal.Json)
 
 	type TestConfig struct {
 		Value string
@@ -58,8 +60,9 @@ func TestBoltStoreJSON(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Close()
 
-	store, err := db.Open("myapp", "json")
+	loader, err := db.Open("myapp", "json")
 	assert.NoError(t, err)
+	store := config.OpenSimple(loader, marshal.Json)
 
 	type TestConfig struct {
 		Value string `json:"value"`
@@ -68,17 +71,17 @@ func TestBoltStoreJSON(t *testing.T) {
 	err = store.Marshal(config.Key("config"), TestConfig{Value: "hello"})
 	assert.NoError(t, err)
 
-	boltStore, ok := store.(*BoltStore)
-	assert.True(t, ok)
+	loader2, err := newLoader(db.db, storeScope("myapp", "json"))
+	assert.NoError(t, err)
 
-	data, err := boltStore.loader.Read("config")
+	data, err := loader2.Read("config." + marshal.Json.Extension())
 	assert.NoError(t, err)
 
 	expected, err := json.Marshal(TestConfig{Value: "hello"})
 	assert.NoError(t, err)
 	assert.Equal(t, expected, data)
 
-	err = boltStore.loader.Write("bad", []byte("{"))
+	err = loader2.Write("bad."+marshal.Json.Extension(), []byte("{"))
 	assert.NoError(t, err)
 
 	var loaded TestConfig

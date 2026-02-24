@@ -36,7 +36,7 @@ func TestStoreConformance(t *testing.T) {
 				if err != nil {
 					t.Fatalf("open dir: %v", err)
 				}
-				return config.NewSimple(loader, marshal.Json), func() {}
+				return config.OpenSimple(loader, marshal.Json), func() {}
 			},
 		},
 		{
@@ -48,7 +48,7 @@ func TestStoreConformance(t *testing.T) {
 				if err != nil {
 					t.Fatalf("open dir: %v", err)
 				}
-				return config.NewMulti(loader, marshal.Json), func() {}
+				return config.OpenMulti(loader, marshal.Json), func() {}
 			},
 		},
 		{
@@ -69,12 +69,13 @@ func TestStoreConformance(t *testing.T) {
 					_ = os.Remove(path)
 					t.Fatalf("open sqlite: %v", err)
 				}
-				store, err := db.Open("app", "ns")
+				loader, err := db.Open("app", "ns")
 				if err != nil {
 					_ = db.Close()
 					_ = os.Remove(path)
 					t.Fatalf("open store: %v", err)
 				}
+				store := config.OpenSimple(loader, marshal.Json)
 				cleanup := func() {
 					_ = os.Remove(path)
 				}
@@ -99,12 +100,13 @@ func TestStoreConformance(t *testing.T) {
 					_ = os.Remove(path)
 					t.Fatalf("open bbolt: %v", err)
 				}
-				store, err := db.Open("app", "ns")
+				loader, err := db.Open("app", "ns")
 				if err != nil {
 					_ = db.Close()
 					_ = os.Remove(path)
 					t.Fatalf("open store: %v", err)
 				}
+				store := config.OpenSimple(loader, marshal.Json)
 				cleanup := func() {
 					_ = os.Remove(path)
 				}
@@ -122,8 +124,8 @@ func TestStoreConformance(t *testing.T) {
 			name: "memory-loader-json",
 			open: func(t *testing.T) (config.Store, func()) {
 				t.Helper()
-				loader := memory.New()
-				return config.NewSimple(loader, marshal.Json), func() {}
+				loader := memory.Open()
+				return config.OpenSimple(loader, marshal.Json), func() {}
 			},
 		},
 	}

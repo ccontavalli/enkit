@@ -10,7 +10,7 @@ import (
 )
 
 func TestLoaderReadWriteDelete(t *testing.T) {
-	loader := New()
+	loader := Open()
 
 	keys, err := loader.List()
 	assert.NoError(t, err)
@@ -43,7 +43,7 @@ func TestLoaderReadWriteDelete(t *testing.T) {
 }
 
 func TestLoaderStreamIO(t *testing.T) {
-	loader := New()
+	loader := Open()
 
 	writer, err := loader.Writer("stream")
 	assert.NoError(t, err)

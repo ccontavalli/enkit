@@ -2,7 +2,10 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "factory",
-    srcs = ["factory.go"],
+    srcs = [
+        "factory.go",
+        "workspace.go",
+    ],
     importpath = "github.com/ccontavalli/enkit/lib/config/factory",
     visibility = ["//visibility:public"],
     deps = [

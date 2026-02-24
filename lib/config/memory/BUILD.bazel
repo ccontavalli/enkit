@@ -6,10 +6,13 @@ go_library(
         "backend.go",
         "memory.go",
         "store.go",
+        "workspace.go",
     ],
     importpath = "github.com/ccontavalli/enkit/lib/config/memory",
     visibility = ["//visibility:public"],
-    deps = ["//lib/config"],
+    deps = [
+        "//lib/config",
+    ],
 )
 
 go_test(

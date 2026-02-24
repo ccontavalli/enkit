@@ -21,6 +21,11 @@
 //	   ...
 //	}
 //
+// Naming convention:
+// - New* returns a Workspace (StoreWorkspace or LoaderWorkspace).
+// - Open* returns a Store or Loader.
+// - Workspace.Open returns Store or Loader based on the interface.
+//
 // The "server-config" string is ... just a string. A key by which the configuration
 // is known by. Different Store implementations will use it differently: they may
 // turn it into a file name, into the key of a database, ...
@@ -35,15 +40,32 @@
 //
 // If you need to store configs on a file system or database that does not have
 // a native marshalling/unmarshalling scheme, you can implement the `Loader`
-// interface, and then use NewSimple() or NewMulti() to turn a Loader into a Store.
+// interface, and then use OpenSimple() or OpenMulti() to turn a Loader into a Store.
+// If you have a LoaderWorkspace, use NewSimple() or NewMulti() to turn it into a StoreWorkspace.
 //
-// NewSimple and NewMulti wrap a store around an object capable of using one
+// OpenSimple and OpenMulti wrap a store around an object capable of using one
 // of the standard encoders/decoders provided by go.
 package config
 
-// Represents a file that was Unmarshalled.
+// Represents an entry in a store.
 //
-// Use descriptors to guarantee that a file is saved in the same location it was read from.
+// The Key() method returns the original string that was used to Marshal
+// or Unamrshal the entry. Some config stores allow the same key to be
+// stored in multiple entries, typically under error conditions or When
+// some undesired/unexpcted condition happen (for example, if multiple
+// files are allowed, and a key/value was saved first as json and then
+// as toml, or a database is not configured correctly for unique keys).
+//
+// Descriptors allow to handle this cleanly: a descriptor always
+// refers to a precise entry in the Database, so operations like
+// Marshal or Delete on the Descriptor are guaranteed to work on the
+// correct entry.
+//
+// Additionally, and more importantly, some database engines or use
+// cases require transforming the key to be suitably indexed in the
+// database. For example, by encrypting it, by escaping invalid
+// characters, or similar. The Descriptor interface abstracts those
+// mechanics.
 type Descriptor interface {
 	Key() string
 }
@@ -58,8 +80,8 @@ func (k Key) Key() string {
 // Opener is any function that is capable of opening a store.
 type Opener func(name string, namespace ...string) (Store, error)
 
-// Explorator lists and deletes child namespaces.
-type Explorator interface {
+// Explorer lists and deletes child namespaces.
+type Explorer interface {
 	// List returns child namespaces available under the current path.
 	List(mods ...ListModifier) ([]Descriptor, error)
 	// Delete removes the namespace represented by the descriptor.
@@ -68,10 +90,16 @@ type Explorator interface {
 	Close() error
 }
 
-// Explorer opens namespace stores that list child namespaces.
-type Explorer interface {
+// LoaderWorkspace opens namespace loaders and provides namespace exploration.
+type LoaderWorkspace interface {
+	Open(name string, namespace ...string) (Loader, error)
+	Explore(name string, namespace ...string) (Explorer, error)
+}
+
+// StoreWorkspace opens namespace stores and provides namespace exploration.
+type StoreWorkspace interface {
 	Open(name string, namespace ...string) (Store, error)
-	Explore(name string, namespace ...string) (Explorator, error)
+	Explore(name string, namespace ...string) (Explorer, error)
 }
 
 // Store is the interface normally used from this library.
@@ -119,9 +147,9 @@ type Store interface {
 // Implement the Loader interface to prvoide mechanisms to read and write configuration files.
 //
 // If you have an object implementing the Loader interface, you can then use
-// NewSimple() or NewMulti() to turn it into a Store.
+// OpenSimple() or OpenMulti() to turn it into a Store.
 type Loader interface {
-	List() ([]string, error)
+	List(mods ...ListModifier) ([]string, error)
 
 	// Read returns the raw stored bytes for a key.
 	//

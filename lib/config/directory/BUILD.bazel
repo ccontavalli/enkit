@@ -2,10 +2,17 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "directory",
-    srcs = ["homedir.go"],
+    srcs = [
+        "backend.go",
+        "homedir.go",
+    ],
     importpath = "github.com/ccontavalli/enkit/lib/config/directory",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_kirsle_configdir//:configdir"],
+    deps = [
+        "//lib/config",
+        "//lib/kflags",
+        "@com_github_kirsle_configdir//:configdir",
+    ],
 )
 
 go_test(
