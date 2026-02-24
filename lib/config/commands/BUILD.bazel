@@ -1,0 +1,34 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "commands",
+    srcs = [
+        "backup.go",
+        "commands.go",
+        "convert.go",
+        "find.go",
+        "get.go",
+        "grep.go",
+        "list.go",
+        "helpers.go",
+        "put.go",
+        "restore.go",
+    ],
+    importpath = "github.com/ccontavalli/enkit/lib/config/commands",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/config",
+        "//lib/config/factory",
+        "//lib/config/marshal",
+        "//lib/kflags",
+        "//lib/kflags/kcobra",
+        "//lib/progress",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":commands",
+    visibility = ["//visibility:public"],
+)
