@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "typed",
+    srcs = ["typed.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/config/typed",
+    visibility = ["//visibility:public"],
+    deps = ["//lib/config"],
+)
+
+go_test(
+    name = "typed_test",
+    srcs = ["typed_test.go"],
+    embed = [":typed"],
+    deps = [
+        "//lib/config",
+        "//lib/config/memory",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":typed",
+    visibility = ["//visibility:public"],
+)
