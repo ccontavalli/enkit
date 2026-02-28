@@ -4,6 +4,7 @@ go_library(
     name = "blob",
     srcs = [
         "blob.go",
+        "codec_store.go",
         "metadata.go",
         "serve.go",
         "url_codec.go",
@@ -23,6 +24,7 @@ go_library(
 go_test(
     name = "blob_test",
     srcs = [
+        "codec_store_test.go",
         "metadata_test.go",
         "serve_test.go",
     ],
@@ -30,6 +32,7 @@ go_test(
     deps = [
         "//lib/config/directory",
         "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
         "//lib/khttp/krequest",
         "//lib/khttp/ktest",
         "//lib/khttp/protocol",
