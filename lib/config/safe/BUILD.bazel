@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "safe",
+    srcs = ["safe.go"],
+    importpath = "github.com/ccontavalli/enkit/lib/config/safe",
+    visibility = ["//visibility:public"],
+    deps = ["//lib/config"],
+)
+
+go_test(
+    name = "safe_test",
+    srcs = ["safe_test.go"],
+    embed = [":safe"],
+    deps = [
+        "//lib/config",
+        "//lib/config/memory",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":safe",
+    visibility = ["//visibility:public"],
+)
