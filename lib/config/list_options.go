@@ -38,12 +38,13 @@ func (u *UnmarshalSpecT[T]) ClearTarget() {
 }
 
 func (u *UnmarshalSpecT[T]) UnmarshalAndCall(desc Descriptor, data []byte, unmarshal func([]byte, interface{}) error) error {
+	// Always clear before decoding so missing fields in the next record do not
+	// inherit values from the previous one.
+	u.ClearTarget()
 	if len(data) > 0 {
 		if err := unmarshal(data, u.target); err != nil {
 			return err
 		}
-	} else {
-		u.ClearTarget()
 	}
 	return u.fn(desc, u.target)
 }
