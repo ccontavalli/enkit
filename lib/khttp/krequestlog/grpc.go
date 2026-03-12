@@ -17,26 +17,25 @@ func UnaryInterceptor(mods ...Modifier) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 		method := info.FullMethod
-		shouldLog := opts.LogFilter == nil || opts.LogFilter(method)
 
 		origin := kgrpc.ClientOrigin(ctx)
 
-		if shouldLog && opts.LogStart {
+		if opts.LogStart {
 			if opts.LogPayloads {
-				opts.Printer("GRPC START method=%s origin=%s request=%s", method, origin, payloadString(req))
+				printLogLine(opts, "GRPC START method=%s origin=%s request=%s", method, origin, payloadString(req))
 			} else {
-				opts.Printer("GRPC START method=%s origin=%s", method, origin)
+				printLogLine(opts, "GRPC START method=%s origin=%s", method, origin)
 			}
 		}
 
 		resp, err := handler(ctx, req)
 
-		if shouldLog && opts.LogEnd {
+		if opts.LogEnd {
 			code := status.Code(err)
 			if opts.LogPayloads {
-				opts.Printer("GRPC END method=%s origin=%s code=%s duration=%v response=%s", method, origin, code, time.Since(start), payloadString(resp))
+				printLogLine(opts, "GRPC END method=%s origin=%s code=%s duration=%v response=%s", method, origin, code, time.Since(start), payloadString(resp))
 			} else {
-				opts.Printer("GRPC END method=%s origin=%s code=%s duration=%v", method, origin, code, time.Since(start))
+				printLogLine(opts, "GRPC END method=%s origin=%s code=%s duration=%v", method, origin, code, time.Since(start))
 			}
 		}
 
@@ -49,19 +48,18 @@ func StreamInterceptor(mods ...Modifier) grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
 		method := info.FullMethod
-		shouldLog := opts.LogFilter == nil || opts.LogFilter(method)
 
 		origin := kgrpc.ClientOrigin(ss.Context())
 
-		if shouldLog && opts.LogStart {
-			opts.Printer("GRPC STREAM START method=%s origin=%s", method, origin)
+		if opts.LogStart {
+			printLogLine(opts, "GRPC STREAM START method=%s origin=%s", method, origin)
 		}
 
 		err := handler(srv, ss)
 
-		if shouldLog && opts.LogEnd {
+		if opts.LogEnd {
 			code := status.Code(err)
-			opts.Printer("GRPC STREAM END method=%s origin=%s code=%s duration=%v", method, origin, code, time.Since(start))
+			printLogLine(opts, "GRPC STREAM END method=%s origin=%s code=%s duration=%v", method, origin, code, time.Since(start))
 		}
 
 		return err

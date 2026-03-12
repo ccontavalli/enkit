@@ -66,34 +66,52 @@ func TestRegisterIncludesLogPayloadsFlag(t *testing.T) {
 	}
 }
 
-func TestRegisterIncludesLogOmitMethodFlag(t *testing.T) {
+func TestRegisterIncludesLogOmitSubstrFlag(t *testing.T) {
 	flags := DefaultFlags()
 	set := newCaptureFlagSet()
 	flags.Register(set, "")
 
-	got, ok := set.stringArrays["log-omit-method"]
+	got, ok := set.stringArrays["log-omit-substr"]
 	if !ok {
-		t.Fatalf("log-omit-method flag was not registered")
+		t.Fatalf("log-omit-substr flag was not registered")
 	}
 	if len(*got) != 0 {
-		t.Fatalf("log-omit-method should default to empty, got %v", *got)
+		t.Fatalf("log-omit-substr should default to empty, got %v", *got)
 	}
 }
 
-func TestFromFlagsConfiguresMethodFilter(t *testing.T) {
+func TestRegisterIncludesLogOmitRegexFlag(t *testing.T) {
 	flags := DefaultFlags()
-	flags.LogOmitMethods = []string{"Poll"}
+	set := newCaptureFlagSet()
+	flags.Register(set, "")
+
+	got, ok := set.stringArrays["log-omit-regex"]
+	if !ok {
+		t.Fatalf("log-omit-regex flag was not registered")
+	}
+	if len(*got) != 0 {
+		t.Fatalf("log-omit-regex should default to empty, got %v", *got)
+	}
+}
+
+func TestFromFlagsConfiguresLineFilters(t *testing.T) {
+	flags := DefaultFlags()
+	flags.LogOmitSubstr = []string{"Poll"}
+	flags.LogOmitRegex = []string{`origin=127\.0\.0\.1:50082`}
 
 	opts := NewOptions(FromFlags(flags))
 
 	if opts.LogFilter == nil {
 		t.Fatalf("expected FromFlags to install a log filter")
 	}
-	if opts.LogFilter("/test.Service/PollStatus") {
-		t.Fatalf("expected filter to omit matching method")
+	if opts.LogFilter("GRPC START method=/test.Service/PollStatus origin=10.0.0.1:1234") {
+		t.Fatalf("expected substring filter to omit matching log line")
 	}
-	if !opts.LogFilter("/test.Service/GetStatus") {
-		t.Fatalf("expected filter to allow non-matching method")
+	if opts.LogFilter("HTTP START origin=127.0.0.1:50082 method=GET path=/healthz") {
+		t.Fatalf("expected regex filter to omit matching log line")
+	}
+	if !opts.LogFilter("GRPC START method=/test.Service/GetStatus origin=10.0.0.1:1234") {
+		t.Fatalf("expected filter to allow non-matching log line")
 	}
 }
 
@@ -183,7 +201,32 @@ func TestHTTPHandlerLogsStartWithoutMissingArgs(t *testing.T) {
 	}
 }
 
-func TestUnaryInterceptorOmitsFilteredMethods(t *testing.T) {
+func TestHTTPHandlerOmitsRegexFilteredLines(t *testing.T) {
+	var lines []string
+	handler := NewHandler(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+		WithPrinter(func(format string, args ...interface{}) {
+			lines = append(lines, fmt.Sprintf(format, args...))
+		}),
+		func(o *Options) {
+			o.LogStart = true
+			o.LogEnd = false
+		},
+		WithLogFilter(RegexFilter([]string{`origin=127\.0\.0\.1:50082`})),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	req.RemoteAddr = "127.0.0.1:50082"
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if len(lines) != 0 {
+		t.Fatalf("expected regex filter to omit matching log line, got %v", lines)
+	}
+}
+
+func TestUnaryInterceptorOmitsFilteredLines(t *testing.T) {
 	var lines []string
 	called := false
 	interceptor := UnaryInterceptor(
@@ -194,7 +237,7 @@ func TestUnaryInterceptorOmitsFilteredMethods(t *testing.T) {
 			o.LogStart = true
 			o.LogEnd = true
 		},
-		WithLogFilter(MethodFilter([]string{"Poll", "Heartbeat"})),
+		WithLogFilter(SubstringFilter([]string{"Poll", "Heartbeat"})),
 	)
 
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
@@ -210,7 +253,7 @@ func TestUnaryInterceptorOmitsFilteredMethods(t *testing.T) {
 		t.Fatalf("handler was not invoked")
 	}
 	if len(lines) != 0 {
-		t.Fatalf("expected filtered method to produce no logs, got %v", lines)
+		t.Fatalf("expected filtered line to produce no logs, got %v", lines)
 	}
 }
 
@@ -230,7 +273,7 @@ func (f *fakeServerStream) SendMsg(interface{}) error { return nil }
 
 func (f *fakeServerStream) RecvMsg(interface{}) error { return nil }
 
-func TestStreamInterceptorOmitsFilteredMethods(t *testing.T) {
+func TestStreamInterceptorOmitsFilteredLines(t *testing.T) {
 	var lines []string
 	called := false
 	interceptor := StreamInterceptor(
@@ -241,7 +284,7 @@ func TestStreamInterceptorOmitsFilteredMethods(t *testing.T) {
 			o.LogStart = true
 			o.LogEnd = true
 		},
-		WithLogFilter(MethodFilter([]string{"Poll"})),
+		WithLogFilter(SubstringFilter([]string{"Poll"})),
 	)
 
 	stream := &fakeServerStream{ctx: context.Background()}
@@ -256,6 +299,6 @@ func TestStreamInterceptorOmitsFilteredMethods(t *testing.T) {
 		t.Fatalf("handler was not invoked")
 	}
 	if len(lines) != 0 {
-		t.Fatalf("expected filtered method to produce no logs, got %v", lines)
+		t.Fatalf("expected filtered line to produce no logs, got %v", lines)
 	}
 }
