@@ -18,7 +18,7 @@ func NewHandler(next http.Handler, mods ...Modifier) http.Handler {
 		origin := khttp.ClientOrigin(r)
 
 		if opts.LogStart {
-			opts.Printer("HTTP START origin=%s method=%s path=%s origin=%s", origin, method, path)
+			opts.Printer("HTTP START origin=%s method=%s path=%s", origin, method, path)
 		}
 
 		sw := &statusWriter{ResponseWriter: w}

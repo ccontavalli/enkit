@@ -3,6 +3,8 @@ package krequestlog
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -148,6 +150,36 @@ func TestUnaryInterceptorLogsPayloads(t *testing.T) {
 	}
 	if !strings.Contains(joined, `response={"message":"world"}`) {
 		t.Fatalf("response payload missing from logs: %s", joined)
+	}
+}
+
+func TestHTTPHandlerLogsStartWithoutMissingArgs(t *testing.T) {
+	var lines []string
+	handler := NewHandler(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+		WithPrinter(func(format string, args ...interface{}) {
+			lines = append(lines, fmt.Sprintf(format, args...))
+		}),
+		func(o *Options) {
+			o.LogStart = true
+			o.LogEnd = false
+		},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	req.RemoteAddr = "127.0.0.1:50082"
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if len(lines) != 1 {
+		t.Fatalf("expected one log line, got %d: %v", len(lines), lines)
+	}
+	if got, want := lines[0], "HTTP START origin=127.0.0.1:50082 method=GET path=/"; got != want {
+		t.Fatalf("unexpected start log line - got %q want %q", got, want)
+	}
+	if strings.Contains(lines[0], "%!s(MISSING)") {
+		t.Fatalf("unexpected missing format argument in log line: %s", lines[0])
 	}
 }
 
