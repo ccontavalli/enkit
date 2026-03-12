@@ -6,32 +6,36 @@ import (
 )
 
 type Flags struct {
-	LogStart  bool
-	LogEnd    bool
-	LogFormat string
+	LogStart    bool
+	LogEnd      bool
+	LogPayloads bool
+	LogFormat   string
 }
 
 func DefaultFlags() *Flags {
 	return &Flags{
-		LogStart:  false,
-		LogEnd:    true,
-		LogFormat: "text",
+		LogStart:    false,
+		LogEnd:      true,
+		LogPayloads: false,
+		LogFormat:   "text",
 	}
 }
 
 func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
 	set.BoolVar(&f.LogStart, prefix+"log-start", f.LogStart, "Log request start")
 	set.BoolVar(&f.LogEnd, prefix+"log-end", f.LogEnd, "Log request end")
+	set.BoolVar(&f.LogPayloads, prefix+"log-payloads", f.LogPayloads, "Log gRPC request and response payloads for unary requests")
 	set.StringVar(&f.LogFormat, prefix+"log-format", f.LogFormat, "Log format (text, json, apache)")
 	return f
 }
 
 type Options struct {
-	Log       logger.Logger
-	LogStart  bool
-	LogEnd    bool
-	LogFormat string
-	Printer   func(format string, args ...interface{})
+	Log         logger.Logger
+	LogStart    bool
+	LogEnd      bool
+	LogPayloads bool
+	LogFormat   string
+	Printer     func(format string, args ...interface{})
 }
 
 type Modifier func(*Options)
@@ -55,6 +59,7 @@ func FromFlags(flags *Flags) Modifier {
 	return func(o *Options) {
 		o.LogStart = flags.LogStart
 		o.LogEnd = flags.LogEnd
+		o.LogPayloads = flags.LogPayloads
 		o.LogFormat = flags.LogFormat
 	}
 }
