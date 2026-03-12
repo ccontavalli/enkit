@@ -9,18 +9,21 @@ import (
 
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type captureFlagSet struct {
-	bools   map[string]*bool
-	strings map[string]*string
+	bools        map[string]*bool
+	strings      map[string]*string
+	stringArrays map[string]*[]string
 }
 
 func newCaptureFlagSet() *captureFlagSet {
 	return &captureFlagSet{
-		bools:   map[string]*bool{},
-		strings: map[string]*string{},
+		bools:        map[string]*bool{},
+		strings:      map[string]*string{},
+		stringArrays: map[string]*[]string{},
 	}
 }
 
@@ -38,6 +41,9 @@ func (c *captureFlagSet) StringVar(target *string, name string, value string, us
 }
 
 func (c *captureFlagSet) StringArrayVar(target *[]string, name string, value []string, usage string) {
+	copy := append([]string{}, value...)
+	*target = copy
+	c.stringArrays[name] = target
 }
 
 func (c *captureFlagSet) ByteFileVar(target *[]byte, name string, defaultFile string, usage string, mods ...kflags.ByteFileModifier) {
@@ -55,6 +61,37 @@ func TestRegisterIncludesLogPayloadsFlag(t *testing.T) {
 	}
 	if got := *set.bools["log-payloads"]; got {
 		t.Fatalf("log-payloads should default to false")
+	}
+}
+
+func TestRegisterIncludesLogOmitMethodFlag(t *testing.T) {
+	flags := DefaultFlags()
+	set := newCaptureFlagSet()
+	flags.Register(set, "")
+
+	got, ok := set.stringArrays["log-omit-method"]
+	if !ok {
+		t.Fatalf("log-omit-method flag was not registered")
+	}
+	if len(*got) != 0 {
+		t.Fatalf("log-omit-method should default to empty, got %v", *got)
+	}
+}
+
+func TestFromFlagsConfiguresMethodFilter(t *testing.T) {
+	flags := DefaultFlags()
+	flags.LogOmitMethods = []string{"Poll"}
+
+	opts := NewOptions(FromFlags(flags))
+
+	if opts.LogFilter == nil {
+		t.Fatalf("expected FromFlags to install a log filter")
+	}
+	if opts.LogFilter("/test.Service/PollStatus") {
+		t.Fatalf("expected filter to omit matching method")
+	}
+	if !opts.LogFilter("/test.Service/GetStatus") {
+		t.Fatalf("expected filter to allow non-matching method")
 	}
 }
 
@@ -111,5 +148,82 @@ func TestUnaryInterceptorLogsPayloads(t *testing.T) {
 	}
 	if !strings.Contains(joined, `response={"message":"world"}`) {
 		t.Fatalf("response payload missing from logs: %s", joined)
+	}
+}
+
+func TestUnaryInterceptorOmitsFilteredMethods(t *testing.T) {
+	var lines []string
+	called := false
+	interceptor := UnaryInterceptor(
+		WithPrinter(func(format string, args ...interface{}) {
+			lines = append(lines, fmt.Sprintf(format, args...))
+		}),
+		func(o *Options) {
+			o.LogStart = true
+			o.LogEnd = true
+		},
+		WithLogFilter(MethodFilter([]string{"Poll", "Heartbeat"})),
+	)
+
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		called = true
+		return "ok", nil
+	}
+
+	_, err := interceptor(context.Background(), "request", &grpc.UnaryServerInfo{FullMethod: "/test.Service/PollStatus"}, handler)
+	if err != nil {
+		t.Fatalf("interceptor returned error: %v", err)
+	}
+	if !called {
+		t.Fatalf("handler was not invoked")
+	}
+	if len(lines) != 0 {
+		t.Fatalf("expected filtered method to produce no logs, got %v", lines)
+	}
+}
+
+type fakeServerStream struct {
+	ctx context.Context
+}
+
+func (f *fakeServerStream) SetHeader(metadata.MD) error { return nil }
+
+func (f *fakeServerStream) SendHeader(metadata.MD) error { return nil }
+
+func (f *fakeServerStream) SetTrailer(metadata.MD) {}
+
+func (f *fakeServerStream) Context() context.Context { return f.ctx }
+
+func (f *fakeServerStream) SendMsg(interface{}) error { return nil }
+
+func (f *fakeServerStream) RecvMsg(interface{}) error { return nil }
+
+func TestStreamInterceptorOmitsFilteredMethods(t *testing.T) {
+	var lines []string
+	called := false
+	interceptor := StreamInterceptor(
+		WithPrinter(func(format string, args ...interface{}) {
+			lines = append(lines, fmt.Sprintf(format, args...))
+		}),
+		func(o *Options) {
+			o.LogStart = true
+			o.LogEnd = true
+		},
+		WithLogFilter(MethodFilter([]string{"Poll"})),
+	)
+
+	stream := &fakeServerStream{ctx: context.Background()}
+	err := interceptor(nil, stream, &grpc.StreamServerInfo{FullMethod: "/test.Service/PollEvents"}, func(srv interface{}, ss grpc.ServerStream) error {
+		called = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("interceptor returned error: %v", err)
+	}
+	if !called {
+		t.Fatalf("handler was not invoked")
+	}
+	if len(lines) != 0 {
+		t.Fatalf("expected filtered method to produce no logs, got %v", lines)
 	}
 }
