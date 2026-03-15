@@ -3,6 +3,7 @@ package krequestlog
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ccontavalli/enkit/lib/kflags"
+	gws "github.com/gorilla/websocket"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -226,6 +228,43 @@ func TestHTTPHandlerOmitsRegexFilteredLines(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlerLogsCopiedResponseSize(t *testing.T) {
+	var lines []string
+	handler := NewHandler(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			n, err := io.Copy(w, strings.NewReader("hello"))
+			if err != nil {
+				t.Fatalf("copy failed: %v", err)
+			}
+			if n != 5 {
+				t.Fatalf("unexpected copy length %d", n)
+			}
+		}),
+		WithPrinter(func(format string, args ...interface{}) {
+			lines = append(lines, fmt.Sprintf(format, args...))
+		}),
+		func(o *Options) {
+			o.LogStart = false
+			o.LogEnd = true
+		},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	req.RemoteAddr = "127.0.0.1:50082"
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if got := recorder.Body.String(); got != "hello" {
+		t.Fatalf("unexpected response body %q", got)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("expected one log line, got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "HTTP END origin=127.0.0.1:50082 method=GET path=/ status=200 size=5") {
+		t.Fatalf("unexpected end log line %q", lines[0])
+	}
+}
+
 func TestUnaryInterceptorOmitsFilteredLines(t *testing.T) {
 	var lines []string
 	called := false
@@ -300,5 +339,53 @@ func TestStreamInterceptorOmitsFilteredLines(t *testing.T) {
 	}
 	if len(lines) != 0 {
 		t.Fatalf("expected filtered line to produce no logs, got %v", lines)
+	}
+}
+
+func TestHTTPHandlerPreservesWebsocketUpgrade(t *testing.T) {
+	upgrader := gws.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+
+	handler := NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade failed: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		mt, payload, err := conn.ReadMessage()
+		if err != nil {
+			t.Errorf("read failed: %v", err)
+			return
+		}
+		if err := conn.WriteMessage(mt, payload); err != nil {
+			t.Errorf("write failed: %v", err)
+		}
+	}))
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
+	conn, _, err := gws.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	defer conn.Close()
+
+	if err := conn.WriteMessage(gws.TextMessage, []byte("hello")); err != nil {
+		t.Fatalf("client write failed: %v", err)
+	}
+	mt, payload, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("client read failed: %v", err)
+	}
+	if mt != gws.TextMessage {
+		t.Fatalf("unexpected message type %d", mt)
+	}
+	if string(payload) != "hello" {
+		t.Fatalf("unexpected payload %q", payload)
 	}
 }
