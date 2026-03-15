@@ -38,6 +38,7 @@ go_test(
         "//lib/khttp/ktls",
         "//lib/khttp/ktransport",
         "//lib/khttp/protocol",
+        "@com_github_gorilla_websocket//:websocket",
         "@com_github_stretchr_testify//assert",
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//credentials",

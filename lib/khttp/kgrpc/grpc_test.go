@@ -22,6 +22,9 @@ import (
 	"net/http/httputil"
 	"sync"
 	"testing"
+	"time"
+
+	gws "github.com/gorilla/websocket"
 )
 
 type FortuneServer struct {
@@ -198,4 +201,45 @@ func TestSimple(t *testing.T) {
 			assert.Equal(t, grpcFortune, resp.Text)
 		}
 	}
+}
+
+func TestRunServerAllowsPlainWebsocketUpgrades(t *testing.T) {
+	m := http.NewServeMux()
+	m.HandleFunc("/ws", func(w http.ResponseWriter, req *http.Request) {
+		conn, err := (&gws.Upgrader{}).Upgrade(w, req, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		assert.NoError(t, conn.WriteMessage(gws.TextMessage, []byte("ok")))
+	})
+
+	grpcs := grpc.NewServer()
+	proto.RegisterFortuneServer(grpcs, &FortuneServer{})
+
+	var wg sync.WaitGroup
+	var httpa *net.TCPAddr
+	wg.Add(3)
+
+	go func() {
+		err := RunServer(m, grpcs, khttp.WithLogger(log.Printf), khttp.WithHTTPAddr(":0"), khttp.WithWaiter(&wg, &httpa, nil))
+		assert.NoError(t, err)
+	}()
+
+	wg.Wait()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, _, err := gws.DefaultDialer.DialContext(ctx, fmt.Sprintf("ws://127.0.0.1:%d/ws", httpa.Port), nil)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer conn.Close()
+
+	_, payload, err := conn.ReadMessage()
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, "ok", string(payload))
 }

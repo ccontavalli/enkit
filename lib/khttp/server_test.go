@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/stretchr/testify/assert"
+	"net/http"
 	"os"
 	"testing"
 )
@@ -83,5 +84,53 @@ func TestFlags(t *testing.T) {
 	found := GetAllFlags(set.FlagSet)
 	for _, fl := range found {
 		assert.Regexp(t, `^test-prefix-[^-]`, fl)
+	}
+}
+
+func TestIsNonH2CUpgradeRequest(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers http.Header
+		want    bool
+	}{
+		{
+			name: "plain websocket upgrade",
+			headers: http.Header{
+				"Connection": []string{"Upgrade"},
+				"Upgrade":    []string{"websocket"},
+			},
+			want: true,
+		},
+		{
+			name: "single h2c upgrade",
+			headers: http.Header{
+				"Connection": []string{"Upgrade"},
+				"Upgrade":    []string{"h2c"},
+			},
+			want: false,
+		},
+		{
+			name: "token list containing h2c",
+			headers: http.Header{
+				"Connection": []string{"Upgrade"},
+				"Upgrade":    []string{"websocket, h2c"},
+			},
+			want: false,
+		},
+		{
+			name: "repeated headers containing h2c",
+			headers: http.Header{
+				"Connection": []string{"keep-alive", "Upgrade"},
+				"Upgrade":    []string{"websocket", "h2c"},
+			},
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req := &http.Request{Header: test.headers}
+			assert.Equal(t, test.want, isNonH2CUpgradeRequest(req))
+		})
 	}
 }

@@ -382,7 +382,15 @@ func WithH2C() Modifier {
 			}
 
 			if s.TLSConfig == nil {
-				s.Handler = h2c.NewHandler(s.Handler, h2server)
+				handler := s.Handler
+				h2handler := h2c.NewHandler(handler, h2server)
+				s.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if isNonH2CUpgradeRequest(r) {
+						handler.ServeHTTP(w, r)
+						return
+					}
+					h2handler.ServeHTTP(w, r)
+				})
 			}
 
 			return runner(log, s)
@@ -390,6 +398,31 @@ func WithH2C() Modifier {
 
 		return nil
 	}
+}
+
+func isNonH2CUpgradeRequest(r *http.Request) bool {
+	if r == nil || !headerValuesContainToken(r.Header.Values("Connection"), "upgrade") {
+		return false
+	}
+	return len(r.Header.Values("Upgrade")) > 0 && !headerValuesContainToken(r.Header.Values("Upgrade"), "h2c")
+}
+
+func headerValuesContainToken(values []string, token string) bool {
+	for _, value := range values {
+		if headerContainsToken(value, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func headerContainsToken(value, token string) bool {
+	for _, part := range strings.Split(value, ",") {
+		if strings.EqualFold(strings.TrimSpace(part), token) {
+			return true
+		}
+	}
+	return false
 }
 
 func New(handler http.Handler, mods ...Modifier) (*Server, error) {
