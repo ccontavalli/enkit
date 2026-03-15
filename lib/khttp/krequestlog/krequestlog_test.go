@@ -12,6 +12,7 @@ import (
 
 	"github.com/ccontavalli/enkit/lib/kflags"
 	gws "github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -60,11 +61,9 @@ func TestRegisterIncludesLogPayloadsFlag(t *testing.T) {
 	set := newCaptureFlagSet()
 	flags.Register(set, "")
 
-	if _, ok := set.bools["log-payloads"]; !ok {
-		t.Fatalf("log-payloads flag was not registered")
-	}
-	if got := *set.bools["log-payloads"]; got {
-		t.Fatalf("log-payloads should default to false")
+	_, ok := set.bools["log-payloads"]
+	if assert.True(t, ok, "log-payloads flag was not registered") {
+		assert.False(t, *set.bools["log-payloads"], "log-payloads should default to false")
 	}
 }
 
@@ -74,11 +73,8 @@ func TestRegisterIncludesLogOmitSubstrFlag(t *testing.T) {
 	flags.Register(set, "")
 
 	got, ok := set.stringArrays["log-omit-substr"]
-	if !ok {
-		t.Fatalf("log-omit-substr flag was not registered")
-	}
-	if len(*got) != 0 {
-		t.Fatalf("log-omit-substr should default to empty, got %v", *got)
+	if assert.True(t, ok, "log-omit-substr flag was not registered") {
+		assert.Empty(t, *got, "log-omit-substr should default to empty")
 	}
 }
 
@@ -88,11 +84,8 @@ func TestRegisterIncludesLogOmitRegexFlag(t *testing.T) {
 	flags.Register(set, "")
 
 	got, ok := set.stringArrays["log-omit-regex"]
-	if !ok {
-		t.Fatalf("log-omit-regex flag was not registered")
-	}
-	if len(*got) != 0 {
-		t.Fatalf("log-omit-regex should default to empty, got %v", *got)
+	if assert.True(t, ok, "log-omit-regex flag was not registered") {
+		assert.Empty(t, *got, "log-omit-regex should default to empty")
 	}
 }
 
@@ -103,17 +96,10 @@ func TestFromFlagsConfiguresLineFilters(t *testing.T) {
 
 	opts := NewOptions(FromFlags(flags))
 
-	if opts.LogFilter == nil {
-		t.Fatalf("expected FromFlags to install a log filter")
-	}
-	if opts.LogFilter("GRPC START method=/test.Service/PollStatus origin=10.0.0.1:1234") {
-		t.Fatalf("expected substring filter to omit matching log line")
-	}
-	if opts.LogFilter("HTTP START origin=127.0.0.1:50082 method=GET path=/healthz") {
-		t.Fatalf("expected regex filter to omit matching log line")
-	}
-	if !opts.LogFilter("GRPC START method=/test.Service/GetStatus origin=10.0.0.1:1234") {
-		t.Fatalf("expected filter to allow non-matching log line")
+	if assert.NotNil(t, opts.LogFilter, "expected FromFlags to install a log filter") {
+		assert.False(t, opts.LogFilter("GRPC START method=/test.Service/PollStatus origin=10.0.0.1:1234"), "expected substring filter to omit matching log line")
+		assert.False(t, opts.LogFilter("HTTP START origin=127.0.0.1:50082 method=GET path=/healthz"), "expected regex filter to omit matching log line")
+		assert.True(t, opts.LogFilter("GRPC START method=/test.Service/GetStatus origin=10.0.0.1:1234"), "expected filter to allow non-matching log line")
 	}
 }
 
@@ -121,14 +107,14 @@ func TestUnaryInterceptorLogsPayloads(t *testing.T) {
 	request, err := structpb.NewStruct(map[string]interface{}{
 		"message": "hello",
 	})
-	if err != nil {
-		t.Fatalf("could not create request: %v", err)
+	if !assert.NoError(t, err, "could not create request") {
+		return
 	}
 	response, err := structpb.NewStruct(map[string]interface{}{
 		"message": "world",
 	})
-	if err != nil {
-		t.Fatalf("could not create response: %v", err)
+	if !assert.NoError(t, err, "could not create response") {
+		return
 	}
 
 	var lines []string
@@ -148,29 +134,16 @@ func TestUnaryInterceptorLogsPayloads(t *testing.T) {
 	}
 
 	_, err = interceptor(context.Background(), request, &grpc.UnaryServerInfo{FullMethod: "/test.Service/Call"}, handler)
-	if err != nil {
-		t.Fatalf("interceptor returned error: %v", err)
-	}
+	assert.NoError(t, err, "interceptor returned error")
 
 	joined := strings.Join(lines, "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected two log lines, got %d: %s", len(lines), joined)
-	}
-	if !strings.Contains(joined, `GRPC START method=/test.Service/Call`) {
-		t.Fatalf("request start line missing: %s", joined)
-	}
-	if !strings.Contains(joined, `request={"message":"hello"}`) {
-		t.Fatalf("request payload missing from logs: %s", joined)
-	}
-	if strings.Contains(joined, "GRPC REQUEST") || strings.Contains(joined, "GRPC RESPONSE") {
-		t.Fatalf("payloads should be attached to START/END lines, got: %s", joined)
-	}
-	if !strings.Contains(joined, `GRPC END method=/test.Service/Call`) {
-		t.Fatalf("response end line missing: %s", joined)
-	}
-	if !strings.Contains(joined, `response={"message":"world"}`) {
-		t.Fatalf("response payload missing from logs: %s", joined)
-	}
+	assert.Len(t, lines, 2, "expected two log lines")
+	assert.Contains(t, joined, `GRPC START method=/test.Service/Call`, "request start line missing")
+	assert.Contains(t, joined, `request={"message":"hello"}`, "request payload missing from logs")
+	assert.NotContains(t, joined, "GRPC REQUEST", "payloads should be attached to START/END lines")
+	assert.NotContains(t, joined, "GRPC RESPONSE", "payloads should be attached to START/END lines")
+	assert.Contains(t, joined, `GRPC END method=/test.Service/Call`, "response end line missing")
+	assert.Contains(t, joined, `response={"message":"world"}`, "response payload missing from logs")
 }
 
 func TestHTTPHandlerLogsStartWithoutMissingArgs(t *testing.T) {
@@ -192,14 +165,9 @@ func TestHTTPHandlerLogsStartWithoutMissingArgs(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1:50082"
 	handler.ServeHTTP(httptest.NewRecorder(), req)
 
-	if len(lines) != 1 {
-		t.Fatalf("expected one log line, got %d: %v", len(lines), lines)
-	}
-	if got, want := lines[0], "HTTP START origin=127.0.0.1:50082 method=GET path=/"; got != want {
-		t.Fatalf("unexpected start log line - got %q want %q", got, want)
-	}
-	if strings.Contains(lines[0], "%!s(MISSING)") {
-		t.Fatalf("unexpected missing format argument in log line: %s", lines[0])
+	if assert.Len(t, lines, 1, "expected one log line") {
+		assert.Equal(t, "HTTP START origin=127.0.0.1:50082 method=GET path=/", lines[0], "unexpected start log line")
+		assert.NotContains(t, lines[0], "%!s(MISSING)", "unexpected missing format argument in log line")
 	}
 }
 
@@ -223,9 +191,7 @@ func TestHTTPHandlerOmitsRegexFilteredLines(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1:50082"
 	handler.ServeHTTP(httptest.NewRecorder(), req)
 
-	if len(lines) != 0 {
-		t.Fatalf("expected regex filter to omit matching log line, got %v", lines)
-	}
+	assert.Empty(t, lines, "expected regex filter to omit matching log line")
 }
 
 func TestHTTPHandlerLogsCopiedResponseSize(t *testing.T) {
@@ -233,12 +199,8 @@ func TestHTTPHandlerLogsCopiedResponseSize(t *testing.T) {
 	handler := NewHandler(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			n, err := io.Copy(w, strings.NewReader("hello"))
-			if err != nil {
-				t.Fatalf("copy failed: %v", err)
-			}
-			if n != 5 {
-				t.Fatalf("unexpected copy length %d", n)
-			}
+			assert.NoError(t, err, "copy failed")
+			assert.EqualValues(t, 5, n, "unexpected copy length")
 		}),
 		WithPrinter(func(format string, args ...interface{}) {
 			lines = append(lines, fmt.Sprintf(format, args...))
@@ -254,14 +216,9 @@ func TestHTTPHandlerLogsCopiedResponseSize(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 
-	if got := recorder.Body.String(); got != "hello" {
-		t.Fatalf("unexpected response body %q", got)
-	}
-	if len(lines) != 1 {
-		t.Fatalf("expected one log line, got %d: %v", len(lines), lines)
-	}
-	if !strings.Contains(lines[0], "HTTP END origin=127.0.0.1:50082 method=GET path=/ status=200 size=5") {
-		t.Fatalf("unexpected end log line %q", lines[0])
+	assert.Equal(t, "hello", recorder.Body.String(), "unexpected response body")
+	if assert.Len(t, lines, 1, "expected one log line") {
+		assert.Contains(t, lines[0], "HTTP END origin=127.0.0.1:50082 method=GET path=/ status=200 size=5", "unexpected end log line")
 	}
 }
 
@@ -285,15 +242,9 @@ func TestUnaryInterceptorOmitsFilteredLines(t *testing.T) {
 	}
 
 	_, err := interceptor(context.Background(), "request", &grpc.UnaryServerInfo{FullMethod: "/test.Service/PollStatus"}, handler)
-	if err != nil {
-		t.Fatalf("interceptor returned error: %v", err)
-	}
-	if !called {
-		t.Fatalf("handler was not invoked")
-	}
-	if len(lines) != 0 {
-		t.Fatalf("expected filtered line to produce no logs, got %v", lines)
-	}
+	assert.NoError(t, err, "interceptor returned error")
+	assert.True(t, called, "handler was not invoked")
+	assert.Empty(t, lines, "expected filtered line to produce no logs")
 }
 
 type fakeServerStream struct {
@@ -331,15 +282,9 @@ func TestStreamInterceptorOmitsFilteredLines(t *testing.T) {
 		called = true
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("interceptor returned error: %v", err)
-	}
-	if !called {
-		t.Fatalf("handler was not invoked")
-	}
-	if len(lines) != 0 {
-		t.Fatalf("expected filtered line to produce no logs, got %v", lines)
-	}
+	assert.NoError(t, err, "interceptor returned error")
+	assert.True(t, called, "handler was not invoked")
+	assert.Empty(t, lines, "expected filtered line to produce no logs")
 }
 
 func TestHTTPHandlerPreservesWebsocketUpgrade(t *testing.T) {
@@ -349,20 +294,16 @@ func TestHTTPHandlerPreservesWebsocketUpgrade(t *testing.T) {
 
 	handler := NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			t.Errorf("upgrade failed: %v", err)
+		if !assert.NoError(t, err, "upgrade failed") {
 			return
 		}
 		defer conn.Close()
 
 		mt, payload, err := conn.ReadMessage()
-		if err != nil {
-			t.Errorf("read failed: %v", err)
+		if !assert.NoError(t, err, "read failed") {
 			return
 		}
-		if err := conn.WriteMessage(mt, payload); err != nil {
-			t.Errorf("write failed: %v", err)
-		}
+		assert.NoError(t, conn.WriteMessage(mt, payload), "write failed")
 	}))
 
 	server := httptest.NewServer(handler)
@@ -370,22 +311,14 @@ func TestHTTPHandlerPreservesWebsocketUpgrade(t *testing.T) {
 
 	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
 	conn, _, err := gws.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial failed: %v", err)
+	if !assert.NoError(t, err, "dial failed") {
+		return
 	}
 	defer conn.Close()
 
-	if err := conn.WriteMessage(gws.TextMessage, []byte("hello")); err != nil {
-		t.Fatalf("client write failed: %v", err)
-	}
+	assert.NoError(t, conn.WriteMessage(gws.TextMessage, []byte("hello")), "client write failed")
 	mt, payload, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatalf("client read failed: %v", err)
-	}
-	if mt != gws.TextMessage {
-		t.Fatalf("unexpected message type %d", mt)
-	}
-	if string(payload) != "hello" {
-		t.Fatalf("unexpected payload %q", payload)
-	}
+	assert.NoError(t, err, "client read failed")
+	assert.Equal(t, gws.TextMessage, mt, "unexpected message type")
+	assert.Equal(t, "hello", string(payload), "unexpected payload")
 }
