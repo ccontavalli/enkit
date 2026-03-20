@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -18,6 +19,25 @@ type simpleListUnmarshalConfig struct {
 	Name  string   `toml:"name"`
 	Count int      `toml:"count,omitempty"`
 	IDs   []string `toml:"ids,omitempty"`
+}
+
+type failingKeyCodec struct {
+	encodeErr error
+	decodeErr error
+}
+
+func (f failingKeyCodec) Encode(s string) (string, error) {
+	if f.encodeErr != nil {
+		return "", f.encodeErr
+	}
+	return s, nil
+}
+
+func (f failingKeyCodec) Decode(s string) (string, error) {
+	if f.decodeErr != nil {
+		return "", f.decodeErr
+	}
+	return s, nil
 }
 
 func TestSimpleStoreEncodesKeys(t *testing.T) {
@@ -131,4 +151,19 @@ func TestSimpleStoreListUnmarshalClearsMissingFields(t *testing.T) {
 	assert.Equal(t, "second", items[1].Name)
 	assert.Equal(t, 0, items[1].Count)
 	assert.Nil(t, items[1].IDs)
+}
+
+func TestSimpleStorePropagatesKeyCodecErrors(t *testing.T) {
+	base := t.TempDir()
+	loader, err := directory.OpenDir(base)
+	assert.NoError(t, err)
+
+	store := config.OpenSimpleWithOptions(loader, marshal.Toml, config.WithKeyCodec(failingKeyCodec{encodeErr: errors.New("encode failed")}))
+	err = store.Marshal(config.Key("a"), simpleTestConfig{Value: "test"})
+	assert.EqualError(t, err, "encode failed")
+
+	assert.NoError(t, loader.Write("broken.toml", []byte("value = \"test\"")))
+	store = config.OpenSimpleWithOptions(loader, marshal.Toml, config.WithKeyCodec(failingKeyCodec{decodeErr: errors.New("decode failed")}))
+	_, err = store.List()
+	assert.EqualError(t, err, "decode failed")
 }

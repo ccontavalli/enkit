@@ -67,20 +67,30 @@ func (ss *SimpleStore) List(mods ...ListModifier) ([]Descriptor, error) {
 	loaderOpts := *opts
 	loaderOpts.Unmarshal = nil
 	if opts.StartFrom != "" {
-		loaderOpts.StartFrom = ss.encodeKey(opts.StartFrom)
+		encoded, err := ss.encodeKey(opts.StartFrom)
+		if err != nil {
+			return nil, err
+		}
+		loaderOpts.StartFrom = encoded
 	}
 	if opts.Unmarshal != nil {
 		loaderOpts.Data = func(desc Descriptor, data []byte) error {
 			name := desc.Key()
 			key := strings.TrimSuffix(name, "."+ss.marshaller.Extension())
-			key = ss.decodeKey(key)
+			key, err := ss.decodeKey(key)
+			if err != nil {
+				return err
+			}
 			return opts.Unmarshal.UnmarshalAndCall(Key(key), data, ss.marshaller.Unmarshal)
 		}
 	} else if opts.Data != nil {
 		loaderOpts.Data = func(desc Descriptor, data []byte) error {
 			name := desc.Key()
 			key := strings.TrimSuffix(name, "."+ss.marshaller.Extension())
-			key = ss.decodeKey(key)
+			key, err := ss.decodeKey(key)
+			if err != nil {
+				return err
+			}
 			return opts.Data(Key(key), data)
 		}
 	}
@@ -94,7 +104,10 @@ func (ss *SimpleStore) List(mods ...ListModifier) ([]Descriptor, error) {
 	descs := make([]Descriptor, len(list))
 	for i, name := range list {
 		key := strings.TrimSuffix(name, "."+ss.marshaller.Extension())
-		key = ss.decodeKey(key)
+		key, err = ss.decodeKey(key)
+		if err != nil {
+			return nil, err
+		}
 		descs[i] = Key(key)
 	}
 	return opts.Finalize(ss, descs, OptimizedStartFrom|OptimizedOffsetLimit|OptimizedUnmarshal)
@@ -104,7 +117,10 @@ func (ss *SimpleStore) Marshal(desc Descriptor, value interface{}) error {
 	if desc == nil {
 		return fmt.Errorf("API Usage Error - SimpleStore.Marshal must be passed a non-nil descriptor")
 	}
-	name := ss.pathForKey(desc.Key())
+	name, err := ss.pathForKey(desc.Key())
+	if err != nil {
+		return err
+	}
 	data, err := ss.marshaller.Marshal(value)
 	if err != nil {
 		return err
@@ -117,7 +133,10 @@ func (ss *SimpleStore) Unmarshal(desc Descriptor, value interface{}) (Descriptor
 		return nil, fmt.Errorf("API Usage Error - SimpleStore.Unmarshal must be passed a non-nil descriptor")
 	}
 	key := desc.Key()
-	path := ss.pathForKey(key)
+	path, err := ss.pathForKey(key)
+	if err != nil {
+		return Key(key), err
+	}
 	data, err := ss.loader.Read(path)
 	if err != nil {
 		return Key(key), err
@@ -132,7 +151,10 @@ func (ss *SimpleStore) Delete(desc Descriptor) error {
 	if desc == nil {
 		return fmt.Errorf("API Usage Error - SimpleStore.Delete must be passed a non-nil descriptor")
 	}
-	name := ss.pathForKey(desc.Key())
+	name, err := ss.pathForKey(desc.Key())
+	if err != nil {
+		return err
+	}
 	return ss.loader.Delete(name)
 }
 
@@ -140,15 +162,18 @@ func (ss *SimpleStore) Close() error {
 	return ss.loader.Close()
 }
 
-func (ss *SimpleStore) pathForKey(key string) string {
-	encoded := ss.encodeKey(key)
-	return encoded + "." + ss.marshaller.Extension()
+func (ss *SimpleStore) pathForKey(key string) (string, error) {
+	encoded, err := ss.encodeKey(key)
+	if err != nil {
+		return "", err
+	}
+	return encoded + "." + ss.marshaller.Extension(), nil
 }
 
-func (ss *SimpleStore) encodeKey(name string) string {
+func (ss *SimpleStore) encodeKey(name string) (string, error) {
 	return ss.keyCodec.Encode(name)
 }
 
-func (ss *SimpleStore) decodeKey(name string) string {
+func (ss *SimpleStore) decodeKey(name string) (string, error) {
 	return ss.keyCodec.Decode(name)
 }

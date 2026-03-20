@@ -89,18 +89,28 @@ func (ss *MultiFormat) List(mods ...ListModifier) ([]Descriptor, error) {
 	loaderOpts := *opts
 	loaderOpts.Unmarshal = nil
 	if opts.StartFrom != "" {
-		loaderOpts.StartFrom = ss.encodeKey(opts.StartFrom)
+		encoded, err := ss.encodeKey(opts.StartFrom)
+		if err != nil {
+			return nil, err
+		}
+		loaderOpts.StartFrom = encoded
 	}
 	if opts.Unmarshal != nil {
 		loaderOpts.Data = func(desc Descriptor, data []byte) error {
 			name := desc.Key()
-			d := newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
+			d, err := newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
+			if err != nil {
+				return err
+			}
 			return opts.Unmarshal.UnmarshalAndCall(d, data, d.m.Unmarshal)
 		}
 	} else if opts.Data != nil {
 		loaderOpts.Data = func(desc Descriptor, data []byte) error {
 			name := desc.Key()
-			d := newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
+			d, err := newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
+			if err != nil {
+				return err
+			}
 			return opts.Data(d, data)
 		}
 	}
@@ -113,7 +123,10 @@ func (ss *MultiFormat) List(mods ...ListModifier) ([]Descriptor, error) {
 	}
 	descs := make([]Descriptor, len(list))
 	for i, name := range list {
-		descs[i] = newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
+		descs[i], err = newMultiDescriptorFromPath(name, ss.marshaller, ss.keyCodec)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return opts.Finalize(ss, descs, OptimizedStartFrom|OptimizedOffsetLimit|OptimizedUnmarshal)
 }
@@ -125,7 +138,10 @@ func (ss *MultiFormat) Marshal(desc Descriptor, value interface{}) error {
 	}
 	if marshaller == nil {
 		marshaller = ss.marshaller[0]
-		name = ss.pathForKey(name, marshaller)
+		name, err = ss.pathForKey(name, marshaller)
+		if err != nil {
+			return err
+		}
 	}
 
 	data, err := marshaller.Marshal(value)
@@ -138,11 +154,15 @@ func (ss *MultiFormat) Marshal(desc Descriptor, value interface{}) error {
 func (ss *MultiFormat) parseDesc(desc Descriptor) (string, marshal.FileMarshaller, error) {
 	var name string
 	var marshaller marshal.FileMarshaller
+	var err error
 	switch t := desc.(type) {
 	case Key:
 		name = string(t)
 	case *multiDescriptor:
-		name = ss.pathForKey(t.k, t.m)
+		name, err = ss.pathForKey(t.k, t.m)
+		if err != nil {
+			return "", nil, err
+		}
 		marshaller = t.m
 	default:
 		return "", nil, fmt.Errorf("API Usage Error - MultiFormat.Marshal passed an unknown descriptor type - %#v", desc)
@@ -164,8 +184,12 @@ func (ss *MultiFormat) Delete(desc Descriptor) error {
 	nonexisting := 0
 	var errors []error
 	for _, marshaller := range ss.marshaller {
-		fullname := ss.pathForKey(name, marshaller)
-		err := ss.loader.Delete(fullname)
+		fullname, err := ss.pathForKey(name, marshaller)
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+		err = ss.loader.Delete(fullname)
 		if err == nil {
 			continue
 		}
@@ -188,20 +212,23 @@ func (ss *MultiFormat) Close() error {
 	return ss.loader.Close()
 }
 
-func (ss *MultiFormat) encodeKey(name string) string {
+func (ss *MultiFormat) encodeKey(name string) (string, error) {
 	return ss.keyCodec.Encode(name)
 }
 
-func (ss *MultiFormat) decodeKey(name string) string {
+func (ss *MultiFormat) decodeKey(name string) (string, error) {
 	return ss.keyCodec.Decode(name)
 }
 
-func (ss *MultiFormat) pathForKey(key string, m marshal.FileMarshaller) string {
-	encoded := ss.encodeKey(key)
-	if m == nil {
-		return encoded
+func (ss *MultiFormat) pathForKey(key string, m marshal.FileMarshaller) (string, error) {
+	encoded, err := ss.encodeKey(key)
+	if err != nil {
+		return "", err
 	}
-	return encoded + "." + m.Extension()
+	if m == nil {
+		return encoded, nil
+	}
+	return encoded + "." + m.Extension(), nil
 }
 
 // FormatKey returns a descriptor that targets a specific format for a key.
@@ -227,7 +254,10 @@ func (ss *MultiFormat) Unmarshal(desc Descriptor, value interface{}) (Descriptor
 		if err != nil {
 			return nil, err
 		}
-		key := ss.decodeKey(strings.TrimSuffix(path, "."+m.Extension()))
+		key, err := ss.decodeKey(strings.TrimSuffix(path, "."+m.Extension()))
+		if err != nil {
+			return nil, err
+		}
 		descriptor := &multiDescriptor{m: m, k: key}
 		if len(data) <= 0 {
 			return descriptor, nil
@@ -240,8 +270,12 @@ func (ss *MultiFormat) Unmarshal(desc Descriptor, value interface{}) (Descriptor
 		key := string(t)
 		var err error
 		var result Descriptor
+		var path string
 		for _, m := range ss.marshaller {
-			path := ss.pathForKey(key, m)
+			path, err = ss.pathForKey(key, m)
+			if err != nil {
+				return nil, err
+			}
 			result, err = load(m, path)
 			if err == nil {
 				return result, nil
@@ -249,19 +283,25 @@ func (ss *MultiFormat) Unmarshal(desc Descriptor, value interface{}) (Descriptor
 		}
 		return result, err
 	case *multiDescriptor:
-		path := ss.pathForKey(t.k, t.m)
+		path, err := ss.pathForKey(t.k, t.m)
+		if err != nil {
+			return nil, err
+		}
 		return load(t.m, path)
 	default:
 		return nil, fmt.Errorf("API Usage Error - MultiFormat.Unmarshal passed an unknown descriptor type - %#v", desc)
 	}
 }
 
-func newMultiDescriptorFromPath(path string, marshaller []marshal.FileMarshaller, codec KeyCodec) *multiDescriptor {
+func newMultiDescriptorFromPath(path string, marshaller []marshal.FileMarshaller, codec KeyCodec) (*multiDescriptor, error) {
 	m := marshal.FileMarshallers(marshaller).ByFilePathExtension(path)
 	key := path
 	if m != nil {
 		key = strings.TrimSuffix(path, "."+m.Extension())
 	}
-	key = codec.Decode(key)
-	return &multiDescriptor{m: m, k: key}
+	key, err := codec.Decode(key)
+	if err != nil {
+		return nil, err
+	}
+	return &multiDescriptor{m: m, k: key}, nil
 }

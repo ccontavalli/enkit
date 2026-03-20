@@ -6,18 +6,18 @@ import (
 
 // KeyCodec encodes and decodes store keys for safe storage.
 type KeyCodec interface {
-	Encode(string) string
-	Decode(string) string
+	Encode(string) (string, error)
+	Decode(string) (string, error)
 }
 
 type defaultKeyCodec struct{}
 
-func (defaultKeyCodec) Encode(key string) string {
-	return EncodeKey(key)
+func (defaultKeyCodec) Encode(key string) (string, error) {
+	return EncodeKey(key), nil
 }
 
-func (defaultKeyCodec) Decode(key string) string {
-	return DecodeKey(key)
+func (defaultKeyCodec) Decode(key string) (string, error) {
+	return DecodeKey(key), nil
 }
 
 type storeOptions struct {

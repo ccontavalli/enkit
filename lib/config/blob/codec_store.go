@@ -68,21 +68,37 @@ func (s *CodecStore) List() ([]Descriptor, error) {
 	}
 	out := make([]Descriptor, len(descs))
 	for i, desc := range descs {
-		out[i] = Key(s.codec.Decode(desc.Key()))
+		key, err := s.codec.Decode(desc.Key())
+		if err != nil {
+			return nil, err
+		}
+		out[i] = Key(key)
 	}
 	return out, nil
 }
 
 func (s *CodecStore) DownloadURL(desc Descriptor, opts ...TransferOption) (*url.URL, error) {
-	return s.store.DownloadURL(Key(s.codec.Encode(desc.Key())), opts...)
+	key, err := s.codec.Encode(desc.Key())
+	if err != nil {
+		return nil, err
+	}
+	return s.store.DownloadURL(Key(key), opts...)
 }
 
 func (s *CodecStore) UploadURL(desc Descriptor, opts ...TransferOption) (*url.URL, error) {
-	return s.store.UploadURL(Key(s.codec.Encode(desc.Key())), opts...)
+	key, err := s.codec.Encode(desc.Key())
+	if err != nil {
+		return nil, err
+	}
+	return s.store.UploadURL(Key(key), opts...)
 }
 
 func (s *CodecStore) Delete(desc Descriptor) error {
-	return s.store.Delete(Key(s.codec.Encode(desc.Key())))
+	key, err := s.codec.Encode(desc.Key())
+	if err != nil {
+		return err
+	}
+	return s.store.Delete(Key(key))
 }
 
 func (s *CodecStore) Close() error {

@@ -174,3 +174,20 @@ func TestMultiKeyWithColon(t *testing.T) {
 	assert.Len(t, list, 1)
 	assert.Equal(t, key, list[0].Key())
 }
+
+func TestMultiPropagatesKeyCodecErrors(t *testing.T) {
+	td, err := ioutil.TempDir("", "test-multi")
+	assert.Nil(t, err)
+
+	hd, err := directory.OpenDir(filepath.Join(td, "test"))
+	assert.Nil(t, err)
+
+	m := config.OpenMultiWithOptions(hd, []marshal.FileMarshaller{marshal.Toml}, config.WithKeyCodec(failingKeyCodec{encodeErr: assert.AnError}))
+	err = m.Marshal(config.Key("quote"), TestConfig{Key: "k", Value: "v"})
+	assert.ErrorIs(t, err, assert.AnError)
+
+	assert.NoError(t, hd.Write("broken.toml", []byte("Key = \"k\"\nValue = \"v\"\n")))
+	m = config.OpenMultiWithOptions(hd, []marshal.FileMarshaller{marshal.Toml}, config.WithKeyCodec(failingKeyCodec{decodeErr: assert.AnError}))
+	_, err = m.List()
+	assert.ErrorIs(t, err, assert.AnError)
+}
