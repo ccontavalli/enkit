@@ -1,0 +1,38 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cryptstore",
+    srcs = [
+        "cryptstore.go",
+        "doc.go",
+        "flags.go",
+        "token_codec.go",
+        "wrappers.go",
+    ],
+    importpath = "github.com/ccontavalli/enkit/lib/config/cryptstore",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/config",
+        "//lib/kflags",
+        "//lib/token",
+    ],
+)
+
+go_test(
+    name = "cryptstore_test",
+    srcs = ["cryptstore_test.go"],
+    embed = [":cryptstore"],
+    deps = [
+        "//lib/config",
+        "//lib/config/marshal",
+        "//lib/config/memory",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":cryptstore",
+    visibility = ["//visibility:public"],
+)
