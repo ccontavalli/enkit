@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "dispatch.go",
         "remoteip.go",
+        "replaceable.go",
         "server.go",
         "utils.go",
     ],
@@ -33,6 +34,7 @@ alias(
 go_test(
     name = "khttp_test",
     srcs = [
+        "replaceable_test.go",
         "server_test.go",
         "utils_test.go",
     ],
