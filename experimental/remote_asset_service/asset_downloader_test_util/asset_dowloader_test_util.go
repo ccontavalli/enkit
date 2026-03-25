@@ -209,7 +209,7 @@ func (t *testContext) runFilterUriCheck() error {
 	}
 
 	err = t.runWithHash(
-		"file:/home/gleb/develop/enkit/registry/modules/rules_python/enf-1.4.1/patches/rules_python.patch",
+		"file:/tmp/filtered-out-by-url-scheme",
 		"bc3b0c2916152348ef7d465f6025aedc530b5edc8b9da82617eb79531f783302",
 	)
 
