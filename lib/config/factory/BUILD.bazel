@@ -11,6 +11,7 @@ go_library(
     deps = [
         "//lib/config",
         "//lib/config/bbolt",
+        "//lib/config/cryptstore",
         "//lib/config/datastore",
         "//lib/config/directory",
         "//lib/config/marshal",
@@ -26,6 +27,8 @@ go_test(
     embed = [":factory"],
     deps = [
         "//lib/config",
+        "//lib/config/cryptstore",
+        "//lib/config/directory",
         "//lib/config/sqlite",
         "@com_github_stretchr_testify//assert",
     ],

@@ -23,6 +23,7 @@ go_library(
         "//lib/kflags",
         "//lib/kflags/kcobra",
         "//lib/progress",
+        "//lib/srand",
         "@com_github_spf13_cobra//:cobra",
     ],
 )

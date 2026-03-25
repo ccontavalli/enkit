@@ -7,6 +7,7 @@ import (
 
 	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/config/bbolt"
+	"github.com/ccontavalli/enkit/lib/config/cryptstore"
 	"github.com/ccontavalli/enkit/lib/config/datastore"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
@@ -24,9 +25,15 @@ func NewStore(rng *rand.Rand, mods ...Modifier) (config.StoreWorkspace, error) {
 		m(opts)
 	}
 
-	backend, format := parseStoreType(opts.Flags.StoreType)
+	useCrypto, backend, format, err := parseStoreType(opts.Flags.StoreType)
+	if err != nil {
+		return nil, err
+	}
 	switch backend {
 	case "datastore":
+		if useCrypto {
+			return nil, fmt.Errorf("crypto wrapper requires a loader-backed config store: %s", opts.Flags.StoreType)
+		}
 		if format != "" {
 			return nil, fmt.Errorf("datastore does not support formats")
 		}
@@ -37,12 +44,19 @@ func NewStore(rng *rand.Rand, mods ...Modifier) (config.StoreWorkspace, error) {
 		return ds, nil
 	case "memory":
 		if format == "raw" {
+			if useCrypto {
+				return nil, fmt.Errorf("crypto wrapper does not support raw config stores: %s", opts.Flags.StoreType)
+			}
 			return memory.NewRaw(), nil
 		}
 		// fallthrough
 		fallthrough
 	case "directory", "bbolt", "sqlite":
 		loaderWorkspace, err := newLoaderWorkspace(opts, backend)
+		if err != nil {
+			return nil, err
+		}
+		loaderWorkspace, err = maybeWrapCryptstore(opts, useCrypto, loaderWorkspace)
 		if err != nil {
 			return nil, err
 		}
@@ -75,11 +89,18 @@ func NewLoader(rng *rand.Rand, mods ...Modifier) (config.LoaderWorkspace, error)
 	for _, m := range mods {
 		m(opts)
 	}
-	backend, format := parseStoreType(opts.Flags.StoreType)
+	useCrypto, backend, format, err := parseStoreType(opts.Flags.StoreType)
+	if err != nil {
+		return nil, err
+	}
 	if format != "" {
 		return nil, fmt.Errorf("loader workspace does not accept format: %s", format)
 	}
-	return newLoaderWorkspace(opts, backend)
+	workspace, err := newLoaderWorkspace(opts, backend)
+	if err != nil {
+		return nil, err
+	}
+	return maybeWrapCryptstore(opts, useCrypto, workspace)
 }
 
 func newLoaderWorkspace(opts *Options, backend string) (config.LoaderWorkspace, error) {
@@ -97,13 +118,32 @@ func newLoaderWorkspace(opts *Options, backend string) (config.LoaderWorkspace, 
 	}
 }
 
-func parseStoreType(storeType string) (string, string) {
+func maybeWrapCryptstore(opts *Options, enabled bool, workspace config.LoaderWorkspace) (config.LoaderWorkspace, error) {
+	if !enabled {
+		return workspace, nil
+	}
+	flags := opts.Flags.Crypt
+	if flags == nil {
+		flags = cryptstore.DefaultFlags()
+	}
+	return cryptstore.NewLoaderWorkspace(workspace, cryptstore.FromFlags(flags, opts.Rng))
+}
+
+func parseStoreType(storeType string) (bool, string, string, error) {
 	if storeType == "" {
-		return "", ""
+		return false, "", "", nil
 	}
-	parts := strings.SplitN(storeType, ":", 2)
+	parts := strings.Split(storeType, ":")
+	useCrypto := false
+	if parts[0] == "crypto" {
+		useCrypto = true
+		parts = parts[1:]
+	}
+	if len(parts) == 0 || len(parts) > 2 || parts[0] == "" {
+		return false, "", "", fmt.Errorf("invalid config store type: %s", storeType)
+	}
 	if len(parts) == 1 {
-		return parts[0], ""
+		return useCrypto, parts[0], "", nil
 	}
-	return parts[0], parts[1]
+	return useCrypto, parts[0], parts[1], nil
 }

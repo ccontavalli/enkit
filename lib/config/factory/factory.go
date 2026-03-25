@@ -15,6 +15,7 @@ import (
 	"math/rand"
 
 	"github.com/ccontavalli/enkit/lib/config/bbolt"
+	"github.com/ccontavalli/enkit/lib/config/cryptstore"
 	"github.com/ccontavalli/enkit/lib/config/datastore"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
@@ -30,7 +31,8 @@ const (
 
 type Flags struct {
 	// StoreType determines the backend and optional format to use.
-	// Examples: "directory:toml", "directory:multi", "memory:json", "bbolt:json".
+	// Examples: "directory:toml", "directory:multi", "memory:json",
+	// "bbolt:json", "crypto:directory:toml".
 	StoreType string
 	// Datastore holds Datastore-specific configuration.
 	Datastore *datastore.Flags
@@ -40,6 +42,9 @@ type Flags struct {
 	SQLite *sqlite.Flags
 	// Bbolt holds bbolt-specific configuration.
 	Bbolt *bbolt.Flags
+	// Crypt holds cryptstore-specific configuration used when StoreType has a
+	// "crypto:" prefix.
+	Crypt *cryptstore.Flags
 }
 
 // DefaultFlags returns a new Flags struct with sensible default values.
@@ -52,6 +57,7 @@ func DefaultFlags() *Flags {
 		Bbolt:     bbolt.DefaultFlags(),
 		Datastore: datastore.DefaultFlags(),
 		Directory: directory.DefaultFlags(),
+		Crypt:     cryptstore.DefaultFlags(),
 	}
 }
 
@@ -60,11 +66,15 @@ func DefaultFlags() *Flags {
 // The flags will be prefixed with the given string.
 // For example, if prefix is "server-", the flags will be "--server-config-store", etc.
 func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
-	set.StringVar(&f.StoreType, prefix+"config-store", f.StoreType, "Type of config store to use (backend[:format])")
+	set.StringVar(&f.StoreType, prefix+"config-store", f.StoreType, "Type of config store to use (backend[:format] or crypto:backend[:format])")
 	f.SQLite.Register(set, prefix)
 	f.Bbolt.Register(set, prefix)
 	f.Datastore.Register(set, prefix)
 	f.Directory.Register(set, prefix)
+	if f.Crypt == nil {
+		f.Crypt = cryptstore.DefaultFlags()
+	}
+	f.Crypt.Register(set, prefix)
 	return f
 }
 
