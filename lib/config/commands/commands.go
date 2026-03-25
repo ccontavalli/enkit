@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/ccontavalli/enkit/lib/config/factory"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/kflags/kcobra"
+	"github.com/ccontavalli/enkit/lib/srand"
 	"github.com/spf13/cobra"
 )
 
@@ -99,7 +101,7 @@ func (r *Root) workspace(sf *StoreFlags) (config.StoreWorkspace, error) {
 	if sf.App == "" {
 		return nil, kflags.NewUsageErrorf("must specify --%sapp", sf.Prefix)
 	}
-	workspace, err := factory.NewStore(factory.FromFlags(sf.Flags))
+	workspace, err := factory.NewStore(rand.New(srand.Source), factory.FromFlags(sf.Flags))
 	if err != nil {
 		return nil, err
 	}

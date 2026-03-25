@@ -11,7 +11,7 @@
 //	    cleanup := safe.Install()
 //	    defer cleanup()
 //
-//	    ws, _ := factory.NewStore(factory.FromFlags(flags))
+//	    ws, _ := factory.NewStore(rng, factory.FromFlags(flags))
 //	    ws = safe.WrapWorkspace(ws)
 //
 //	    store, _ := ws.Open("myapp", "prod")

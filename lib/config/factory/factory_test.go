@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,10 @@ import (
 	"github.com/ccontavalli/enkit/lib/config/sqlite"
 	"github.com/stretchr/testify/assert"
 )
+
+func testRng() *rand.Rand {
+	return rand.New(rand.NewSource(1234))
+}
 
 func TestDefaultFlags(t *testing.T) {
 	flags := DefaultFlags()
@@ -27,7 +32,7 @@ func TestNewDirectoryStore(t *testing.T) {
 		Directory: &directory.Flags{Path: tmpDir},
 	}
 
-	workspace, err := NewStore(FromFlags(flags))
+	workspace, err := NewStore(testRng(), FromFlags(flags))
 	assert.Nil(t, err)
 	assert.NotNil(t, workspace)
 
@@ -59,7 +64,7 @@ func TestNewUnknownStore(t *testing.T) {
 	flags := &Flags{
 		StoreType: "unknown-type",
 	}
-	_, err := NewStore(FromFlags(flags))
+	_, err := NewStore(testRng(), FromFlags(flags))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown config store type")
 }
@@ -77,7 +82,7 @@ func TestNewSQLiteStore(t *testing.T) {
 		},
 	}
 
-	workspace, err := NewStore(FromFlags(flags))
+	workspace, err := NewStore(testRng(), FromFlags(flags))
 	assert.NoError(t, err)
 	assert.NotNil(t, workspace)
 
@@ -106,7 +111,7 @@ func TestDirectorySimpleWithFormat(t *testing.T) {
 		Directory: &directory.Flags{Path: tmpDir},
 	}
 
-	workspace, err := NewStore(FromFlags(flags))
+	workspace, err := NewStore(testRng(), FromFlags(flags))
 	assert.Nil(t, err)
 	assert.NotNil(t, workspace)
 
@@ -131,7 +136,7 @@ func TestNewMemoryRawStore(t *testing.T) {
 		StoreType: "memory:raw",
 	}
 
-	workspace, err := NewStore(FromFlags(flags))
+	workspace, err := NewStore(testRng(), FromFlags(flags))
 	assert.NoError(t, err)
 	assert.NotNil(t, workspace)
 
@@ -161,7 +166,7 @@ func TestNewDirectoryExplorer(t *testing.T) {
 		Directory: &directory.Flags{Path: tmpDir},
 	}
 
-	explorer, err := NewStore(FromFlags(flags))
+	explorer, err := NewStore(testRng(), FromFlags(flags))
 	assert.NoError(t, err)
 	assert.NotNil(t, explorer)
 

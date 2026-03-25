@@ -2,6 +2,7 @@ package factory
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"github.com/ccontavalli/enkit/lib/config"
@@ -14,9 +15,10 @@ import (
 )
 
 // NewStore creates and returns a new config.StoreWorkspace based on the provided modifiers.
-func NewStore(mods ...Modifier) (config.StoreWorkspace, error) {
+func NewStore(rng *rand.Rand, mods ...Modifier) (config.StoreWorkspace, error) {
 	opts := &Options{
 		Flags: DefaultFlags(),
+		Rng:   rng,
 	}
 	for _, m := range mods {
 		m(opts)
@@ -65,9 +67,10 @@ func storeFromLoaderWorkspace(workspace config.LoaderWorkspace, format string) (
 }
 
 // NewLoader creates and returns a new config.LoaderWorkspace based on the provided modifiers.
-func NewLoader(mods ...Modifier) (config.LoaderWorkspace, error) {
+func NewLoader(rng *rand.Rand, mods ...Modifier) (config.LoaderWorkspace, error) {
 	opts := &Options{
 		Flags: DefaultFlags(),
+		Rng:   rng,
 	}
 	for _, m := range mods {
 		m(opts)

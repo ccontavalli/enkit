@@ -4,7 +4,7 @@
 //
 //	flags := factory.DefaultFlags().Register(flagSet, "my-app")
 //	...
-//	workspace, err := factory.NewStore(factory.FromFlags(flags))
+//	workspace, err := factory.NewStore(rng, factory.FromFlags(flags))
 //	if err != nil { ... }
 //
 //	store, err := workspace.Open("my-app", "users")
@@ -12,6 +12,7 @@ package factory
 
 import (
 	"fmt"
+	"math/rand"
 
 	"github.com/ccontavalli/enkit/lib/config/bbolt"
 	"github.com/ccontavalli/enkit/lib/config/datastore"
@@ -70,6 +71,7 @@ func (f *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
 // Options holds the internal configuration for the factory.
 type Options struct {
 	Flags *Flags
+	Rng   *rand.Rand
 }
 
 // Modifier is a function that modifies the factory Options.
