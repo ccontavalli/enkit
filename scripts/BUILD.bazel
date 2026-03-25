@@ -1,4 +1,3 @@
-load("@bazel_bats//:rules.bzl", "bats_test")
 load("//bazel:shellutils.bzl", "shellcheck_test")
 load("//bazel/astore:defs.bzl", "astore_upload")
 load("//bazel/utils:diff_test.bzl", "diff_test")
@@ -6,13 +5,12 @@ load("//bazel/utils:diff_test.bzl", "diff_test")
 sh_library(
     name = "gee-lib",
     srcs = ["gee"],
+    visibility = ["//scripts/tests:__pkg__"],
 )
 
-bats_test(
+test_suite(
     name = "gee-bats",
-    srcs = ["gee.bats"],
-    uses_bats_assert = True,
-    deps = [":gee-lib"],
+    tests = ["//scripts/tests:gee-bats"],
 )
 
 shellcheck_test(

@@ -7,6 +7,12 @@ load "test_helper/bats-assert/load"
 setup() {
   export TERM=screen-256color
   source ./scripts/gee
+  # gee installs process-wide traps and enables errexit when sourced; restore
+  # BATS' normal shell state so assertion failures are reported as test failures.
+  set +e
+  set +E
+  trap - ERR
+  trap - EXIT
 }
 
 @test "_contains_element" {
@@ -105,15 +111,19 @@ function invoke_parse_gh_pr_checks() {
   )
   declare -A CHECK_COUNTS=( [fail]=999 )
   declare -a FAILED_BUILDS=( foobar )
-  _parse_gh_pr_checks CHECK_COUNTS FAILED_BUILDS "${CHECKS[@]}" >&2
-  echo "RC=$?" >&2
-  typeset -p CHECK_COUNTS >&2
-  typeset -p FAILED_BUILDS >&2
+  _parse_gh_pr_checks CHECK_COUNTS FAILED_BUILDS "${CHECKS[@]}"
+  local rc=$?
+  printf "RC=%s\n" "${rc}"
+  printf "fail=%s\n" "${CHECK_COUNTS[fail]}"
+  printf "pass=%s\n" "${CHECK_COUNTS[pass]}"
+  printf "skipping=%s\n" "${CHECK_COUNTS[skipping]}"
+  printf "failed_build=%s\n" "${FAILED_BUILDS[0]}"
 }
 
 @test "test _parse_gh_pr_checks" {
   run invoke_parse_gh_pr_checks
+  assert_success
   assert_equal \
-    'RC=0'$'\n''declare -A CHECK_COUNTS=([skipping]="2" [pass]="1" [fail]="1" )'$'\n''declare -a FAILED_BUILDS=([0]="104e0ed9-6dd6-443d-8afd-1aa05c649fac")' \
+    $'RC=0\nfail=1\npass=1\nskipping=2\nfailed_build=104e0ed9-6dd6-443d-8afd-1aa05c649fac' \
     "$output"
 }

@@ -44,7 +44,8 @@
     "https://bcr.bazel.build/modules/aspect_tools_telemetry/0.2.0/MODULE.bazel": "61d2a12f7c6f063fc215c4258c5ca1ee9a5791e81945cbe24ded9dcbe2d94b29",
     "https://bcr.bazel.build/modules/aspect_tools_telemetry/0.2.8/MODULE.bazel": "aa975a83e72bcaac62ee61ab12b788ea324a1d05c4aab28aadb202f647881679",
     "https://bcr.bazel.build/modules/aspect_tools_telemetry/0.2.8/source.json": "786cbc49377fb6bf4859aec5b1c61f8fc26b08e9fdb929e2dde2e1e2a406bd24",
-    "https://bcr.bazel.build/modules/bazel_bats/enf-0.35.0/MODULE.bazel": "not found",
+    "https://bcr.bazel.build/modules/bazel_bats/0.35.0/MODULE.bazel": "e118fcaa36e4f6b22ce17b6a904ec6410557ae3aa86bc36a3507895c4067e211",
+    "https://bcr.bazel.build/modules/bazel_bats/0.35.0/source.json": "b1d7c2677cf3699ca985b1a6463bf0415dbe9663282a005a2a9e5f8648554469",
     "https://bcr.bazel.build/modules/bazel_features/0.1.0/MODULE.bazel": "47011d645b0f949f42ee67f2e8775188a9cf4a0a1528aa2fa4952f2fd00906fd",
     "https://bcr.bazel.build/modules/bazel_features/1.1.0/MODULE.bazel": "cfd42ff3b815a5f39554d97182657f8c4b9719568eb7fded2b9135f084bf760b",
     "https://bcr.bazel.build/modules/bazel_features/1.1.1/MODULE.bazel": "27b8c79ef57efe08efccbd9dd6ef70d61b4798320b8d3c134fd571f78963dbcd",
@@ -595,8 +596,8 @@
     },
     "@@bazel_bats+//:extensions.bzl%bazel_bats_deps": {
       "general": {
-        "bzlTransitiveDigest": "JRe/7Ot1JVIb18MbYSxeYgSaITxfB3fqjmKyuItfVIA=",
-        "usagesDigest": "NW8Dp+YpsXPPYPsW7bgS56+2sSxutL/S/LzNR5g9710=",
+        "bzlTransitiveDigest": "dMxpmRKtIYzMONCZV8oDEdFhT7orcOnBrTyMoCa+ppA=",
+        "usagesDigest": "t+ex/oJhALiD6nk6VMpJT83/RVXO6TaIVwWMSo4V6sA=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -604,7 +605,7 @@
           "bats_core": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "build_file_content": "\nsh_library(\n    name = \"bats_lib\",\n    srcs = glob([\n        \"libexec/**\",\n        \"lib/**\",    \n    ]),\n)\n\nfilegroup(\n    name = \"bats\",\n    srcs = [\"bin/bats\"],\n    visibility = [\"//visibility:public\"],\n    data = [\":bats_lib\"],\n)\n\nsh_library(\n    name = \"file_setup_teardown_lib\",\n    srcs = [\"test/file_setup_teardown.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/file_setup_teardown/**\"]),\n)\n\nsh_library(\n    name = \"junit_formatter_lib\",\n    srcs = [\"test/junit-formatter.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/junit-formatter/**\"]),\n)\n\nsh_library(\n    name = \"parallel_lib\",\n    srcs = [\"test/parallel.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\n        \"test/concurrent-coordination.bash\",\n        \"test/fixtures/parallel/**\",\n    ]),\n)\n\nsh_library(\n    name = \"run_lib\",\n    srcs = [\"test/run.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/run/**\"]),\n)\n\nsh_library(\n    name = \"suite_lib\",\n    srcs = [\"test/suite.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/suite/**\"]),\n)\n\nsh_library(\n    name = \"test_helper\",\n    srcs = [\"test/test_helper.bash\"],\n    visibility = [\"//visibility:public\"],\n)\n\nsh_library(\n    name = \"trace_lib\",\n    srcs = [\"test/trace.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/trace/**\"]),\n)\n\nexports_files(glob([\"test/*.bats\"]))\n",
+              "build_file_content": "\nsh_library(\n    name = \"bats_lib\",\n    srcs = glob([\"libexec/**\"]),\n)\n\nsh_binary(\n    name = \"bats\",\n    srcs = [\"bin/bats\"],\n    visibility = [\"//visibility:public\"],\n    deps = [\":bats_lib\"],\n)\n\nsh_library(\n    name = \"file_setup_teardown_lib\",\n    srcs = [\"test/file_setup_teardown.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/file_setup_teardown/**\"]),\n)\n\nsh_library(\n    name = \"junit_formatter_lib\",\n    srcs = [\"test/junit-formatter.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/junit-formatter/**\"]),\n)\n\nsh_library(\n    name = \"parallel_lib\",\n    srcs = [\"test/parallel.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\n        \"test/concurrent-coordination.bash\",\n        \"test/fixtures/parallel/**\",\n    ]),\n)\n\nsh_library(\n    name = \"run_lib\",\n    srcs = [\"test/run.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/run/**\"]),\n)\n\nsh_library(\n    name = \"suite_lib\",\n    srcs = [\"test/suite.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/suite/**\"]),\n)\n\nsh_library(\n    name = \"test_helper\",\n    srcs = [\"test/test_helper.bash\"],\n    visibility = [\"//visibility:public\"],\n)\n\nsh_library(\n    name = \"trace_lib\",\n    srcs = [\"test/trace.bats\"],\n    visibility = [\"//visibility:public\"],\n    data = glob([\"test/fixtures/trace/**\"]),\n)\n\nexports_files(glob([\"test/*.bats\"]))\n",
               "urls": [
                 "https://github.com/bats-core/bats-core/archive/refs/tags/v1.7.0.tar.gz"
               ],
