@@ -12,8 +12,6 @@
         "github:bazel-contrib/bazel-gazelle"
     ],
     "versions": [
-        "enf-0.43.0",
-        "enf-0.44.0",
         "enf-0.45.0"
     ]
 }

@@ -7,8 +7,7 @@
     },
     "overlay": {
         "internal/bzlmod/patches/BUILD.bazel": "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
-        "internal/bzlmod/patches/default_patches.bzl": "sha256-MwToVfnNhilClV2zZfF3bNw0bdxwZlJhcxr5lI1+zx0=",
-        "internal/bzlmod/patches/com_github_buildbarn_bb_storage.patch": "sha256-yugasVDdiIRIkbpx/VyGNwxz7QllYx5mpUjbiLE/SZo=",
-        "internal/bzlmod/patches/com_google_cloud_go_datastore.patch": "sha256-K9/BUQlvCIK1CHdiK7D8yRcn705d3bHtFOJ9f7Br5n8="
+        "internal/bzlmod/patches/default_patches.bzl": "sha256-PoNbnhls2IQ9LO2lu8SCSeooY3aNRD8G1hAK/FDNeCc=",
+        "internal/bzlmod/patches/com_github_buildbarn_bb_storage.patch": "sha256-yugasVDdiIRIkbpx/VyGNwxz7QllYx5mpUjbiLE/SZo="
     }
 }
