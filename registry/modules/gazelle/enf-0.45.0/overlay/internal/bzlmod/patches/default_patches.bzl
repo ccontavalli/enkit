@@ -3,5 +3,3 @@ DEFAULT_PATCHES = {
         "//internal/bzlmod/patches:com_github_buildbarn_bb_storage.patch",
     ],
 }
-
-DEFAULT_PATCH_TOOLS = {}

@@ -54,7 +54,6 @@ import (
 	"math/rand"
 	"net/http"
 	"sync"
-	"sync/atomic"
 )
 
 // Config is the content of the proxy configuration file.
@@ -341,7 +340,7 @@ type Enproxy struct {
 
 	handler      *khttp.ReplaceableHandler
 	domains      []string
-	proxyStarted atomic.Bool
+	proxyStarted bool
 
 	nproxy    *nasshp.NasshProxy
 	whitelist *utils.ReplaceableWhitelist
@@ -508,7 +507,7 @@ func (ep *Enproxy) ApplyConfigStruct(config Config) error {
 	}
 
 	domains := collectDomains(desired, modules)
-	if ep.proxyStarted.Load() && !sameDomains(ep.domains, domains) {
+	if ep.proxyStarted && !sameDomains(ep.domains, domains) {
 		return fmt.Errorf("cannot apply config changing listener domains after proxy start; restart required")
 	}
 
@@ -566,10 +565,16 @@ func (ep *Enproxy) RunMetrics() error {
 }
 
 func (ep *Enproxy) RunProxy() error {
-	ep.proxyStarted.Store(true)
-	err := ep.proxy(ep.log.Infof, &khttp.Dumper{Real: ep.handler, Log: log.Printf}, ep.domains...)
+	ep.applyMu.Lock()
+	domains := append([]string{}, ep.domains...)
+	ep.proxyStarted = true
+	ep.applyMu.Unlock()
+
+	err := ep.proxy(ep.log.Infof, &khttp.Dumper{Real: ep.handler, Log: log.Printf}, domains...)
 	if err != nil {
-		ep.proxyStarted.Store(false)
+		ep.applyMu.Lock()
+		ep.proxyStarted = false
+		ep.applyMu.Unlock()
 	}
 	return err
 }

@@ -144,6 +144,50 @@ func TestCompileBindingsSharesHandlersAcrossHosts(t *testing.T) {
 	assert.Len(t, compiled.Handlers, 1)
 }
 
+func TestCompileBindingsReusesEquivalentEmptyTransforms(t *testing.T) {
+	created := 0
+	create := func(mapping Mapping) (http.Handler, error) {
+		created++
+		return &staticHandler{}, nil
+	}
+
+	firstMappings := []Mapping{
+		{
+			From: HostPath{
+				Host: "test.lan",
+				Path: "/",
+			},
+			To: "https://backend.example.com",
+		},
+	}
+	secondMappings := []Mapping{
+		{
+			From: HostPath{
+				Host: "test.lan",
+				Path: "/",
+			},
+			To: "https://backend.example.com",
+			Transform: &Transform{
+				StripCookie:              []string{},
+				MapRequestHeaders:        map[string]string{},
+				MapRequestHeadersByGroup: []HeaderGroupMapping{},
+			},
+		},
+	}
+
+	first, err := CompileBindings(firstMappings, nil, create)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, created)
+
+	second, err := CompileBindings(secondMappings, first.Handlers, create)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, created)
+
+	for key, handler := range first.Handlers {
+		assert.Same(t, handler, second.Handlers[key])
+	}
+}
+
 func TestCompileBindingsSeparatesNamedHandlers(t *testing.T) {
 	created := 0
 	create := func(mapping Mapping) (http.Handler, error) {

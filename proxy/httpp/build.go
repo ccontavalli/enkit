@@ -65,10 +65,10 @@ type Binding struct {
 // installation plan.
 //
 // It contains:
-// - the Bindings to register on a mux for this generation
-// - the Domains implied by those bindings
-// - the Handlers keyed by module signature, so unchanged handler instances can
-//   be reused across config applies
+//   - the Bindings to register on a mux for this generation
+//   - the Domains implied by those bindings
+//   - the Handlers keyed by module signature, so unchanged handler instances can
+//     be reused across config applies
 //
 // The split is needed because handler identity and route mounting are not the
 // same thing. A single handler instance may be mounted on multiple hosts, and a
@@ -210,6 +210,28 @@ func CompileBindings(mappings []Mapping, reuse map[string]http.Handler, creator 
 	return compiled, nil
 }
 
+func canonicalTransformForKey(transform *Transform) *Transform {
+	normalized := cloneTransform(transform)
+	if len(normalized.UrlRegex) == 0 {
+		normalized.UrlRegex = nil
+	}
+	if len(normalized.StripCookie) == 0 {
+		normalized.StripCookie = nil
+	}
+	if len(normalized.MapRequestHeaders) == 0 {
+		normalized.MapRequestHeaders = nil
+	}
+	for ix := range normalized.MapRequestHeadersByGroup {
+		if len(normalized.MapRequestHeadersByGroup[ix].GroupMapping) == 0 {
+			normalized.MapRequestHeadersByGroup[ix].GroupMapping = nil
+		}
+	}
+	if len(normalized.MapRequestHeadersByGroup) == 0 {
+		normalized.MapRequestHeadersByGroup = nil
+	}
+	return normalized
+}
+
 func ModuleKey(mapping Mapping) (string, error) {
 	normalized := mapping
 	normalized.Name = strings.TrimSpace(normalized.Name)
@@ -217,9 +239,7 @@ func ModuleKey(mapping Mapping) (string, error) {
 	if normalized.From.Path == "" {
 		normalized.From.Path = "/"
 	}
-	if normalized.Transform == nil {
-		normalized.Transform = &Transform{}
-	}
+	normalized.Transform = canonicalTransformForKey(normalized.Transform)
 	key, err := json.Marshal(normalized)
 	if err != nil {
 		return "", err

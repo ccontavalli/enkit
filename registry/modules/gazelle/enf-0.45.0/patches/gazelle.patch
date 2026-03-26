@@ -36,12 +36,11 @@ index 13080fa..e8bc7e9 100644
 +load(
 +    "//internal/bzlmod/patches:default_patches.bzl",
 +    "DEFAULT_PATCHES",
-+    "DEFAULT_PATCH_TOOLS",
 +)
  load(":go_mod.bzl", "deps_from_go_mod", "go_work_from_label", "sums_from_go_mod", "sums_from_go_work")
  load(":semver.bzl", "COMPARES_HIGHEST_SENTINEL", "semver")
  load(
-@@ -157,11 +162,14 @@ def _get_build_extra_args(path, gazelle_overrides, gazelle_default_attributes):
+@@ -157,11 +162,11 @@ def _get_build_extra_args(path, gazelle_overrides, gazelle_default_attributes):
      return _get_override_or_default(gazelle_overrides, gazelle_default_attributes, DEFAULT_BUILD_EXTRA_ARGS_BY_PATH, path, [], "build_extra_args")
  
  def _get_patches(path, module_overrides):
@@ -52,9 +51,6 @@ index 13080fa..e8bc7e9 100644
      override = _get_override_or_default(module_overrides, struct(), {}, path, None, "patch_strip")
 -    return ["-p{}".format(override)] if override else []
 +    return ["-p{}".format(override)] if override != None else ["-p0"]
-+
-+def _get_patch_tool(path, module_overrides):
-+    return _get_override_or_default(module_overrides, struct(), DEFAULT_PATCH_TOOLS, path, None, "patch_tool")
  
  def _repo_name(importpath):
      path_segments = importpath.split("/")
@@ -62,16 +58,14 @@ index 13080fa..e8bc7e9 100644
  
      conflict_printer(message)
  
--def _noop(_):
-+def _noop(*_):
+def _noop(*_):
      pass
  
  # These repos are shared between the isolated and non-isolated instances of go_deps as they are
-@@ -694,6 +702,7 @@ Mismatch between versions requested for Go module {module}:
+@@ -694,6 +700,6 @@ Mismatch between versions requested for Go module {module}:
              "build_extra_args": _get_build_extra_args(path, gazelle_overrides, gazelle_default_attributes),
              "patches": _get_patches(path, module_overrides),
              "patch_args": _get_patch_args(path, module_overrides),
-+            "patch_tool": _get_patch_tool(path, module_overrides),
              "debug_mode": debug_mode,
          }
  
