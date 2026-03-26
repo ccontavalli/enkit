@@ -2,6 +2,7 @@ package enproxy
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"github.com/ccontavalli/enkit/lib/khttp/krequest"
 	"github.com/ccontavalli/enkit/lib/khttp/ktest"
@@ -13,6 +14,7 @@ import (
 	"github.com/ccontavalli/enkit/proxy/httpp"
 	"github.com/ccontavalli/enkit/proxy/nasshp"
 	"github.com/ccontavalli/enkit/proxy/ptunnel"
+	"github.com/ccontavalli/enkit/proxy/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -69,6 +71,48 @@ func Server(wg *sync.WaitGroup, url *string) Starter {
 	}
 }
 
+func PublicConfig(host, path, to string, tunnels ...string) Config {
+	return Config{
+		Mapping: []httpp.Mapping{
+			{
+				From: httpp.HostPath{
+					Host: host,
+					Path: path,
+				},
+				Auth: httpp.MappingPublic,
+				To:   to,
+			},
+		},
+		Tunnels: tunnels,
+	}
+}
+
+func singleProxyModule(t *testing.T, modules map[string]runtimeModule) *proxyRuntimeModule {
+	proxies := []*proxyRuntimeModule{}
+	for _, module := range modules {
+		proxy, ok := module.(*proxyRuntimeModule)
+		if ok {
+			proxies = append(proxies, proxy)
+		}
+	}
+	assert.Len(t, proxies, 1)
+	for _, proxy := range proxies {
+		return proxy
+	}
+	return nil
+}
+
+func countProxyModules(modules map[string]runtimeModule) int {
+	total := 0
+	for _, module := range modules {
+		_, ok := module.(*proxyRuntimeModule)
+		if ok {
+			total++
+		}
+	}
+	return total
+}
+
 func TestInvalidConfig(t *testing.T) {
 	var url string
 	rng := rand.New(rand.NewSource(1))
@@ -102,7 +146,378 @@ func TestInvalidConfig(t *testing.T) {
 	assert.NotNil(t, ep)
 
 	events := accumulator.Retrieve()
-	assert.True(t, len(events) >= 5, "%v", events)
+	assert.True(t, len(events) >= 4, "%v", events)
+}
+
+func TestInvalidConfigFileFailsStartup(t *testing.T) {
+	var url string
+	rng := rand.New(rand.NewSource(1))
+
+	ep, err := New(rng,
+		WithHttpStarter(Server(&sync.WaitGroup{}, &url)),
+		WithConfigFile("config.json", []byte("{")),
+	)
+	assert.Regexp(t, "Invalid configuration file 'config.json'", err)
+	assert.Nil(t, ep)
+}
+
+func TestSemanticallyInvalidConfigFileFailsStartup(t *testing.T) {
+	var url string
+	rng := rand.New(rand.NewSource(1))
+
+	ep, err := New(rng,
+		WithHttpStarter(Server(&sync.WaitGroup{}, &url)),
+		WithConfigFile("config.json", []byte("{}")),
+	)
+	assert.Regexp(t, "config file.*has no Mapping.*defined", err)
+	assert.Nil(t, ep)
+}
+
+func TestInvalidConfigDoesNotPollutePrometheusRegistry(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	reg := prometheus.NewRegistry()
+	rng := rand.New(rand.NewSource(1))
+
+	ep, err := New(rng,
+		WithConfigFile("config.json", []byte("{}")),
+		WithMetricsStarter(Server(&sync.WaitGroup{}, new(string))),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		WithPrometheus(reg, reg),
+	)
+	assert.Regexp(t, "config file.*has no Mapping.*defined", err)
+	assert.Nil(t, ep)
+
+	ep, err = New(rand.New(rand.NewSource(2)),
+		WithConfig(PublicConfig("test.lan", "/", s1, "*")),
+		WithMetricsStarter(Server(&sync.WaitGroup{}, new(string))),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		WithPrometheus(reg, reg),
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, ep)
+}
+
+func TestApplyConfigStructSwapsActiveRoutes(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
+	assert.NoError(t, err)
+
+	initial := PublicConfig("test.lan", "/", s1, "*")
+	updated := PublicConfig("test.lan", "/", s2, "*")
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, WithHttpStarter(Server(&wg, &fe)), WithConfig(initial))
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.NoError(t, err)
+
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s2", body)
+}
+
+func TestApplyConfigStructRejectsDomainChangesAfterStart(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	initial := PublicConfig("test1.lan", "/", s1, "*")
+	updated := PublicConfig("test2.lan", "/", s1, "*")
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, WithHttpStarter(Server(&wg, &fe)), WithConfig(initial))
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.Regexp(t, "cannot apply config changing listener domains after proxy start", err)
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test1.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	var herr *protocol.HTTPError
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test2.lan")))
+	assert.ErrorAs(t, err, &herr)
+	assert.Equal(t, http.StatusNotFound, herr.Resp.StatusCode)
+}
+
+func TestApplyConfigStructRejectsInvalidUpdates(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	initial := PublicConfig("test.lan", "/", s1, "*")
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, WithHttpStarter(Server(&wg, &fe)), WithConfig(initial))
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	err = ep.ApplyConfigStruct(Config{})
+	assert.Regexp(t, "config file.*has no Mapping.*defined", err)
+
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+}
+
+func TestApplyConfigStructNormalizesHostNames(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	config := PublicConfig(" TeSt.Lan. ", "/", s1, "*")
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, WithHttpStarter(Server(&wg, &fe)), WithConfig(config))
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("TEST.LAN")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan.")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	assert.Equal(t, []string{"test.lan"}, ep.domains)
+}
+
+func TestApplyConfigStructRejectsNormalizedHostCollisions(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
+	assert.NoError(t, err)
+
+	config := Config{
+		Mapping: []httpp.Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "TEST.LAN",
+					Path: "/",
+				},
+				Auth: httpp.MappingPublic,
+				To:   s1,
+			},
+			{
+				From: httpp.HostPath{
+					Host: "test.lan.",
+					Path: "/",
+				},
+				Auth: httpp.MappingPublic,
+				To:   s2,
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, WithConfig(config))
+	assert.Nil(t, ep)
+	assert.Regexp(t, "duplicate route", err)
+}
+
+func TestApplyConfigFileSwapsActiveRoutes(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
+	assert.NoError(t, err)
+
+	initial := PublicConfig("test.lan", "/", s1, "*")
+	updated := PublicConfig("test.lan", "/", s2, "*")
+	updatedJSON, err := json.Marshal(updated)
+	assert.NoError(t, err)
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, WithHttpStarter(Server(&wg, &fe)), WithConfig(initial))
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	err = ep.ApplyConfigFile("config.json", updatedJSON)
+	assert.NoError(t, err)
+
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s2", body)
+}
+
+func TestApplyConfigStructReusesNasshProxy(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
+	assert.NoError(t, err)
+
+	cookie := &oauth.CredentialsCookie{
+		Identity: oauth.Identity{
+			Id:           "id",
+			Username:     "username",
+			Organization: "organization",
+		},
+	}
+
+	initial := PublicConfig("test.lan", "/", s1, "tcp|10.0.0.1:22")
+	updated := PublicConfig("test.lan", "/", s2, "tcp|10.0.0.2:22")
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng,
+		WithConfig(initial),
+		WithAuthenticator(Allow(cookie)),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, ep.nproxy)
+
+	nproxy := ep.nproxy
+	assert.Equal(t, utils.VerdictAllow, ep.whitelist.Allow("tcp", "10.0.0.1:22", cookie))
+	assert.Equal(t, utils.VerdictDrop, ep.whitelist.Allow("tcp", "10.0.0.2:22", cookie))
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.NoError(t, err)
+	assert.Same(t, nproxy, ep.nproxy)
+	assert.Equal(t, utils.VerdictDrop, ep.whitelist.Allow("tcp", "10.0.0.1:22", cookie))
+	assert.Equal(t, utils.VerdictAllow, ep.whitelist.Allow("tcp", "10.0.0.2:22", cookie))
+}
+
+func TestApplyConfigStructReusesUnchangedProxyHandlers(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
+	assert.NoError(t, err)
+
+	initial := PublicConfig("test.lan", "/", s1, "*")
+	updated := PublicConfig("test.lan", "/", s2, "*")
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, WithConfig(initial))
+	assert.NoError(t, err)
+
+	reused := singleProxyModule(t, ep.modules)
+
+	err = ep.ApplyConfigStruct(initial)
+	assert.NoError(t, err)
+	assert.Same(t, reused, singleProxyModule(t, ep.modules))
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.NoError(t, err)
+	assert.NotSame(t, reused, singleProxyModule(t, ep.modules))
+}
+
+func TestApplyConfigStructSharesModulesAcrossHosts(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	config := Config{
+		Mapping: []httpp.Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "one.lan",
+					Path: "/",
+				},
+				Auth: httpp.MappingPublic,
+				To:   s1,
+			},
+			{
+				From: httpp.HostPath{
+					Host: "two.lan",
+					Path: "/",
+				},
+				Auth: httpp.MappingPublic,
+				To:   s1,
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, WithConfig(config))
+	assert.NoError(t, err)
+	assert.Equal(t, 1, countProxyModules(ep.modules))
+}
+
+func TestApplyConfigStructSeparatesNamedModules(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	config := Config{
+		Mapping: []httpp.Mapping{
+			{
+				Name: "one",
+				From: httpp.HostPath{
+					Host: "one.lan",
+					Path: "/",
+				},
+				Auth: httpp.MappingPublic,
+				To:   s1,
+			},
+			{
+				Name: "two",
+				From: httpp.HostPath{
+					Host: "two.lan",
+					Path: "/",
+				},
+				Auth: httpp.MappingPublic,
+				To:   s1,
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, WithConfig(config))
+	assert.NoError(t, err)
+	assert.Equal(t, 2, countProxyModules(ep.modules))
 }
 
 func TestSimpleHTTP(t *testing.T) {

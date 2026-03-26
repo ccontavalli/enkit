@@ -5,14 +5,18 @@ import (
 	"github.com/ccontavalli/enkit/lib/khttp"
 	"github.com/ccontavalli/enkit/proxy/amux/amuxie"
 	"github.com/stretchr/testify/assert"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-func creator(mapping *Mapping) (http.Handler, error) {
+type staticHandler struct{}
+
+func (*staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}
+
+func creator(mapping Mapping) (http.Handler, error) {
 	return NewProxy(mapping.From.Path, mapping.To, mapping.Transform)
 }
 
@@ -49,16 +53,18 @@ func TestBuild(t *testing.T) {
 
 	mux := amuxie.New()
 
-	dohttpps, err := PopulateMux(mux, nil, mapping, creator)
+	compiled, err := CompileBindings(mapping, nil, creator)
 	assert.Nil(t, err)
-	assert.Equal(t, []string{}, dohttpps)
+	assert.Equal(t, []string{}, compiled.Domains)
+
+	InstallBindings(mux, nil, compiled.Bindings)
 
 	proxy := httptest.NewServer(mux)
 
 	get := func(path string) string {
 		resp, err := http.Get(proxy.URL + path)
 		assert.Nil(t, err)
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		assert.Nil(t, err)
 		return string(body)
 	}
@@ -69,4 +75,130 @@ func TestBuild(t *testing.T) {
 	assert.Equal(t, "GOT 4:/backend4/longer", get("/host/b1/b4"))
 	assert.Equal(t, "GOT 4:/backend4/longer/", get("/host/b1/b4/"))
 	assert.Equal(t, "GOT 4:/backend4/longer/fuffa", get("/host/b1/b4/fuffa"))
+}
+
+func TestCompileBindingsReusesHandlers(t *testing.T) {
+	created := 0
+	create := func(mapping Mapping) (http.Handler, error) {
+		created++
+		return &staticHandler{}, nil
+	}
+
+	mappings := []Mapping{
+		{
+			From: HostPath{
+				Host: "test.lan",
+				Path: "/",
+			},
+			To: "https://backend-1.example.com",
+		},
+		{
+			From: HostPath{
+				Host: "other.lan",
+				Path: "/app",
+			},
+			To: "https://backend-2.example.com",
+		},
+	}
+
+	first, err := CompileBindings(mappings, nil, create)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, created)
+
+	second, err := CompileBindings(mappings, first.Handlers, create)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, created)
+
+	for key, handler := range first.Handlers {
+		assert.Same(t, handler, second.Handlers[key])
+	}
+}
+
+func TestCompileBindingsSharesHandlersAcrossHosts(t *testing.T) {
+	created := 0
+	create := func(mapping Mapping) (http.Handler, error) {
+		created++
+		return &staticHandler{}, nil
+	}
+
+	mappings := []Mapping{
+		{
+			From: HostPath{
+				Host: "one.lan",
+				Path: "/",
+			},
+			To: "https://backend.example.com",
+		},
+		{
+			From: HostPath{
+				Host: "two.lan",
+				Path: "/",
+			},
+			To: "https://backend.example.com",
+		},
+	}
+
+	compiled, err := CompileBindings(mappings, nil, create)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, created)
+	assert.Len(t, compiled.Handlers, 1)
+}
+
+func TestCompileBindingsSeparatesNamedHandlers(t *testing.T) {
+	created := 0
+	create := func(mapping Mapping) (http.Handler, error) {
+		created++
+		return &staticHandler{}, nil
+	}
+
+	mappings := []Mapping{
+		{
+			Name: "one",
+			From: HostPath{
+				Host: "one.lan",
+				Path: "/",
+			},
+			To: "https://backend.example.com",
+		},
+		{
+			Name: "two",
+			From: HostPath{
+				Host: "two.lan",
+				Path: "/",
+			},
+			To: "https://backend.example.com",
+		},
+	}
+
+	compiled, err := CompileBindings(mappings, nil, create)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, created)
+	assert.Len(t, compiled.Handlers, 2)
+}
+
+func TestCompileBindingsRejectsNormalizedHostCollisions(t *testing.T) {
+	create := func(mapping Mapping) (http.Handler, error) {
+		return &staticHandler{}, nil
+	}
+
+	mappings := []Mapping{
+		{
+			From: HostPath{
+				Host: "TEST.LAN",
+				Path: "/",
+			},
+			To: "https://backend-1.example.com",
+		},
+		{
+			From: HostPath{
+				Host: "test.lan.",
+				Path: "/",
+			},
+			To: "https://backend-2.example.com",
+		},
+	}
+
+	compiled, err := CompileBindings(mappings, nil, create)
+	assert.Nil(t, compiled)
+	assert.Regexp(t, "duplicate route", err)
 }

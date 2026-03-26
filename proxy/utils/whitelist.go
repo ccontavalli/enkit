@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ccontavalli/enkit/lib/oauth"
 	"path/filepath"
+	"sync/atomic"
 )
 
 type PatternList []string
@@ -21,7 +22,6 @@ type PatternList []string
 // - "tcp|10.10.0.12:*" -> allow connecting to 10.10.0.12 on any port.
 // - "tcp|10.10.0.12:22" -> allow connecting to 10.10.0.12 on port 22.
 // - "tcp|10.10.*.*:22" -> allow connecting to any host in 10.10.0.0/16 on port 22.
-//
 func NewPatternList(allowed []string) (PatternList, error) {
 	// Iterate over the list just to ensure that the patterns are valid.
 	for _, pattern := range allowed {
@@ -45,4 +45,24 @@ func (pl PatternList) Allow(proto string, ipport string, creds *oauth.Credential
 		}
 	}
 	return VerdictDrop
+}
+
+// ReplaceableWhitelist is a tunnel whitelist that can be atomically swapped at run time.
+type ReplaceableWhitelist struct {
+	current atomic.Value
+}
+
+func NewReplaceableWhitelist() *ReplaceableWhitelist {
+	rw := &ReplaceableWhitelist{}
+	rw.Set(nil)
+	return rw
+}
+
+func (rw *ReplaceableWhitelist) Set(patterns PatternList) {
+	rw.current.Store(patterns)
+}
+
+func (rw *ReplaceableWhitelist) Allow(proto string, ipport string, creds *oauth.CredentialsCookie) Verdict {
+	patterns := rw.current.Load().(PatternList)
+	return patterns.Allow(proto, ipport, creds)
 }

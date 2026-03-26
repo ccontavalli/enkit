@@ -9,35 +9,35 @@
 //
 // The simplest use of this library is via flags:
 //
-//    import (
-//        // Secure random numbers.
-//        "github.com/ccontavalli/enkit/lib/srand"
-//        "github.com/ccontavalli/enkit/lib/kflags"
-//        "flag"
-//    )
+//	import (
+//	    // Secure random numbers.
+//	    "github.com/ccontavalli/enkit/lib/srand"
+//	    "github.com/ccontavalli/enkit/lib/kflags"
+//	    "flag"
+//	)
 //
-//    flags := enproxy.DefaultFlags()
-//    flags.Register(&kflags.GoFlagSet{FlagSet: flag.CommandLine})
+//	flags := enproxy.DefaultFlags()
+//	flags.Register(&kflags.GoFlagSet{FlagSet: flag.CommandLine})
 //
-//    // Parse flags after registering them!!
-//    flag.Parse()
+//	// Parse flags after registering them!!
+//	flag.Parse()
 //
-//    rng := rand.New(srand.Source)
-//    proxy, err := enproxy.New(rng, enproxy.FromFlags(flags))
-//    if err != nil {
-//      ...
-//    }
+//	rng := rand.New(srand.Source)
+//	proxy, err := enproxy.New(rng, enproxy.FromFlags(flags))
+//	if err != nil {
+//	  ...
+//	}
 //
-//    proxy.Run()
+//	proxy.Run()
 //
 // You can, of course, create a proxy manually with the desired options.
 // In that case, you want to use `WithConfig` and other `With.*` modifiers
 // to set all the desired options.
-//
 package enproxy
 
 import (
 	"context"
+	"fmt"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/khttp"
@@ -53,6 +53,8 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"sync"
+	"sync/atomic"
 )
 
 // Config is the content of the proxy configuration file.
@@ -76,9 +78,12 @@ func (w *Warnings) Add(warning string) {
 // Print prints the list of warnings.
 //
 // For example:
-//   warnings.Print(log.Printf)
+//
+//	warnings.Print(log.Printf)
+//
 // or:
-//   warnings.Print(klogger.Warnf)
+//
+//	warnings.Print(klogger.Warnf)
 func (w *Warnings) Print(printer logger.Printer) {
 	for _, warn := range *w {
 		printer("%s", warn)
@@ -123,9 +128,9 @@ type Flags struct {
 // configuration parameters.
 func DefaultFlags() *Flags {
 	fl := &Flags{
-		Http:  khttp.DefaultFlags(),
-		Oauth: oauth.DefaultRedirectorFlags(),
-		Nassh: nasshp.DefaultFlags(),
+		Http:       khttp.DefaultFlags(),
+		Oauth:      oauth.DefaultRedirectorFlags(),
+		Nassh:      nasshp.DefaultFlags(),
 		Prometheus: khttp.DefaultFlags(),
 	}
 
@@ -159,7 +164,7 @@ func StarterFromFlags(flags *khttp.Flags) Starter {
 		return nil
 	}
 
-	return func (log logger.Printer, handler http.Handler, domains ...string) error {
+	return func(log logger.Printer, handler http.Handler, domains ...string) error {
 		return khttp.Run(handler, khttp.WithLogger(log), khttp.FromFlags(flags, domains...))
 	}
 }
@@ -173,7 +178,9 @@ type Options struct {
 	gatherer prometheus.Gatherer
 	register prometheus.Registerer
 
-	config Config
+	configFileContent []byte
+	configFileName    string
+	config            *Config
 
 	pmods []httpp.Modifier
 	nmods []nasshp.Modifier
@@ -196,7 +203,19 @@ func (mods Modifiers) Apply(o *Options) error {
 
 func WithConfig(config Config) Modifier {
 	return func(op *Options) error {
-		op.config = config
+		copy := config
+		op.config = &copy
+		op.configFileContent = nil
+		op.configFileName = ""
+		return nil
+	}
+}
+
+func WithConfigFile(name string, data []byte) Modifier {
+	return func(op *Options) error {
+		op.config = nil
+		op.configFileName = name
+		op.configFileContent = append([]byte{}, data...)
 		return nil
 	}
 }
@@ -290,12 +309,8 @@ func WithLogging(logger logger.Logger) Modifier {
 
 func FromFlags(flags *Flags) Modifier {
 	return func(op *Options) error {
-		var config Config
 		if len(flags.ConfigContent) <= 0 {
 			return kflags.NewUsageErrorf("Config file is empty, or no config file specified. Check the --config flag.")
-		}
-		if err := marshal.UnmarshalDefault(flags.ConfigName, flags.ConfigContent, marshal.Json, &config); err != nil {
-			return kflags.NewUsageErrorf("Invalid configuration file '%s': %w", flags.ConfigName, err)
 		}
 
 		if flags.Oauth.AuthURL != "" && !flags.DisabledAuthentication {
@@ -315,22 +330,30 @@ func FromFlags(flags *Flags) Modifier {
 			return err
 		}
 
-		return WithConfig(config)(op)
+		return WithConfigFile(flags.ConfigName, flags.ConfigContent)(op)
 	}
 }
 
 type Enproxy struct {
 	log logger.Logger
 
-	mux     http.Handler
-	domains []string
+	applyMu sync.Mutex
 
-	nproxy   *nasshp.NasshProxy
+	handler      *khttp.ReplaceableHandler
+	domains      []string
+	proxyStarted atomic.Bool
+
+	nproxy    *nasshp.NasshProxy
+	whitelist *utils.ReplaceableWhitelist
+	modules   map[string]runtimeModule
+
 	register prometheus.Registerer
 	gatherer prometheus.Gatherer
 
 	proxy   Starter
 	metrics Starter
+
+	pmods []httpp.Modifier
 }
 
 func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
@@ -342,21 +365,24 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 		return nil, err
 	}
 
-	wl, warns, err := op.config.Parse()
-	if err != nil {
-		return nil, err
+	ep := &Enproxy{
+		log: op.log,
+		handler: khttp.NewReplaceableHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "configuration not loaded", http.StatusServiceUnavailable)
+		})),
+		whitelist: utils.NewReplaceableWhitelist(),
+		modules:   map[string]runtimeModule{},
+		proxy:     op.proxy,
+		metrics:   op.metrics,
+		gatherer:  op.gatherer,
+		register:  op.register,
+		pmods:     append([]httpp.Modifier{httpp.WithLogging(op.log), httpp.WithAuthenticator(op.authenticate)}, op.pmods...),
 	}
-	warns.Print(op.log.Warnf)
 
-	mux := amuxie.New()
-
-	pmods := []httpp.Modifier{httpp.WithLogging(op.log), httpp.WithAuthenticator(op.authenticate)}
-	hproxy, err := httpp.New(mux, op.config.Mapping, append(pmods, op.pmods...)...)
-	if err != nil {
-		return nil, err
-	}
-
-	var nproxy *nasshp.NasshProxy
+	var (
+		err    error
+		nproxy *nasshp.NasshProxy
+	)
 	if op.authenticate == nil && !op.withoutNasshAuthentication {
 		op.log.Warnf("ssh gateway disabled as no authentication was configured")
 	} else {
@@ -366,42 +392,171 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 			authenticate = nil
 		}
 
-		nproxy, err = nasshp.New(rng, authenticate, append([]nasshp.Modifier{nasshp.WithFilter(wl.Allow), nasshp.WithLogging(op.log)}, op.nmods...)...)
+		nproxy, err = nasshp.New(rng, authenticate, append([]nasshp.Modifier{nasshp.WithFilter(ep.whitelist.Allow), nasshp.WithLogging(op.log)}, op.nmods...)...)
 		if err != nil {
 			return nil, err
 		}
-
-		rhost := nproxy.RelayHost()
-		root := amux.Mux(mux)
-		if rhost != "" {
-			root = mux.Host(rhost)
-		}
-
-		nproxy.Register(root.Handle)
 	}
+	ep.nproxy = nproxy
 
 	if op.metrics != nil {
 		if op.gatherer == nil || op.register == nil {
-			op.gatherer = prometheus.DefaultGatherer
-			op.register = prometheus.DefaultRegisterer
-		}
-		if nproxy != nil {
-			if err := nproxy.ExportMetrics(op.register); err != nil {
-				return nil, err
-			}
+			ep.gatherer = prometheus.DefaultGatherer
+			ep.register = prometheus.DefaultRegisterer
 		}
 	}
 
-	return &Enproxy{
-		log:      op.log,
-		mux:      mux,
-		domains:  append(append([]string{}, op.config.Domains...), hproxy.Domains...),
-		proxy:    op.proxy,
-		nproxy:   nproxy,
-		metrics:  op.metrics,
-		gatherer: op.gatherer,
-		register: op.register,
-	}, nil
+	switch {
+	case op.config != nil:
+		if err := ep.ApplyConfigStruct(*op.config); err != nil {
+			return nil, err
+		}
+	case len(op.configFileContent) > 0:
+		if err := ep.ApplyConfigFile(op.configFileName, op.configFileContent); err != nil {
+			return nil, err
+		}
+	default:
+		if err := ep.ApplyConfigStruct(Config{}); err != nil {
+			return nil, err
+		}
+	}
+
+	if ep.metrics != nil && nproxy != nil {
+		if err := nproxy.ExportMetrics(ep.register); err != nil {
+			return nil, err
+		}
+	}
+
+	return ep, nil
+}
+
+func normalizeDomains(domains []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, domain := range domains {
+		normalized := utils.NormalizeHost(domain)
+		if normalized == "" || seen[normalized] {
+			continue
+		}
+		seen[normalized] = true
+		out = append(out, normalized)
+	}
+	return out
+}
+
+func sameDomains(one, two []string) bool {
+	left := normalizeDomains(one)
+	right := normalizeDomains(two)
+	if len(left) != len(right) {
+		return false
+	}
+
+	seen := map[string]bool{}
+	for _, domain := range left {
+		seen[domain] = true
+	}
+	for _, domain := range right {
+		if !seen[domain] {
+			return false
+		}
+	}
+	return true
+}
+
+func collectDomains(desired *desiredState, modules map[string]runtimeModule) []string {
+	domains := append([]string{}, desired.Domains...)
+	for _, route := range desired.Routes {
+		domains = append(domains, route.Host)
+	}
+	for _, desiredModule := range desired.Modules {
+		module := modules[desiredModule.ID()]
+		domains = append(domains, module.Domains()...)
+	}
+	return normalizeDomains(domains)
+}
+
+func (ep *Enproxy) ApplyConfigFile(name string, data []byte) error {
+	var config Config
+	if err := marshal.UnmarshalDefault(name, data, marshal.Json, &config); err != nil {
+		return kflags.NewUsageErrorf("Invalid configuration file '%s': %w", name, err)
+	}
+	return ep.ApplyConfigStruct(config)
+}
+
+func (ep *Enproxy) ApplyConfigStruct(config Config) error {
+	wl, warns, err := config.Parse()
+	if err != nil {
+		return err
+	}
+
+	builder, err := httpp.NewBuilder(ep.pmods...)
+	if err != nil {
+		return err
+	}
+
+	desired, err := compileDesiredState(builder, ep.nproxy, ep.whitelist, config, wl, warns)
+	if err != nil {
+		return err
+	}
+
+	ep.applyMu.Lock()
+	defer ep.applyMu.Unlock()
+
+	modules, stale, err := reconcileModules(desired.Modules, ep.modules)
+	if err != nil {
+		return err
+	}
+
+	domains := collectDomains(desired, modules)
+	if ep.proxyStarted.Load() && !sameDomains(ep.domains, domains) {
+		return fmt.Errorf("cannot apply config changing listener domains after proxy start; restart required")
+	}
+
+	mux := amuxie.New()
+	installer := newInstallContext(ep.log, amux.Mux(mux))
+	seenBindings := map[string]int{}
+
+	for _, route := range desired.Routes {
+		module, ok := modules[route.ModuleID].(*proxyRuntimeModule)
+		if !ok {
+			return fmt.Errorf("module %s is not a proxy module", route.ModuleID)
+		}
+		for _, binding := range module.BindingsForHost(route.Host) {
+			bkey := binding.Host + "\x00" + binding.Path
+			if previous, found := seenBindings[bkey]; found {
+				return fmt.Errorf(
+					"error in mapping entry %d - duplicate route %q on host %q already defined by mapping entry %d",
+					route.Index, binding.Path, binding.Host, previous,
+				)
+			}
+			seenBindings[bkey] = route.Index
+			installer.InstallBinding(binding)
+		}
+	}
+
+	for _, desiredModule := range desired.Modules {
+		module := modules[desiredModule.ID()]
+		if err := module.Install(installer); err != nil {
+			return err
+		}
+	}
+
+	for _, desiredModule := range desired.Modules {
+		if err := modules[desiredModule.ID()].Activate(); err != nil {
+			return err
+		}
+	}
+
+	desired.Warnings.Print(ep.log.Warnf)
+	ep.modules = modules
+	ep.domains = domains
+	ep.handler.Swap(mux)
+	for _, module := range stale {
+		if err := module.Close(); err != nil {
+			ep.log.Warnf("failed closing stale module %s: %v", module.ID(), err)
+		}
+	}
+	return nil
 }
 
 func (ep *Enproxy) RunMetrics() error {
@@ -411,7 +566,12 @@ func (ep *Enproxy) RunMetrics() error {
 }
 
 func (ep *Enproxy) RunProxy() error {
-	return ep.proxy(ep.log.Infof, &khttp.Dumper{Real: ep.mux, Log: log.Printf}, ep.domains...)
+	ep.proxyStarted.Store(true)
+	err := ep.proxy(ep.log.Infof, &khttp.Dumper{Real: ep.handler, Log: log.Printf}, ep.domains...)
+	if err != nil {
+		ep.proxyStarted.Store(false)
+	}
+	return err
 }
 
 func (ep *Enproxy) Run() error {

@@ -35,8 +35,13 @@ type Mux interface {
 	// The function returns a Mux that can be used to define handlers for
 	// specific paths in this specific domain, or add more FQDN matches.
 	//
-	// If the specified FQDN does not terminate with a ".", the Mux is
-	// expected to match the FQDN both with a terminating "." and without.
+	// Host names are matched after normalization:
+	// - surrounding spaces are ignored
+	// - matching is case-insensitive
+	// - a trailing "." is treated as equivalent to the same host without it
+	//
+	// This means Host("example.com"), Host("Example.com"), and
+	// Host("example.com.") are considered the same host match.
 	//
 	// The "empty host string" is considered a wildcard matching any FQDN,
 	// meaning that the route will be used in any case there is no more

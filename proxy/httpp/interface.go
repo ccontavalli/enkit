@@ -237,6 +237,7 @@ const (
 )
 
 type Mapping struct {
+	Name string
 	From HostPath
 	To   string
 

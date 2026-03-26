@@ -43,12 +43,41 @@ func (as *AuthenticatedProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	)
 }
 
-func (p *Proxy) CreateServer(mapping *Mapping) (http.Handler, error) {
-	// Ensure that default transforms are applied.
-	transform := mapping.Transform
+func cloneTransform(transform *Transform) *Transform {
 	if transform == nil {
-		transform = &Transform{}
+		return &Transform{}
 	}
+
+	cloned := *transform
+	if transform.UrlRegex != nil {
+		cloned.UrlRegex = append([]Regex{}, transform.UrlRegex...)
+		for ix := range cloned.UrlRegex {
+			cloned.UrlRegex[ix].match = nil
+		}
+	}
+	if transform.StripCookie != nil {
+		cloned.StripCookie = append([]string{}, transform.StripCookie...)
+	}
+	if transform.MapRequestHeaders != nil {
+		cloned.MapRequestHeaders = map[string]string{}
+		for key, value := range transform.MapRequestHeaders {
+			cloned.MapRequestHeaders[key] = value
+		}
+	}
+	if transform.MapRequestHeadersByGroup != nil {
+		cloned.MapRequestHeadersByGroup = append([]HeaderGroupMapping{}, transform.MapRequestHeadersByGroup...)
+		for ix := range cloned.MapRequestHeadersByGroup {
+			cloned.MapRequestHeadersByGroup[ix].GroupMapping = append([]ValueByGroup{}, transform.MapRequestHeadersByGroup[ix].GroupMapping...)
+		}
+	}
+	cloned.stripCookie = nil
+	cloned.noSlashFromPath = ""
+	return &cloned
+}
+
+func (p *Proxy) CreateHandler(mapping Mapping) (http.Handler, error) {
+	// Ensure that default transforms are applied.
+	transform := cloneTransform(mapping.Transform)
 
 	if len(p.stripCookie) > 0 {
 		transform.StripCookie = append(transform.StripCookie, p.stripCookie...)
@@ -62,7 +91,7 @@ func (p *Proxy) CreateServer(mapping *Mapping) (http.Handler, error) {
 		return proxy, nil
 	}
 	if p.authenticator == nil {
-		return nil, fmt.Errorf("proxy for mapping %v requires authentication - but no authentication configured", *mapping)
+		return nil, fmt.Errorf("proxy for mapping %v requires authentication - but no authentication configured", mapping)
 	}
 
 	return &AuthenticatedProxy{
@@ -114,20 +143,28 @@ func WithAuthenticator(authenticator oauth.Authenticate) Modifier {
 	}
 }
 
-func New(mux amux.Mux, mapping []Mapping, mod ...Modifier) (*Proxy, error) {
+func NewBuilder(mod ...Modifier) (*Proxy, error) {
 	p := &Proxy{
 		log: logger.Nil,
 	}
 	if err := Modifiers(mod).Apply(p); err != nil {
 		return nil, err
 	}
+	return p, nil
+}
 
+func New(mux amux.Mux, mapping []Mapping, mod ...Modifier) (*Proxy, error) {
+	p, err := NewBuilder(mod...)
+	if err != nil {
+		return nil, err
+	}
 	p.log.Infof("Mappings are: %v", mapping)
-	domains, err := PopulateMux(mux, p.log, mapping, p.CreateServer)
+	compiled, err := CompileBindings(mapping, nil, p.CreateHandler)
 	if err != nil {
 		return nil, err
 	}
 
-	p.Domains = domains
+	InstallBindings(mux, p.log, compiled.Bindings)
+	p.Domains = compiled.Domains
 	return p, nil
 }

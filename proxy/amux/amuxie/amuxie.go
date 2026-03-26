@@ -4,6 +4,7 @@ package amuxie
 
 import (
 	"github.com/ccontavalli/enkit/proxy/amux"
+	"github.com/ccontavalli/enkit/proxy/utils"
 	"github.com/kataras/muxie"
 	"net/http"
 	"strings"
@@ -17,13 +18,24 @@ func New() *Mux {
 	return &Mux{Mux: muxie.NewMux()}
 }
 
+func normalizedHostMatcher(host string) muxie.MatcherFunc {
+	host = utils.NormalizeHost(host)
+	return func(r *http.Request) bool {
+		if host == "" {
+			return true
+		}
+		if r == nil {
+			return false
+		}
+
+		rhost := utils.NormalizeHost(r.Host)
+		return rhost == host || (host[0] == '.' && strings.HasSuffix(rhost, host)) || host == muxie.WildcardParamStart
+	}
+}
+
 func (m *Mux) Host(host string) amux.Mux {
 	h := muxie.NewMux()
-	m.HandleRequest(muxie.Host(host), h)
-	if !strings.HasSuffix(host, ".") {
-		m.HandleRequest(muxie.Host(host + "."), h)
-	}
-
+	m.HandleRequest(normalizedHostMatcher(host), h)
 	return &Mux{h}
 }
 
@@ -64,5 +76,5 @@ func (m *Mux) Handle(path string, handler http.Handler) {
 		}
 		handler.ServeHTTP(w, r)
 		return
-	}))
+		}))
 }

@@ -6,6 +6,7 @@ go_library(
         "atomictime.go",
         "clock.go",
         "counter.go",
+        "host.go",
         "types.go",
         "whitelist.go",
     ],
@@ -19,6 +20,7 @@ go_test(
     srcs = [
         "atomictime_test.go",
         "counter_test.go",
+        "whitelist_test.go",
     ],
     embed = [":utils"],
     deps = ["@com_github_stretchr_testify//assert"],
