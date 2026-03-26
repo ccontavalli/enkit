@@ -102,6 +102,18 @@ func singleProxyModule(t *testing.T, modules map[string]runtimeModule) *proxyRun
 	return nil
 }
 
+func proxyModuleForMapping(t *testing.T, modules map[string]runtimeModule, mapping httpp.Mapping) *proxyRuntimeModule {
+	key, err := httpp.ModuleKey(mapping)
+	assert.NoError(t, err)
+
+	module, ok := modules["proxy:"+key]
+	assert.True(t, ok)
+
+	proxy, ok := module.(*proxyRuntimeModule)
+	assert.True(t, ok)
+	return proxy
+}
+
 func countProxyModules(modules map[string]runtimeModule) int {
 	total := 0
 	for _, module := range modules {
@@ -231,6 +243,127 @@ func TestApplyConfigStructSwapsActiveRoutes(t *testing.T) {
 	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
 	assert.NoError(t, err)
 	assert.Equal(t, "s2", body)
+}
+
+func TestApplyConfigStructReconcilesMixedRouteChanges(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
+	assert.NoError(t, err)
+	s3, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s3")))
+	assert.NoError(t, err)
+	s4, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s4")))
+	assert.NoError(t, err)
+
+	unchangedInitial := httpp.Mapping{
+		From: httpp.HostPath{
+			Host: "test.lan",
+			Path: "/unchanged",
+		},
+		Auth: httpp.MappingPublic,
+		To:   s1,
+	}
+	changedInitial := httpp.Mapping{
+		From: httpp.HostPath{
+			Host: "test.lan",
+			Path: "/changed",
+		},
+		Auth: httpp.MappingPublic,
+		To:   s2,
+	}
+	removedInitial := httpp.Mapping{
+		From: httpp.HostPath{
+			Host: "test.lan",
+			Path: "/removed",
+		},
+		Auth: httpp.MappingPublic,
+		To:   s3,
+	}
+	changedUpdated := changedInitial
+	changedUpdated.To = s3
+	addedUpdated := httpp.Mapping{
+		From: httpp.HostPath{
+			Host: "test.lan",
+			Path: "/added",
+		},
+		Auth: httpp.MappingPublic,
+		To:   s4,
+	}
+
+	initial := Config{
+		Mapping: []httpp.Mapping{
+			unchangedInitial,
+			changedInitial,
+			removedInitial,
+		},
+		Tunnels: []string{"*"},
+	}
+	updated := Config{
+		Mapping: []httpp.Mapping{
+			unchangedInitial,
+			changedUpdated,
+			addedUpdated,
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, WithHttpStarter(Server(&wg, &fe)), WithConfig(initial))
+	assert.NoError(t, err)
+
+	unchangedBefore := proxyModuleForMapping(t, ep.modules, unchangedInitial)
+	changedBefore := proxyModuleForMapping(t, ep.modules, changedInitial)
+	removedBefore := proxyModuleForMapping(t, ep.modules, removedInitial)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe+"unchanged", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+	err = protocol.Get(fe+"changed", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s2", body)
+	err = protocol.Get(fe+"removed", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s3", body)
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.NoError(t, err)
+
+	unchangedAfter := proxyModuleForMapping(t, ep.modules, unchangedInitial)
+	changedAfter := proxyModuleForMapping(t, ep.modules, changedUpdated)
+	addedAfter := proxyModuleForMapping(t, ep.modules, addedUpdated)
+	assert.Same(t, unchangedBefore, unchangedAfter)
+	assert.NotSame(t, changedBefore, changedAfter)
+	assert.NotNil(t, addedAfter)
+
+	removedKey, err := httpp.ModuleKey(removedInitial)
+	assert.NoError(t, err)
+	_, found := ep.modules["proxy:"+removedKey]
+	assert.False(t, found)
+	assert.NotNil(t, removedBefore)
+
+	err = protocol.Get(fe+"unchanged", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	err = protocol.Get(fe+"changed", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s3", body)
+
+	var herr *protocol.HTTPError
+	err = protocol.Get(fe+"removed", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.ErrorAs(t, err, &herr)
+	assert.Equal(t, http.StatusNotFound, herr.Resp.StatusCode)
+
+	err = protocol.Get(fe+"added", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s4", body)
 }
 
 func TestApplyConfigStructRejectsDomainChangesAfterStart(t *testing.T) {
