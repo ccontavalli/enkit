@@ -3,11 +3,11 @@
     "strip_prefix": "",
     "url": "https://github.com/bazel-contrib/bazel-gazelle/releases/download/v0.45.0/bazel-gazelle-v0.45.0.tar.gz",
     "patches": {
-        "gazelle.patch": "sha256-VaUjmfIDxSrY8ryXEu0/W1DGXiWVjDvXO9koN0ALQZc="
+        "gazelle.patch": "sha256-+weIUCVgqRHRR+PKceAVx0sTALUnolkEZ4RnUj6ty8Y="
     },
     "overlay": {
         "internal/bzlmod/patches/BUILD.bazel": "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
-        "internal/bzlmod/patches/default_patches.bzl": "sha256-iSFjfxPXZPkp3AwLxVeb2ZAdOVqkD7XIy6R+fJoeaDU=",
+        "internal/bzlmod/patches/default_patches.bzl": "sha256-MwToVfnNhilClV2zZfF3bNw0bdxwZlJhcxr5lI1+zx0=",
         "internal/bzlmod/patches/com_github_buildbarn_bb_storage.patch": "sha256-yugasVDdiIRIkbpx/VyGNwxz7QllYx5mpUjbiLE/SZo=",
         "internal/bzlmod/patches/com_google_cloud_go_datastore.patch": "sha256-K9/BUQlvCIK1CHdiK7D8yRcn705d3bHtFOJ9f7Br5n8="
     }

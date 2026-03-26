@@ -26,21 +26,22 @@ index b6249d5..562c8ef 100644
  
  DEFAULT_BUILD_EXTRA_ARGS_BY_PATH = {
 diff --git internal/bzlmod/go_deps.bzl internal/bzlmod/go_deps.bzl
-index 13080fa..eb7f186 100644
+index 13080fa..e8bc7e9 100644
 --- internal/bzlmod/go_deps.bzl
 +++ internal/bzlmod/go_deps.bzl
-@@ -19,6 +19,10 @@ load(
+@@ -19,6 +19,11 @@ load(
      "DEFAULT_BUILD_FILE_GENERATION_BY_PATH",
      "DEFAULT_DIRECTIVES_BY_PATH",
  )
 +load(
 +    "//internal/bzlmod/patches:default_patches.bzl",
 +    "DEFAULT_PATCHES",
++    "DEFAULT_PATCH_TOOLS",
 +)
  load(":go_mod.bzl", "deps_from_go_mod", "go_work_from_label", "sums_from_go_mod", "sums_from_go_work")
  load(":semver.bzl", "COMPARES_HIGHEST_SENTINEL", "semver")
  load(
-@@ -157,7 +161,7 @@ def _get_build_extra_args(path, gazelle_overrides, gazelle_default_attributes):
+@@ -157,11 +162,14 @@ def _get_build_extra_args(path, gazelle_overrides, gazelle_default_attributes):
      return _get_override_or_default(gazelle_overrides, gazelle_default_attributes, DEFAULT_BUILD_EXTRA_ARGS_BY_PATH, path, [], "build_extra_args")
  
  def _get_patches(path, module_overrides):
@@ -49,7 +50,15 @@ index 13080fa..eb7f186 100644
  
  def _get_patch_args(path, module_overrides):
      override = _get_override_or_default(module_overrides, struct(), {}, path, None, "patch_strip")
-@@ -318,7 +322,7 @@ def check_for_version_conflict(version, previous, module_tag, module_name_to_go_
+-    return ["-p{}".format(override)] if override else []
++    return ["-p{}".format(override)] if override != None else ["-p0"]
++
++def _get_patch_tool(path, module_overrides):
++    return _get_override_or_default(module_overrides, struct(), DEFAULT_PATCH_TOOLS, path, None, "patch_tool")
+ 
+ def _repo_name(importpath):
+     path_segments = importpath.split("/")
+@@ -318,7 +326,7 @@ def check_for_version_conflict(version, previous, module_tag, module_name_to_go_
  
      conflict_printer(message)
  
@@ -58,6 +67,14 @@ index 13080fa..eb7f186 100644
      pass
  
  # These repos are shared between the isolated and non-isolated instances of go_deps as they are
+@@ -694,6 +702,7 @@ Mismatch between versions requested for Go module {module}:
+             "build_extra_args": _get_build_extra_args(path, gazelle_overrides, gazelle_default_attributes),
+             "patches": _get_patches(path, module_overrides),
+             "patch_args": _get_patch_args(path, module_overrides),
++            "patch_tool": _get_patch_tool(path, module_overrides),
+             "debug_mode": debug_mode,
+         }
+ 
 diff --git internal/go_repository_tools_srcs.bzl internal/go_repository_tools_srcs.bzl
 index 5496a6c..ada75de 100644
 --- internal/go_repository_tools_srcs.bzl
