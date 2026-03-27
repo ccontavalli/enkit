@@ -1,0 +1,3 @@
+exports_files([
+    "com_github_buildbarn_bb_storage.patch",
+])

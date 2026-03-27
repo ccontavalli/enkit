@@ -3,7 +3,8 @@
 Forked from: https://github.com/ccontavalli/bazel-rules/blob/master/appengine/defs.bzl
 """
 
-load("@rules_go//go:def.bzl", "GoPath", "go_path")
+load("@rules_go//go:def.bzl", "GoPath")
+load("//bazel/appengine:module_path.bzl", "go_module_path")
 
 def _go_appengine_deploy_path_impl(ctx):
     config = ctx.file.config
@@ -92,7 +93,12 @@ go_appengine_deploy_path = rule(
     },
 )
 
-def go_appengine_deploy(name, entry, deps, config, **kwargs):
+def go_appengine_deploy(name, entry, deps, config, module_prefix, **kwargs):
     # Packs all the dependencies in some place.
-    go_path(name = name + "-dir", mode = "copy", deps = deps)
+    go_module_path(
+        name = name + "-dir",
+        deps = deps,
+        mode = "copy",
+        module_prefix = module_prefix,
+    )
     go_appengine_deploy_path(name = name, path = ":" + name + "-dir", entry = entry, config = config, **kwargs)

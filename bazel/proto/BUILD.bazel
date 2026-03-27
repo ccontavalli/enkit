@@ -1,0 +1,10 @@
+load("@aspect_rules_py//py:defs.bzl", "py_library")
+load("@enkit_pip_deps//:requirements.bzl", "requirement")
+
+exports_files(["py_proto_library.bzl"])
+
+py_library(
+    name = "protobuf_runtime",
+    deps = [requirement("protobuf")],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,9 @@
+exports_files([
+    "default_gazelle_overrides.bzl",
+    "default_patches.bzl",
+    "extensions.bzl",
+    "go_mod.bzl",
+    "go_deps.bzl",
+    "semver.bzl",
+    "utils.bzl",
+])
