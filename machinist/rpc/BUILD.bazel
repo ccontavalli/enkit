@@ -17,7 +17,7 @@ proto_library(
 
 go_proto_library(
     name = "machinist-proto-lib",
-    compilers = ["@rules_go//proto:go_grpc"],
+    compilers = ["//bazel/go:go_grpc"],
     importpath = "github.com/ccontavalli/enkit/machinist/rpc",
     proto = ":machinist_proto",
     visibility = ["//visibility:public"],

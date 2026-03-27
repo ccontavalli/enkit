@@ -25,7 +25,7 @@ proto_library(
 
 go_proto_library(
     name = "flextape_go_proto",
-    compilers = ["@rules_go//proto:go_grpc"],
+    compilers = ["//bazel/go:go_grpc"],
     importpath = "github.com/ccontavalli/enkit/flextape/proto",
     protos = [
         ":config_proto",

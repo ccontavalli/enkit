@@ -51,15 +51,31 @@ bazel_dep(name = "rules_proto_grpc_go", version = "5.1.0")
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
     name = "container_golang_base",
-    digest = "sha256:a4eefd667af74c5a1c5efe895a42f7748808e7f5cbc284e0e5f1517b79721ccb",
-    image = "us-docker.pkg.dev/enfabrica-container-images/third-party-prod/distroless/base/golang",
+    digest = "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
+    image = "gcr.io/distroless/base-debian12",
+    platforms = [
+        "linux/amd64",
+        "linux/arm64/v8",
+    ],
 )
 oci.pull(
     name = "golang_base",
-    digest = "sha256:a4eefd667af74c5a1c5efe895a42f7748808e7f5cbc284e0e5f1517b79721ccb",
-    image = "us-docker.pkg.dev/enfabrica-container-images/third-party-prod/distroless/base/golang",
+    digest = "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
+    image = "gcr.io/distroless/base-debian12",
+    platforms = [
+        "linux/amd64",
+        "linux/arm64/v8",
+    ],
 )
-use_repo(oci, "container_golang_base", "golang_base")
+use_repo(
+    oci,
+    "container_golang_base",
+    "container_golang_base_linux_amd64",
+    "container_golang_base_linux_arm64_v8",
+    "golang_base",
+    "golang_base_linux_amd64",
+    "golang_base_linux_arm64_v8",
+)
 
 bazel_dep(name = "rules_python", version = "1.5.1")
 
@@ -128,6 +144,7 @@ shared_go_deps.module(
 use_repo(
     shared_go_deps,
     "com_github_golang_protobuf",
+    "org_golang_google_grpc_cmd_protoc_gen_go_grpc",
     "org_golang_google_protobuf",
 )
 

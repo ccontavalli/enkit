@@ -1348,20 +1348,34 @@
     "@@rules_oci+//oci:extensions.bzl%oci": {
       "general": {
         "bzlTransitiveDigest": "y6GRuwGM7WCiVKZTyPKoDYJYUcp9tcPDSuFjR0cNePY=",
-        "usagesDigest": "Urfr7xqHVIcv3TDbPMZTooBoOpMvecVDBpiZISIUESw=",
+        "usagesDigest": "AVTWGXRj1Qac/FNwtSbntICCnlOchRuAPyhQNZtzEX8=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
-          "container_golang_base_single": {
+          "container_golang_base_linux_amd64": {
             "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_pull",
             "attributes": {
               "www_authenticate_challenges": {},
               "scheme": "https",
-              "registry": "us-docker.pkg.dev",
-              "repository": "enfabrica-container-images/third-party-prod/distroless/base/golang",
-              "identifier": "sha256:a4eefd667af74c5a1c5efe895a42f7748808e7f5cbc284e0e5f1517b79721ccb",
-              "target_name": "container_golang_base_single",
+              "registry": "gcr.io",
+              "repository": "distroless/base-debian12",
+              "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
+              "platform": "linux/amd64",
+              "target_name": "container_golang_base_linux_amd64",
+              "bazel_tags": []
+            }
+          },
+          "container_golang_base_linux_arm64_v8": {
+            "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_pull",
+            "attributes": {
+              "www_authenticate_challenges": {},
+              "scheme": "https",
+              "registry": "gcr.io",
+              "repository": "distroless/base-debian12",
+              "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
+              "platform": "linux/arm64/v8",
+              "target_name": "container_golang_base_linux_arm64_v8",
               "bazel_tags": []
             }
           },
@@ -1371,24 +1385,40 @@
               "target_name": "container_golang_base",
               "www_authenticate_challenges": {},
               "scheme": "https",
-              "registry": "us-docker.pkg.dev",
-              "repository": "enfabrica-container-images/third-party-prod/distroless/base/golang",
-              "identifier": "sha256:a4eefd667af74c5a1c5efe895a42f7748808e7f5cbc284e0e5f1517b79721ccb",
-              "platforms": {},
-              "platform": "@@rules_oci+//oci:container_golang_base_single",
+              "registry": "gcr.io",
+              "repository": "distroless/base-debian12",
+              "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
+              "platforms": {
+                "@@platforms//cpu:x86_64": "@container_golang_base_linux_amd64",
+                "@@platforms//cpu:arm64": "@container_golang_base_linux_arm64_v8"
+              },
               "bzlmod_repository": "container_golang_base",
               "reproducible": true
             }
           },
-          "golang_base_single": {
+          "golang_base_linux_amd64": {
             "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_pull",
             "attributes": {
               "www_authenticate_challenges": {},
               "scheme": "https",
-              "registry": "us-docker.pkg.dev",
-              "repository": "enfabrica-container-images/third-party-prod/distroless/base/golang",
-              "identifier": "sha256:a4eefd667af74c5a1c5efe895a42f7748808e7f5cbc284e0e5f1517b79721ccb",
-              "target_name": "golang_base_single",
+              "registry": "gcr.io",
+              "repository": "distroless/base-debian12",
+              "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
+              "platform": "linux/amd64",
+              "target_name": "golang_base_linux_amd64",
+              "bazel_tags": []
+            }
+          },
+          "golang_base_linux_arm64_v8": {
+            "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_pull",
+            "attributes": {
+              "www_authenticate_challenges": {},
+              "scheme": "https",
+              "registry": "gcr.io",
+              "repository": "distroless/base-debian12",
+              "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
+              "platform": "linux/arm64/v8",
+              "target_name": "golang_base_linux_arm64_v8",
               "bazel_tags": []
             }
           },
@@ -1398,11 +1428,13 @@
               "target_name": "golang_base",
               "www_authenticate_challenges": {},
               "scheme": "https",
-              "registry": "us-docker.pkg.dev",
-              "repository": "enfabrica-container-images/third-party-prod/distroless/base/golang",
-              "identifier": "sha256:a4eefd667af74c5a1c5efe895a42f7748808e7f5cbc284e0e5f1517b79721ccb",
-              "platforms": {},
-              "platform": "@@rules_oci+//oci:golang_base_single",
+              "registry": "gcr.io",
+              "repository": "distroless/base-debian12",
+              "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
+              "platforms": {
+                "@@platforms//cpu:x86_64": "@golang_base_linux_amd64",
+                "@@platforms//cpu:arm64": "@golang_base_linux_arm64_v8"
+              },
               "bzlmod_repository": "golang_base",
               "reproducible": true
             }
@@ -1524,7 +1556,11 @@
         "moduleExtensionMetadata": {
           "explicitRootModuleDirectDeps": [
             "container_golang_base",
-            "golang_base"
+            "container_golang_base_linux_amd64",
+            "container_golang_base_linux_arm64_v8",
+            "golang_base",
+            "golang_base_linux_amd64",
+            "golang_base_linux_arm64_v8"
           ],
           "explicitRootModuleDirectDevDeps": [],
           "useAllRepos": "NO",

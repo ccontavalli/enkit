@@ -36,7 +36,7 @@ visibility("//")
 _HIGHEST_VERSION_SENTINEL = semver.to_comparable("999999.999999.999999")
 
 _REPO_PATCH_CMDS = [
-    "find . \\( -name BUILD -o -name BUILD.bazel -o -name '*.bzl' -o -name WORKSPACE -o -name WORKSPACE.bazel -o -name MODULE.bazel \\) -print0 | xargs -0 sed -i 's|@io_bazel_rules_go//|@rules_go//|g; s|@com_github_bazelbuild_rules_go//|@rules_go//|g; s|@com_google_protobuf//|@protobuf//|g; s|@bazel_gazelle//|@gazelle//|g; s|@bazel_remote_apis//|@com_github_bazelbuild_remote_apis//|g'",
+    "find . \\( -name BUILD -o -name BUILD.bazel -o -name '*.bzl' -o -name WORKSPACE -o -name WORKSPACE.bazel -o -name MODULE.bazel \\) -print0 | xargs -0 sed -i 's|@io_bazel_rules_go//|@rules_go//|g; s|@com_github_bazelbuild_rules_go//|@rules_go//|g; s|@com_google_protobuf//|@protobuf//|g; s|@bazel_gazelle//|@gazelle//|g; s|@bazel_remote_apis//|@com_github_bazelbuild_remote_apis//|g; s|@rules_go//proto:go_grpc_v2|@@//bazel/go:go_grpc_v2|g'",
 ]
 
 _FORBIDDEN_OVERRIDE_TAG = """\
