@@ -11,12 +11,11 @@ load("@rules_python//python/pip_install:requirements.bzl", "compile_pip_requirem
 # or update the BUILD.bazel files. Run every time you change imports,
 # create a new library or binary.
 #
-# To update the list of dependencies downloaded by bazel, run:
-#     bazelisk run //:gazelle_update_repos
+# After changing go.mod or go.sum, run:
+#     bazelisk run //tools/go:update_go_deps
 #
-# This will read the go.mod file, and based on that, add statements
-# to download the correct dependency for bazel to download. The dependency
-# is added to the bazel/go_repositories.bzl file.
+# This will tidy the Go module, regenerate BUILD files, and sync the
+# module lock and use_repo wiring in MODULE.bazel.
 #
 
 # Set the prefix for this repo
@@ -42,8 +41,6 @@ gazelle(
     command = "fix",
     prefix = "github.com/ccontavalli/enkit",
 )
-
-gazelle(name = "gazelle_update_repos")
 
 # Custom gazelle resolve mappings
 # Some third-party dependencies that are bazel-aware bamboozle gazelle running

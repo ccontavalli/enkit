@@ -2,26 +2,93 @@
 
 ## Importing into a downstream Bazel workspace
 
-When using `enkit` in a downstream workspace, there are two options for
-loading Go dependencies:
+`enkit` is now consumed as a normal Bzlmod dependency. There is no local
+registry to configure and no `go_repositories` macro to call from a downstream
+repo.
 
-- Call only `//bazel:go_repositories%go_repositories` from this repo, and use
-  only those dependencies in the downstream repo. This works if Golang
-  binaries only need to be built from this repo and not the downstream repo.
+The recommended pattern is:
 
-- Call `//bazel:go_repositories%go_repositories` **after** loading Golang
-  dependencies in the downstream repo. This would ensure that:
+```starlark
+module(name = "myproj")
 
-  1. Go dependencies in the downstream repo obey that repo's go.mod version
-     selection, rather than enkit's, for minimal surprises.
+bazel_dep(name = "enkit", version = "0.0.0")
+git_override(
+    module_name = "enkit",
+    remote = "https://github.com/ccontavalli/enkit.git",
+    commit = "<pin a commit or tag>",
+)
+```
 
-  1. enkit dependencies are loaded, for processes that require a complete
-     dependency graph
+For local development against a checkout, replace the `git_override(...)` with
+`local_path_override(...)`.
 
-  Note that building binaries from enkit loaded in a downstream repo in this
-  manner will not necessarily match those built from this repo directly, as
-  the downstream repo may be loading different versions of enkit's
-  dependencies. This may cause build divergence and/or failures.
+## Adding a Go module dependency
+
+Use the Bazel-managed Go tool, not raw `go get` and not `@gosdk//...` labels:
+
+```bash
+bazel run @rules_go//go -- <go command>
+```
+
+When adding or updating a Go module dependency in this repo:
+
+1. Update `go.mod`.
+
+   Common commands:
+
+   Add or pin a dependency:
+
+   ```bash
+   bazel run @rules_go//go -- get example.com/module@version
+   ```
+
+   Update one dependency to its latest version:
+
+   ```bash
+   bazel run @rules_go//go -- get example.com/module@latest
+   ```
+
+   Inspect available updates:
+
+   ```bash
+   bazel run @rules_go//go -- list -m -u all
+   ```
+
+   Update dependencies used by packages in this module:
+
+   ```bash
+   bazel run @rules_go//go -- get -u ./...
+   ```
+
+1. Sync Bazel metadata:
+
+   ```bash
+   bazel run //tools/go:update_go_deps
+   ```
+
+   This runs:
+
+   - `bazel run @rules_go//go -- mod tidy -v`
+   - `bazel run //:gazelle`
+   - `bazel mod tidy`
+
+1. Review the resulting changes to `go.mod`, `go.sum`, `MODULE.bazel.lock`,
+   and any BUILD files updated by Gazelle.
+
+If you want a safer bulk refresh, prefer:
+
+```bash
+bazel run @rules_go//go -- get -u=patch ./...
+```
+
+`-u=patch` means “upgrade only within the current minor line”. For example,
+`v1.2.3` may move to `v1.2.9`, but not to `v1.3.0`. That usually causes less
+churn and is the better default when you want to update broadly without taking
+on unnecessary minor-version changes.
+
+Use `bazel run //:gazelle` by itself only when you need to regenerate BUILD
+files after source layout or import changes. Do not use `gazelle update-repos`;
+this repo no longer uses that workflow.
 
 ## Testing
 
