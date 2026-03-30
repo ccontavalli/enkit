@@ -154,8 +154,8 @@ func Start(ctx context.Context, targetURL, cookieDomain string, astoreFlags *ast
 		authWeb = oauth.NewMultiOAuth(rng, reqAuth, optAuth)
 	}
 	grpcs := grpc.NewServer(
-		grpc.StreamInterceptor(ogrpc.StreamInterceptor(reqAuth, "/auth.Auth/")),
-		grpc.UnaryInterceptor(ogrpc.UnaryInterceptor(reqAuth, "/auth.Auth/")),
+		grpc.StreamInterceptor(ogrpc.StreamInterceptor(&reqAuth.Extractor, "/auth.Auth/")),
+		grpc.UnaryInterceptor(ogrpc.UnaryInterceptor(&reqAuth.Extractor, "/auth.Auth/")),
 	)
 	rpc_astore.RegisterAstoreServer(grpcs, astoreServer)
 	rpc_auth.RegisterAuthServer(grpcs, authServer)
