@@ -10,24 +10,18 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         # keep
-        "//enkit/proto:enkit_proto_go_proto",
         "//lib/bazel",
         "//lib/bes",
         "//lib/client",
         "//lib/git",
         "//lib/logger",
         "//third_party/bazel/src/main/java/com/google/devtools/build/lib/buildeventstream/proto:build_event_stream_go_proto",
-        "@com_github_spf13_cobra//:cobra",
         "@org_golang_google_protobuf//encoding/prototext",
+        "//enkit/proto",
+        "@com_github_spf13_cobra//:cobra",
         "@org_golang_x_exp//maps",
         "@org_golang_x_term//:term",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":commands",
-    visibility = ["//visibility:public"],
 )
 
 go_test(

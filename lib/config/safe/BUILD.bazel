@@ -11,17 +11,11 @@ go_library(
 go_test(
     name = "safe_test",
     srcs = ["safe_test.go"],
-    embed = [":safe"],
     deps = [
+        ":safe",
         "//lib/config",
         "//lib/config/memory",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":safe",
-    visibility = ["//visibility:public"],
 )

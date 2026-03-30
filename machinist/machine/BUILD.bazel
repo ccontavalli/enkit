@@ -19,9 +19,9 @@ go_library(
         "//lib/multierror",
         "//lib/retry",
         "//machinist/config",
-        "//machinist/machine/assets:go_default_library",
+        "//machinist/machine/assets",
         "//machinist/polling",
-        "//machinist/rpc:machinist-go",
+        "//machinist/rpc",
         "@com_github_spf13_cobra//:cobra",
         "@org_golang_google_grpc//:grpc",
         "@org_golang_x_crypto//ssh",
@@ -29,27 +29,11 @@ go_library(
 )
 
 go_test(
-    name = "go_default_test",
-    srcs = ["templates_test.go"],
-    deps = [
-        ":go_default_library",
-        "//machinist/machine/assets:go_default_library",
-        "@com_github_stretchr_testify//assert:go_default_library",
-    ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":machine",
-    visibility = ["//visibility:public"],
-)
-
-go_test(
     name = "machine_test",
     srcs = ["templates_test.go"],
     deps = [
         ":machine",
-        "//machinist/machine/assets:go_default_library",
+        "//machinist/machine/assets",
         "@com_github_stretchr_testify//assert",
     ],
 )

@@ -1,9 +1,9 @@
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 load("@enkit_pip_deps//:requirements.bzl", "requirement")
-load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 load("@rules_go//proto:def.bzl", "go_proto_library")
 load("@rules_jsonnet//jsonnet:jsonnet.bzl", "jsonnet_library", "jsonnet_to_json")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 
 py_binary(
     name = "muk",
@@ -89,11 +89,5 @@ go_proto_library(
     name = "infra_dev_container_muk_go_proto",
     importpath = "github.com/ccontavalli/enkit/bazel/utils/container/muk",
     proto = ":infra_dev_container_muk_proto",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":muk",
     visibility = ["//visibility:public"],
 )

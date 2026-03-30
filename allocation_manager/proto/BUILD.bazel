@@ -1,6 +1,6 @@
-load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 load("@rules_go//proto:def.bzl", "go_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 
 proto_library(
     name = "allocation_manager_proto",
@@ -49,10 +49,4 @@ proto_library(
     ],
     visibility = ["//visibility:public"],
     deps = ["@protobuf//:timestamp_proto"],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":proto",
-    visibility = ["//visibility:public"],
 )

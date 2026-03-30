@@ -14,6 +14,21 @@
 
 visibility("private")
 
+DEFAULT_REPO_CONFIG_REPO_NAMES_BY_PATH = {
+    "github.com/bazelbuild/rules_go": "rules_go",
+    "github.com/google/go-jsonnet": "jsonnet_go",
+}
+
+DEFAULT_REPO_CONFIG_DIRECTIVES_BY_PATH = {
+    "github.com/bazelbuild/rules_go": [
+        "gazelle:resolve go github.com/bazelbuild/rules_go/go/runfiles @rules_go//go/runfiles",
+        "gazelle:resolve go github.com/bazelbuild/rules_go/go/tools/bazel @rules_go//go/tools/bazel",
+    ],
+    "github.com/google/go-jsonnet": [
+        "gazelle:resolve go github.com/google/go-jsonnet @jsonnet_go//:go_default_library",
+    ],
+}
+
 DEFAULT_BUILD_FILE_GENERATION_BY_PATH = {
     "cel.dev/expr": "on",
     "github.com/cncf/xds/go": "on",
@@ -37,8 +52,17 @@ DEFAULT_DIRECTIVES_BY_PATH = {
     "github.com/authzed/spicedb": [
         "gazelle:proto disable",
     ],
+    "github.com/bazelbuild/remote-apis": [
+        "gazelle:go_naming_convention go_default_library",
+    ],
     "github.com/census-instrumentation/opencensus-proto": [
         "gazelle:proto disable",
+    ],
+    "github.com/buildbarn/bb-remote-execution": [
+        "gazelle:go_naming_convention_external import",
+    ],
+    "github.com/buildbarn/bb-storage": [
+        "gazelle:go_naming_convention_external import",
     ],
     "github.com/envoyproxy/protoc-gen-validate": [
         "gazelle:build_file_name BUILD.bazel",

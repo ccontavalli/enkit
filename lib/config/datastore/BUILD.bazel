@@ -12,9 +12,3 @@ go_library(
         "@org_golang_google_api//option",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":datastore",
-    visibility = ["//visibility:public"],
-)

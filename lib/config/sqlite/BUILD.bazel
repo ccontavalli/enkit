@@ -2,9 +2,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "sqlite",
-    srcs = [
-        "sqlite.go",
-    ],
+    srcs = ["sqlite.go"],
     importpath = "github.com/ccontavalli/enkit/lib/config/sqlite",
     visibility = ["//visibility:public"],
     deps = [
@@ -24,10 +22,4 @@ go_test(
         "//lib/config/marshal",
         "@com_github_stretchr_testify//assert",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":sqlite",
-    visibility = ["//visibility:public"],
 )

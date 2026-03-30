@@ -22,12 +22,6 @@ go_library(
     ],
 )
 
-alias(
-    name = "go_default_library",
-    actual = ":service",
-    visibility = ["//visibility:public"],
-)
-
 go_test(
     name = "service_test",
     srcs = [

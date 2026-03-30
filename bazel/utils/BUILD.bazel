@@ -143,7 +143,7 @@ md5sum_diff_test(
 )
 
 genrule(
-    name = "test_archive.tgz",
+    name = "test_archive_tgz",
     srcs = [
         "escape_and_join1.actual",
         "testdata/a.expected.txt",
@@ -154,7 +154,7 @@ genrule(
 
 md5sum_diff_test(
     name = "md5sum_diff_test_archive_test",
-    srcs = [":test_archive.tgz"],
+    srcs = [":test_archive_tgz"],
 )
 
 #### Support targets

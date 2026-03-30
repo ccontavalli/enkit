@@ -14,9 +14,3 @@ go_library(
         "//lib/logger",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":provider",
-    visibility = ["//visibility:public"],
-)

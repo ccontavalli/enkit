@@ -13,9 +13,3 @@ go_library(
         "@org_golang_google_grpc//status",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":ogrpc",
-    visibility = ["//visibility:public"],
-)

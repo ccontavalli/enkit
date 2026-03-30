@@ -19,9 +19,3 @@ go_test(
     srcs = ["local_test.go"],
     embed = [":cache"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":cache",
-    visibility = ["//visibility:public"],
-)

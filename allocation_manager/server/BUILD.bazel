@@ -26,12 +26,6 @@ astore_upload(
     visibility = ["//:__pkg__"],
 )
 
-alias(
-    name = "go_default_library",
-    actual = ":server_lib",
-    visibility = ["//visibility:public"],
-)
-
 go_binary(
     name = "allocation_manager_server",
     embed = [":server_lib"],

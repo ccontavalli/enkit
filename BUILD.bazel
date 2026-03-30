@@ -1,13 +1,13 @@
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("@buildifier_prebuilt//:rules.bzl", "buildifier")
-load("@gazelle//:def.bzl", "gazelle")
 load("@rules_multirun//:defs.bzl", "multirun")
 load("@rules_python//python/pip_install:requirements.bzl", "compile_pip_requirements")
+load("//bazel/gazelle:def.bzl", "gazelle")
 
 # To update and generate the BUILD.bazel files, run:
 #     bazelisk run //:gazelle
 #
-# This will scan the source code, and bazed on imports, generate
+# This will scan the source code, and based on imports, generate
 # or update the BUILD.bazel files. Run every time you change imports,
 # create a new library or binary.
 #
@@ -32,39 +32,16 @@ load("@rules_python//python/pip_install:requirements.bzl", "compile_pip_requirem
 #
 # gazelle:exclude **/empty.go
 
-# Ensure that BUILD files have targets generated with the correct convention
-# TODO(scott): Change to `import` after targets have migrated to use the new
-# convention
-# gazelle:go_naming_convention import_alias
+# Ensure that BUILD files have targets generated with the correct convention.
+# gazelle:go_naming_convention import
 gazelle(
     name = "gazelle",
     command = "fix",
     prefix = "github.com/ccontavalli/enkit",
 )
 
-# Custom gazelle resolve mappings
-# Some third-party dependencies that are bazel-aware bamboozle gazelle running
-# in our repository, which tries to generate dependency labels that don't exist.
-# These mappings keep gazelle from generating bogus dependency labels.
-#
-# gazelle:resolve go kythe.io/kythe/go/platform/delimited @io_kythe//kythe/go/platform/delimited
-# gazelle:resolve go github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2 @com_github_bazelbuild_remote_apis//build/bazel/remote/execution/v2:remote_execution_go_proto
-# gazelle:resolve go github.com/bazelbuild/remote-apis/build/bazel/remote/asset/v1 @com_github_bazelbuild_remote_apis//build/bazel/remote/asset/v1:remote_asset_go_proto
-
-# Buildbarn gazelle resolve mappings
-# Buildbarn dependencies may need certain overrides; these mappings are copied
-# from BUILD.bazel in github.com/buildbarn/bb-remote-execution so that libraries
-# from that repo can build.
-
+# Repository-local Gazelle settings.
 # gazelle:go_grpc_compilers	//bazel/go:go_grpc
-# gazelle:resolve proto pkg/proto/configuration/cloud/aws/aws.proto @com_github_buildbarn_bb_storage//pkg/proto/configuration/cloud/aws:aws_proto
-# gazelle:resolve proto go pkg/proto/configuration/cloud/aws/aws.proto @com_github_buildbarn_bb_storage//pkg/proto/configuration/cloud/aws
-# gazelle:resolve proto proto google/rpc/code.proto @googleapis//google/rpc:code_proto
-# gazelle:resolve proto go google/rpc/code.proto @org_golang_google_genproto_googleapis_rpc//code
-# gazelle:resolve proto proto google/rpc/status.proto @googleapis//google/rpc:status_proto
-# gazelle:resolve proto go google/rpc/status.proto @org_golang_google_genproto_googleapis_rpc//status
-
-# gazelle:resolve go github.com/ccontavalli/enkit/auth/server/assets/templates //auth/server/assets/templates
 
 exports_files(
     [

@@ -10,9 +10,3 @@ go_library(
         "//lib/config/directory",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":defcon",
-    visibility = ["//visibility:public"],
-)

@@ -10,9 +10,3 @@ go_library(
         "@com_github_cheggaaa_pb_v3//termutil",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":progress",
-    visibility = ["//visibility:public"],
-)

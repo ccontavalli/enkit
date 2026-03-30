@@ -20,12 +20,6 @@ go_library(
     ],
 )
 
-alias(
-    name = "go_default_library",
-    actual = ":omail",
-    visibility = ["//visibility:public"],
-)
-
 go_test(
     name = "omail_test",
     srcs = [

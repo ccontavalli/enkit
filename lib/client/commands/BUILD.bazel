@@ -1,12 +1,6 @@
 load("@rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_rbe",
-    embed = ["@com_github_bazelbuild_remote_apis//build/bazel/remote/execution/v2:remote_execution_go_proto"],
-    importpath = "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2",
-)
-
-go_library(
     name = "commands",
     srcs = ["login.go"],
     importpath = "github.com/ccontavalli/enkit/lib/client/commands",
@@ -26,10 +20,4 @@ go_library(
         "@org_golang_google_grpc//grpclog",
         "@org_golang_google_grpc//metadata",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":commands",
-    visibility = ["//visibility:public"],
 )

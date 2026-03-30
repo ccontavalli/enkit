@@ -12,16 +12,10 @@ go_library(
     deps = [
         "//lib/goroutine",
         "//machinist/config",
-        "//machinist/rpc:machinist-go",
+        "//machinist/rpc",
         "@com_github_prometheus_client_golang//prometheus",
         "@com_github_prometheus_client_golang//prometheus/promauto",
         "@com_github_prometheus_client_golang//prometheus/promhttp",
         "@org_golang_google_grpc//status",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":polling",
-    visibility = ["//visibility:public"],
 )

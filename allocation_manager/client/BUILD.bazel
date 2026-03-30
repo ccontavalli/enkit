@@ -9,9 +9,3 @@ go_library(
     ],
     deps = ["//allocation_manager/proto:allocation_manager_go_proto"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":client",
-    visibility = ["//visibility:public"],
-)

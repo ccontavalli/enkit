@@ -33,9 +33,3 @@ go_test(
         "@com_github_stretchr_testify//require",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":kassets",
-    visibility = ["//visibility:public"],
-)

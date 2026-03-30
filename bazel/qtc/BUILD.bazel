@@ -10,9 +10,3 @@ go_library(
         "@com_github_valyala_quicktemplate//:quicktemplate",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":qtc",
-    visibility = ["//visibility:public"],
-)

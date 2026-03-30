@@ -19,29 +19,6 @@ go_library(
 )
 
 go_test(
-    name = "go_default_test",
-    srcs = [
-        "dns_test.go",
-        "records_test.go",
-    ],
-    race = "on",
-    deps = [
-        ":go_default_library",
-        "//lib/knetwork:go_default_library",
-        "//lib/logger:go_default_library",
-        "@com_github_miekg_dns//:go_default_library",
-        "@com_github_stretchr_testify//assert:go_default_library",
-        "@org_uber_go_goleak//:go_default_library",
-    ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":kdns",
-    visibility = ["//visibility:public"],
-)
-
-go_test(
     name = "kdns_test",
     srcs = [
         "dns_test.go",

@@ -13,9 +13,3 @@ go_test(
     srcs = ["errdiff_test.go"],
     embed = [":errdiff"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":errdiff",
-    visibility = ["//visibility:public"],
-)

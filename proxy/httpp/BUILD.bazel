@@ -12,7 +12,6 @@ go_library(
     deps = [
         "//lib/khttp",
         "//lib/logger",
-        "//lib/multierror",
         "//lib/oauth",
         "//lib/slice",
         "//proxy/amux",
@@ -29,10 +28,4 @@ go_test(
         "//proxy/amux/amuxie",
         "@com_github_stretchr_testify//assert",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":httpp",
-    visibility = ["//visibility:public"],
 )

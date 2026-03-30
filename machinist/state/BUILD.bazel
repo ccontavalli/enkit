@@ -9,23 +9,6 @@ go_library(
 )
 
 go_test(
-    name = "go_default_test",
-    srcs = ["controlplane_test.go"],
-    race = "on",
-    deps = [
-        ":go_default_library",
-        "//lib/srand:go_default_library",
-        "@com_github_stretchr_testify//assert:go_default_library",
-    ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":state",
-    visibility = ["//visibility:public"],
-)
-
-go_test(
     name = "state_test",
     srcs = ["controlplane_test.go"],
     deps = [

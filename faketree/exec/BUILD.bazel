@@ -22,9 +22,3 @@ go_test(
         "@rules_go//go/runfiles",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":exec",
-    visibility = ["//visibility:public"],
-)

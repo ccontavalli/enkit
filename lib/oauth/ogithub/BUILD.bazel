@@ -13,9 +13,3 @@ go_library(
         "@org_golang_x_oauth2//github",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":ogithub",
-    visibility = ["//visibility:public"],
-)

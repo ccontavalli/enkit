@@ -11,9 +11,3 @@ go_library(
         "//lib/khttp/ktransport",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":kclient",
-    visibility = ["//visibility:public"],
-)

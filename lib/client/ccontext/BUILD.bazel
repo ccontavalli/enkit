@@ -10,9 +10,3 @@ go_library(
         "//lib/progress",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":ccontext",
-    visibility = ["//visibility:public"],
-)

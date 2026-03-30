@@ -35,12 +35,6 @@ go_library(
     }),
 )
 
-alias(
-    name = "go_default_library",
-    actual = ":kcerts",
-    visibility = ["//visibility:public"],
-)
-
 go_test(
     name = "kcerts_test",
     srcs = [

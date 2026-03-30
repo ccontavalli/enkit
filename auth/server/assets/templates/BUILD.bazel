@@ -18,12 +18,8 @@ qtpl_go_library(
 
 go_library(
     name = "templates",
+    srcs = ["package.go"],  # keep
     embed = [":templates_qtpl"],  # keep
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":templates",
+    importpath = "github.com/ccontavalli/enkit/auth/server/assets/templates",
     visibility = ["//visibility:public"],
 )

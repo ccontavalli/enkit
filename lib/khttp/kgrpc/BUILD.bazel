@@ -18,12 +18,6 @@ go_library(
     ],
 )
 
-alias(
-    name = "go_default_library",
-    actual = ":kgrpc",
-    visibility = ["//visibility:public"],
-)
-
 go_test(
     name = "kgrpc_test",
     srcs = ["grpc_test.go"],
@@ -34,7 +28,7 @@ go_test(
         "//lib/grpcwebclient",
         "//lib/khttp",
         "//lib/khttp/kclient",
-        "//lib/khttp/kgrpc/testdata/proto:go_default_library",
+        "//lib/khttp/kgrpc/testdata/proto",
         "//lib/khttp/ktls",
         "//lib/khttp/ktransport",
         "//lib/khttp/protocol",

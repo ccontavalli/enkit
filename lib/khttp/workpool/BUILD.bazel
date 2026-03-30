@@ -30,9 +30,3 @@ go_test(
         "@com_github_stretchr_testify//assert",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":workpool",
-    visibility = ["//visibility:public"],
-)

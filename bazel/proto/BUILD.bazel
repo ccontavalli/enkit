@@ -5,6 +5,6 @@ exports_files(["py_proto_library.bzl"])
 
 py_library(
     name = "protobuf_runtime",
-    deps = [requirement("protobuf")],
     visibility = ["//visibility:public"],
+    deps = [requirement("protobuf")],
 )

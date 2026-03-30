@@ -26,13 +26,9 @@ go_test(
         "//lib/config",
         "//lib/config/marshal",
         "//lib/config/memory",
+        "//lib/kflags",
+        "//lib/token",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":cryptstore",
-    visibility = ["//visibility:public"],
 )

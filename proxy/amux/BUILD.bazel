@@ -8,22 +8,6 @@ go_library(
 )
 
 go_test(
-    name = "go_default_test",
-    srcs = ["mux_test.go"],
-    deps = [
-        ":go_default_library",
-        "//proxy/amux/amuxie:go_default_library",
-        "@com_github_stretchr_testify//assert:go_default_library",
-    ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":amux",
-    visibility = ["//visibility:public"],
-)
-
-go_test(
     name = "amux_test",
     srcs = ["mux_test.go"],
     deps = [

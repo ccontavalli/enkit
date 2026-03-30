@@ -14,9 +14,3 @@ go_test(
     embed = [":echo"],
     deps = ["@com_github_stretchr_testify//assert"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":echo",
-    visibility = ["//visibility:public"],
-)

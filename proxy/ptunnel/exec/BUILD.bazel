@@ -6,9 +6,3 @@ go_library(
     importpath = "github.com/ccontavalli/enkit/proxy/ptunnel/exec",
     visibility = ["//visibility:public"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":exec",
-    visibility = ["//visibility:public"],
-)

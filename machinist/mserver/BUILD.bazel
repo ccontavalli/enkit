@@ -18,7 +18,7 @@ go_library(
         "//lib/logger",
         "//lib/server",
         "//machinist/config",
-        "//machinist/rpc:machinist-go",
+        "//machinist/rpc",
         "//machinist/state",
         "@com_github_miekg_dns//:dns",
         "@com_github_spf13_cobra//:cobra",
@@ -63,11 +63,5 @@ go_library(
     name = "assets",
     srcs = [":embedded-assets"],
     importpath = "github.com/ccontavalli/enkit/machinist/server/assets",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":mserver",
     visibility = ["//visibility:public"],
 )

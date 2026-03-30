@@ -1,12 +1,8 @@
 load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
-load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 load("@rules_go//go:def.bzl", "go_library")
 load("@rules_go//proto:def.bzl", "go_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-
-# TODO: Make these definitions compatible with what gazelle wants to emit.
-
-# gazelle:ignore
+load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 
 proto_library(
     name = "test_metrics_proto",
@@ -23,14 +19,12 @@ cc_proto_library(
 go_proto_library(
     name = "bestie_go_proto",
     importpath = "github.com/ccontavalli/enkit/bestie/proto",
-    protos = [
-        ":test_metrics_proto",
-    ],
+    proto = ":test_metrics_proto",
     visibility = ["//visibility:public"],
 )
 
 go_library(
-    name = "go_default_library",
+    name = "proto",
     embed = [
         ":bestie_go_proto",
     ],

@@ -16,7 +16,6 @@ go_library(
         "//lib/config/marshal",
         "//lib/kflags",
         "//lib/khttp",
-        "//lib/srand",
         "//lib/token",
     ],
 )
@@ -30,17 +29,15 @@ go_test(
     ],
     embed = [":blob"],
     deps = [
+        "//lib/config",
         "//lib/config/directory",
-        "@com_github_stretchr_testify//assert",
-        "@com_github_stretchr_testify//require",
+        "//lib/config/marshal",
         "//lib/khttp/krequest",
         "//lib/khttp/ktest",
         "//lib/khttp/protocol",
+        "//lib/srand",
+        "//lib/token",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":blob",
-    visibility = ["//visibility:public"],
 )

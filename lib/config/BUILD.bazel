@@ -8,8 +8,8 @@ go_library(
         "key_codec.go",
         "list_helpers.go",
         "list_options.go",
-        "namespace.go",
         "multi.go",
+        "namespace.go",
         "simple.go",
         "store.go",
     ],
@@ -40,10 +40,4 @@ go_test(
         "//lib/config/sqlite",
         "@com_github_stretchr_testify//assert",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":config",
-    visibility = ["//visibility:public"],
 )

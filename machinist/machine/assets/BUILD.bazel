@@ -1,22 +1,18 @@
 load("@rules_go//go:def.bzl", "go_library")
 load("//bazel/go_extras:embed_data.bzl", "go_embed_data")
 
-# Keep gazelle from overzealously removing the go_library below
-# (https://github.com/bazelbuild/bazel-gazelle/issues/646)
-# gazelle:ignore
-
 go_library(
-    name = "go_default_library",
+    name = "assets",
     srcs = [
-        ":autouser_binary",
-        ":libpam_script_install",
-        ":mnode_sshd_conf",
-        ":mnode_systemd_conf",
-        ":nss_autouser_config",
-        ":pam_script",
-        ":pam_sshd_config",
+        ":autouser_binary",  # keep
+        ":libpam_script_install",  # keep
+        ":mnode_sshd_conf",  # keep
+        ":mnode_systemd_conf",  # keep
+        ":nss_autouser_config",  # keep
+        ":pam_script",  # keep
+        ":pam_sshd_config",  # keep
     ],
-    importpath = "github.com/ccontavalli/enkit/machinist/machine/assets",
+    importpath = "github.com/ccontavalli/enkit/machinist/machine/assets",  # keep
     visibility = ["//machinist/machine:__pkg__"],
 )
 

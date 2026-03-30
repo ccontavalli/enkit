@@ -10,9 +10,3 @@ go_library(
     importpath = "github.com/ccontavalli/enkit/lib/knetwork",
     visibility = ["//visibility:public"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":knetwork",
-    visibility = ["//visibility:public"],
-)

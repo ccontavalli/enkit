@@ -21,7 +21,7 @@ go_proto_compiler(
 go_proto_compiler(
     name = "go_grpc_v2",
     options = ["require_unimplemented_servers=false"],
-    plugin = "@org_golang_google_grpc_cmd_protoc_gen_go_grpc//:protoc-gen-go-grpc",
+    plugin = "@@gazelle++go_deps+org_golang_google_grpc_cmd_protoc_gen_go_grpc//:protoc-gen-go-grpc",
     suffix = "_grpc.pb.go",
     visibility = ["//visibility:public"],
     deps = PROTO_RUNTIME_DEPS + WELL_KNOWN_TYPES_APIV2 + [

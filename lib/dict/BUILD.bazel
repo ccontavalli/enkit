@@ -6,9 +6,3 @@ go_library(
     importpath = "github.com/ccontavalli/enkit/lib/dict",
     visibility = ["//visibility:public"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":dict",
-    visibility = ["//visibility:public"],
-)

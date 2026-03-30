@@ -16,9 +16,3 @@ go_test(
     srcs = ["machine_test.go"],
     embed = [":config"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":config",
-    visibility = ["//visibility:public"],
-)

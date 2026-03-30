@@ -20,9 +20,3 @@ go_library(
     importpath = "github.com/ccontavalli/enkit/kbuild/assets",  # keep
     visibility = ["//visibility:public"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":assets",
-    visibility = ["//visibility:public"],
-)

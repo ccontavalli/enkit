@@ -7,9 +7,3 @@ go_library(
     visibility = ["//visibility:public"],
     deps = ["//lib/khttp/kcookie"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":cookie",
-    visibility = ["//visibility:public"],
-)

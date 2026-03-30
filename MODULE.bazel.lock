@@ -30,7 +30,6 @@
     "https://bcr.bazel.build/modules/aspect_bazel_lib/2.0.0/MODULE.bazel": "e118477db5c49419a88d78ebc7a2c2cea9d49600fe0f490c1903324a2c16ecd9",
     "https://bcr.bazel.build/modules/aspect_bazel_lib/2.14.0/MODULE.bazel": "2b31ffcc9bdc8295b2167e07a757dbbc9ac8906e7028e5170a3708cecaac119f",
     "https://bcr.bazel.build/modules/aspect_bazel_lib/2.16.0/MODULE.bazel": "852f9ebbda017572a7c113a2434592dd3b2f55cd9a0faea3d4be5a09a59e4900",
-    "https://bcr.bazel.build/modules/aspect_bazel_lib/2.17.1/MODULE.bazel": "9b027af55f619c7c444cead71061578fab6587e5e1303fa4ed61d49d2b1a7262",
     "https://bcr.bazel.build/modules/aspect_bazel_lib/2.19.4/MODULE.bazel": "d39e4b18e594d81c526d7cfc513e7ecfa8ca9eb5b61488d1d790faa94b34f2d9",
     "https://bcr.bazel.build/modules/aspect_bazel_lib/2.19.4/source.json": "506fa924e19fd8a33d617e33a17e4fce845f9ff9acb3a2aa7cf7300650698705",
     "https://bcr.bazel.build/modules/aspect_bazel_lib/2.7.2/MODULE.bazel": "780d1a6522b28f5edb7ea09630748720721dfe27690d65a2d33aa7509de77e07",
@@ -233,7 +232,6 @@
     "https://bcr.bazel.build/modules/protobuf/3.19.6/MODULE.bazel": "9233edc5e1f2ee276a60de3eaa47ac4132302ef9643238f23128fea53ea12858",
     "https://bcr.bazel.build/modules/protobuf/30.0/MODULE.bazel": "0e736de5d52ad7824113f47e65256a26ee74b689ba859c5447a0663e5a075409",
     "https://bcr.bazel.build/modules/protobuf/30.2/MODULE.bazel": "6b8b37f8390fbaf9bee5eed558697238082fab658a8a8996328628292ae79d2e",
-    "https://bcr.bazel.build/modules/protobuf/31.0/MODULE.bazel": "cce0f305064713b382211c4c5af1d4fc1466e1fbc9059aa0941801970f6add5c",
     "https://bcr.bazel.build/modules/protobuf/31.1/MODULE.bazel": "379a389bb330b7b8c1cdf331cc90bf3e13de5614799b3b52cdb7c6f389f6b38e",
     "https://bcr.bazel.build/modules/protobuf/31.1/source.json": "25af5d0219da0c0fc4d1191a24ce438e6ca7f49d2e1a94f354efeba6ef10426f",
     "https://bcr.bazel.build/modules/protoc-gen-validate/1.0.4.bcr.2/MODULE.bazel": "c4bd2c850211ff5b7dadf9d2d0496c1c922fdedc303c775b01dfd3b3efc907ed",
@@ -1348,7 +1346,7 @@
     "@@rules_oci+//oci:extensions.bzl%oci": {
       "general": {
         "bzlTransitiveDigest": "y6GRuwGM7WCiVKZTyPKoDYJYUcp9tcPDSuFjR0cNePY=",
-        "usagesDigest": "AVTWGXRj1Qac/FNwtSbntICCnlOchRuAPyhQNZtzEX8=",
+        "usagesDigest": "Ig6ICZD8O4x9VFZP6BFRrYWfH84P59of+wTtZNblBfA=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -1363,6 +1361,7 @@
               "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
               "platform": "linux/amd64",
               "target_name": "container_golang_base_linux_amd64",
+              "config": "@@//bazel/oci:public_auth.json",
               "bazel_tags": []
             }
           },
@@ -1376,6 +1375,7 @@
               "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
               "platform": "linux/arm64/v8",
               "target_name": "container_golang_base_linux_arm64_v8",
+              "config": "@@//bazel/oci:public_auth.json",
               "bazel_tags": []
             }
           },
@@ -1393,7 +1393,8 @@
                 "@@platforms//cpu:arm64": "@container_golang_base_linux_arm64_v8"
               },
               "bzlmod_repository": "container_golang_base",
-              "reproducible": true
+              "reproducible": true,
+              "config": "@@//bazel/oci:public_auth.json"
             }
           },
           "golang_base_linux_amd64": {
@@ -1406,6 +1407,7 @@
               "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
               "platform": "linux/amd64",
               "target_name": "golang_base_linux_amd64",
+              "config": "@@//bazel/oci:public_auth.json",
               "bazel_tags": []
             }
           },
@@ -1419,6 +1421,7 @@
               "identifier": "sha256:937c7eaaf6f3f2d38a1f8c4aeff326f0c56e4593ea152e9e8f74d976dde52f56",
               "platform": "linux/arm64/v8",
               "target_name": "golang_base_linux_arm64_v8",
+              "config": "@@//bazel/oci:public_auth.json",
               "bazel_tags": []
             }
           },
@@ -1436,7 +1439,8 @@
                 "@@platforms//cpu:arm64": "@golang_base_linux_arm64_v8"
               },
               "bzlmod_repository": "golang_base",
-              "reproducible": true
+              "reproducible": true,
+              "config": "@@//bazel/oci:public_auth.json"
             }
           },
           "oci_crane_darwin_amd64": {

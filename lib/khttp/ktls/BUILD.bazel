@@ -7,9 +7,3 @@ go_library(
     visibility = ["//visibility:public"],
     deps = ["//lib/kflags"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":ktls",
-    visibility = ["//visibility:public"],
-)

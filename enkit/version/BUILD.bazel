@@ -11,9 +11,3 @@ go_library(
         "@com_github_spf13_cobra//:cobra",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":version",
-    visibility = ["//visibility:public"],
-)

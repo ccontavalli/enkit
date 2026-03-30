@@ -12,7 +12,7 @@ proto_library(
 )
 
 go_proto_library(
-    name = "go_default_library",
+    name = "astore_go_proto",
     compilers = ["//bazel/go:go_grpc"],
     importpath = "github.com/ccontavalli/enkit/astore/rpc/astore",
     proto = ":astore_proto",
@@ -21,7 +21,7 @@ go_proto_library(
 
 go_library(
     name = "astore",
-    embed = [":go_default_library"],
+    embed = [":astore_go_proto"],
     importpath = "github.com/ccontavalli/enkit/astore/rpc/astore",
     visibility = ["//visibility:public"],
 )

@@ -19,9 +19,3 @@ go_test(
     embed = [":scheduler"],
     deps = ["@com_github_stretchr_testify//assert"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":scheduler",
-    visibility = ["//visibility:public"],
-)

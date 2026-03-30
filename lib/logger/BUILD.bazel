@@ -9,9 +9,3 @@ go_library(
     importpath = "github.com/ccontavalli/enkit/lib/logger",
     visibility = ["//visibility:public"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":logger",
-    visibility = ["//visibility:public"],
-)

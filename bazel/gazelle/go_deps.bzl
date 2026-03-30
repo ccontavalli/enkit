@@ -18,6 +18,8 @@ load(
     "DEFAULT_BUILD_EXTRA_ARGS_BY_PATH",
     "DEFAULT_BUILD_FILE_GENERATION_BY_PATH",
     "DEFAULT_DIRECTIVES_BY_PATH",
+    "DEFAULT_REPO_CONFIG_DIRECTIVES_BY_PATH",
+    "DEFAULT_REPO_CONFIG_REPO_NAMES_BY_PATH",
 )
 load(":default_patches.bzl", "DEFAULT_PATCHES")
 load(":go_mod.bzl", "deps_from_go_mod", "go_work_from_label", "sums_from_go_mod", "sums_from_go_work")
@@ -161,6 +163,27 @@ def _get_build_file_generation(path, gazelle_overrides, gazelle_default_attribut
 def _get_build_extra_args(path, gazelle_overrides, gazelle_default_attributes):
     return _get_override_or_default(gazelle_overrides, gazelle_default_attributes, DEFAULT_BUILD_EXTRA_ARGS_BY_PATH, path, [], "build_extra_args")
 
+def _get_build_naming_convention(path, gazelle_overrides, gazelle_default_attributes):
+    directives = _get_directives(path, gazelle_overrides, gazelle_default_attributes)
+
+    # Some Bazel-aware repos publish their external label style via
+    # go_naming_convention_external instead of go_naming_convention. The
+    # synthetic repo_config should preserve that so root Gazelle runs resolve
+    # labels the same way those repos expose them.
+    return (
+        get_directive_value(directives, "go_naming_convention_external") or
+        get_directive_value(directives, "go_naming_convention")
+    )
+
+def _get_repo_config_repo_name(path, module):
+    return DEFAULT_REPO_CONFIG_REPO_NAMES_BY_PATH.get(path, module.repo_name)
+
+def _get_repo_config_directives(module_resolutions):
+    directives = []
+    for path in module_resolutions.keys():
+        directives.extend(DEFAULT_REPO_CONFIG_DIRECTIVES_BY_PATH.get(path, []))
+    return directives
+
 def _get_patches(path, module_overrides):
     return _get_override_or_default(module_overrides, struct(), DEFAULT_PATCHES, path, [], "patches")
 
@@ -254,6 +277,10 @@ def _process_archive_override(archive_override_tag):
 
 def _go_repository_config_impl(ctx):
     repos = []
+    for directive in ctx.attr.directives:
+        repos.append("# " + directive)
+    if repos:
+        repos.append("")
     for name, importpath in sorted(ctx.attr.importpaths.items()):
         repos.append(format_rule_call(
             "go_repository",
@@ -279,6 +306,7 @@ _go_repository_config = repository_rule(
         "importpaths": attr.string_dict(mandatory = True),
         "module_names": attr.string_dict(mandatory = True),
         "build_naming_conventions": attr.string_dict(mandatory = True),
+        "directives": attr.string_list(),
         "go_env": attr.string_dict(mandatory = True),
         "dep_files": attr.string_list(),
     },
@@ -335,6 +363,10 @@ def _noop(*_):
 #    a large number of transitive dependencies.
 _SHARED_REPOS = [
     "github.com/golang/protobuf",
+    "golang.org/x/crypto",
+    "golang.org/x/net",
+    "golang.org/x/sys",
+    "golang.org/x/text",
     "google.golang.org/protobuf",
 ]
 
@@ -354,12 +386,7 @@ def _go_deps_impl(module_ctx):
     root_module_direct_dev_deps = {}
 
     first_module = module_ctx.modules[0]
-    if first_module.is_root and first_module.name in [
-        "gazelle",
-        "rules_go",
-        "gazelle_bcr_go_mod_tests",
-        "gazelle_bcr_go_work_tests",
-    ]:
+    if first_module.is_root:
         root_module_direct_deps["bazel_gazelle_go_repository_config"] = None
 
     outdated_direct_dep_printer = print
@@ -434,6 +461,7 @@ def _go_deps_impl(module_ctx):
             for tool in tools:
                 # The tool's package may be the module itself.
                 possible_tool_modules[tool] = None
+
                 # Add all path prefixes of tool to the map
                 # to allow for partial matches.
                 for i in range(len(tool)):
@@ -745,20 +773,22 @@ Mismatch between versions requested for Go module {module}:
     _go_repository_config(
         name = "bazel_gazelle_go_repository_config",
         importpaths = {
-            module.repo_name: path
+            _get_repo_config_repo_name(path, module): path
             for path, module in module_resolutions.items()
         },
         module_names = {
-            info.repo_name: info.module_name
+            _get_repo_config_repo_name(path, info): info.module_name
             for path, info in bazel_deps.items()
         },
         build_naming_conventions = drop_nones({
-            module.repo_name: get_directive_value(
-                _get_directives(path, gazelle_overrides, gazelle_default_attributes),
-                "go_naming_convention",
+            _get_repo_config_repo_name(path, module): _get_build_naming_convention(
+                path,
+                gazelle_overrides,
+                gazelle_default_attributes,
             )
             for path, module in module_resolutions.items()
         }),
+        directives = _get_repo_config_directives(module_resolutions),
         go_env = go_env,
         dep_files = dep_files,
     )

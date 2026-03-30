@@ -9,7 +9,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//flextape/frontend",
-        "//flextape/proto:go_default_library",
+        "//flextape/proto",
         "//flextape/service",
         "//lib/metrics",
         "//lib/server",

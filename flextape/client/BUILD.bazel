@@ -7,7 +7,7 @@ go_library(
     visibility = [
         "//flextape/client/flextape_client:__pkg__",
     ],
-    deps = ["//flextape/proto:go_default_library"],
+    deps = ["//flextape/proto"],
 )
 
 go_test(
@@ -15,16 +15,10 @@ go_test(
     srcs = ["client_test.go"],
     embed = [":client"],
     deps = [
-        "//flextape/proto:go_default_library",
+        "//flextape/proto",
         "//lib/errdiff",
         "@com_github_stretchr_testify//assert",
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":client",
-    visibility = ["//visibility:public"],
 )

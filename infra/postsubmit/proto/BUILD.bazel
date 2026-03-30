@@ -1,7 +1,7 @@
-load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 load("@rules_go//go:def.bzl", "go_library")
 load("@rules_go//proto:def.bzl", "go_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 
 proto_library(
     name = "postsubmit_proto",
@@ -20,12 +20,6 @@ go_proto_library(
     importpath = "github.com/ccontavalli/enkit/infra/postsubmit/proto",
     proto = ":postsubmit_proto",
     visibility = ["//visibility:private"],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":proto",
-    visibility = ["//visibility:public"],
 )
 
 go_library(

@@ -22,17 +22,12 @@ go_library(
     ],
 )
 
-alias(
-    name = "go_default_library",
-    actual = ":krequestlog",
-    visibility = ["//visibility:public"],
-)
-
 go_test(
     name = "krequestlog_test",
     srcs = ["krequestlog_test.go"],
     embed = [":krequestlog"],
     deps = [
+        "//lib/kflags",
         "@com_github_gorilla_websocket//:websocket",
         "@com_github_stretchr_testify//assert",
         "@org_golang_google_grpc//:grpc",

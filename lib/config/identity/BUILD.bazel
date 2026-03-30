@@ -10,9 +10,3 @@ go_library(
         "//lib/kflags",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":identity",
-    visibility = ["//visibility:public"],
-)

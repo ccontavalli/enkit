@@ -1,9 +1,8 @@
 load("@rules_go//go:def.bzl", "go_library")
 load("@rules_go//proto:def.bzl", "go_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
 
-# Don't let gazelle auto-remove proto and Go rules compiling this "generated"
-# proto.
-# gazelle:ignore
+# keep
 genrule(
     name = "stardoc_output_proto_cp",
     srcs = ["@bazel_tools//src/main/protobuf:stardoc_output.proto"],
@@ -11,6 +10,7 @@ genrule(
     cmd = "cp $< $@",
 )
 
+# keep
 proto_library(
     name = "stardoc_output_proto",
     srcs = [":stardoc_output_proto_cp"],
@@ -18,6 +18,7 @@ proto_library(
     strip_import_prefix = "/lib/bazel/proto",
 )
 
+# keep
 genrule(
     name = "build_proto_cp",
     srcs = ["@bazel_tools//src/main/protobuf:build.proto"],
@@ -25,12 +26,14 @@ genrule(
     cmd = "cp $< $@",
 )
 
+# keep
 proto_library(
     name = "build_proto",
     srcs = [":build_proto_cp"],
     deps = [":stardoc_output_proto"],
 )
 
+# keep
 go_proto_library(
     name = "build_go_proto",
     importpath = "github.com/ccontavalli/enkit/lib/bazel/proto",
@@ -41,11 +44,13 @@ go_proto_library(
     visibility = ["//lib/bazel:__subpackages__"],
 )
 
+# keep
 proto_library(
     name = "workspace_log_proto",
     srcs = ["workspace_log.proto"],
 )
 
+# keep
 go_proto_library(
     name = "workspace_log_go_proto",
     importpath = "github.com/ccontavalli/enkit/lib/bazel/proto",
@@ -54,11 +59,11 @@ go_proto_library(
 )
 
 go_library(
-    name = "go_protos",
+    name = "proto",
     embed = [
-        ":build_go_proto",
-        ":workspace_log_go_proto",
+        ":build_go_proto",  # keep
+        ":workspace_log_go_proto",  # keep
     ],
-    importpath = "github.com/ccontavalli/enkit/lib/bazel/proto",
+    importpath = "github.com/ccontavalli/enkit/lib/bazel/proto",  # keep
     visibility = ["//lib/bazel:__subpackages__"],
 )

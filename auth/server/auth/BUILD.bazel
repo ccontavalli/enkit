@@ -40,9 +40,3 @@ go_test(
         "@org_golang_x_crypto//ssh",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":auth",
-    visibility = ["//visibility:public"],
-)

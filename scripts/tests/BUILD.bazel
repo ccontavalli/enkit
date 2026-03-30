@@ -4,6 +4,6 @@ bats_test(
     name = "gee-bats",
     srcs = ["gee.bats"],
     uses_bats_assert = True,
-    deps = ["//scripts:gee-lib"],
     visibility = ["//visibility:public"],
+    deps = ["//scripts:gee-lib"],
 )

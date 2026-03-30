@@ -12,9 +12,3 @@ go_test(
     srcs = ["random_test.go"],
     embed = [":srand"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":srand",
-    visibility = ["//visibility:public"],
-)

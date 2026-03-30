@@ -21,9 +21,3 @@ go_library(
     importpath = "github.com/ccontavalli/enkit/astore/server/configs",  # keep
     visibility = ["//visibility:public"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":configs",
-    visibility = ["//visibility:public"],
-)

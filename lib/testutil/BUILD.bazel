@@ -17,9 +17,3 @@ go_library(
         "@rules_go//go/tools/bazel",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":testutil",
-    visibility = ["//visibility:public"],
-)

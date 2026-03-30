@@ -16,9 +16,3 @@ go_library(
         "@com_github_cybozu_go_aptutil//apt",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":kapt",
-    visibility = ["//visibility:public"],
-)

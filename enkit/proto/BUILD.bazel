@@ -15,19 +15,6 @@ go_proto_library(
     visibility = ["//visibility:public"],
 )
 
-go_proto_library(
-    name = "enkit_proto_go_proto",
-    importpath = "github.com/ccontavalli/enkit/enkit/proto",
-    proto = ":presubmit_proto",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "go_default_library",
-    actual = ":proto",
-    visibility = ["//visibility:public"],
-)
-
 go_library(
     name = "proto",
     embed = [":presubmit_go_proto"],

@@ -7,9 +7,3 @@ go_library(
     visibility = ["//visibility:public"],
     deps = ["//lib/multierror"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":goroutine",
-    visibility = ["//visibility:public"],
-)

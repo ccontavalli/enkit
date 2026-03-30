@@ -14,9 +14,3 @@ go_library(
         "@org_golang_x_exp//slog",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":sqldb",
-    visibility = ["//visibility:public"],
-)

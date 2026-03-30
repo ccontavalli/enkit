@@ -7,9 +7,3 @@ go_library(
     visibility = ["//visibility:public"],
     deps = ["//lib/knetwork"],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":atesting",
-    visibility = ["//visibility:public"],
-)

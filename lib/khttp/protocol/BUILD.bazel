@@ -14,9 +14,3 @@ go_library(
         "//lib/multierror",
     ],
 )
-
-alias(
-    name = "go_default_library",
-    actual = ":protocol",
-    visibility = ["//visibility:public"],
-)
