@@ -1,6 +1,6 @@
 module github.com/ccontavalli/enkit
 
-go 1.24.6
+go 1.26.1
 
 replace github.com/GoogleCloudPlatform/cloud-build-notifiers => github.com/minor-fixes/cloud-build-notifiers v0.0.0-20230424124639-02281bcdd3d5
 

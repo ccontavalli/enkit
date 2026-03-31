@@ -1,9 +1,11 @@
 package omail
 
 import (
-	"io/ioutil"
+	"io"
 	"math/rand"
-	"mime/quotedprintable"
+	"mime"
+	"mime/multipart"
+	"net/mail"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -19,13 +21,64 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
-func decodeQuotedPrintable(s string) (string, error) {
-	r := quotedprintable.NewReader(strings.NewReader(s))
-	b, err := ioutil.ReadAll(r)
+func extractTokenFromMessage(m *gomail.Message) (string, error) {
+	body := &bodyWriter{}
+	if _, err := m.WriteTo(body); err != nil {
+		return "", err
+	}
+
+	msg, err := mail.ReadMessage(strings.NewReader(body.String()))
 	if err != nil {
 		return "", err
 	}
-	return string(b), nil
+
+	mediaType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil {
+		return "", err
+	}
+
+	var textBody string
+	if strings.HasPrefix(mediaType, "multipart/") {
+		reader := multipart.NewReader(msg.Body, params["boundary"])
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return "", err
+			}
+
+			if !strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain") {
+				continue
+			}
+
+			data, err := io.ReadAll(part)
+			if err != nil {
+				return "", err
+			}
+			textBody = string(data)
+			break
+		}
+	} else {
+		data, err := io.ReadAll(msg.Body)
+		if err != nil {
+			return "", err
+		}
+		textBody = string(data)
+	}
+
+	for _, field := range strings.Fields(textBody) {
+		if !strings.HasPrefix(field, "https://") {
+			continue
+		}
+		tokenURL, err := url.Parse(field)
+		if err != nil {
+			return "", err
+		}
+		return tokenURL.Query().Get("token"), nil
+	}
+	return "", io.EOF
 }
 
 func TestAuthenticator(t *testing.T) {
@@ -84,52 +137,27 @@ func TestAuthenticator(t *testing.T) {
 	err = auth.PerformLogin(loginRR, loginReq)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, loginRR.Code)
-	bodyBytes, err := ioutil.ReadAll(loginRR.Body)
+	bodyBytes, err := io.ReadAll(loginRR.Body)
 	assert.NoError(t, err)
 	assert.Contains(t, string(bodyBytes), "Login email sent")
 	assert.NotNil(t, sentMessage)
 
-	// Extract token from email
-	body := &bodyWriter{}
-	_, err = sentMessage.WriteTo(body)
-	assert.NoError(t, err)
-	bodyStr := body.String()
-
-	// Find the text part by its unique content
-	marker := "open the following link in your browser"
-	idx := strings.Index(bodyStr, marker)
-	if !assert.True(t, idx > 0, "text part marker '%s' not found in email body.\nBody:\n%s", marker, bodyStr) {
+	tokenStr, err := extractTokenFromMessage(sentMessage)
+	if !assert.NoError(t, err) {
 		return
 	}
-
-	// Extract from marker until the next boundary (which starts with --)
-	chunk := bodyStr[idx+len(marker):]
-	endIdx := strings.Index(chunk, "--")
-	if endIdx > 0 {
-		chunk = chunk[:endIdx]
+	if !assert.NotEmpty(t, tokenStr) {
+		return
 	}
-
-	// Decode QP
-	decoded, err := decodeQuotedPrintable(chunk)
-	assert.NoError(t, err)
-
-	// Now decoded should contain the URL: https://example.com/auth/callback?token=...
-	tokenPrefix := "token="
-	idx = strings.Index(decoded, tokenPrefix)
-	assert.True(t, idx > 0, "token parameter not found in decoded text")
-
-	tokenPart := decoded[idx+len(tokenPrefix):]
-	// Token ends at the next whitespace (or end of string)
-	tokenStr := strings.Fields(tokenPart)[0]
-	t.Logf("Extracted token: %s", tokenStr)
 
 	// Test PerformAuth
 	authReq := httptest.NewRequest("GET", "/auth/callback?token="+tokenStr, nil)
 	authRR := httptest.NewRecorder()
 
 	authData, err := auth.PerformAuth(authRR, authReq)
-	assert.NoError(t, err)
-	assert.NotNil(t, authData)
+	if !assert.NoError(t, err) {
+		return
+	}
 	assert.Equal(t, "test", authData.Creds.Identity.Username)
 
 	// Verify the cookie

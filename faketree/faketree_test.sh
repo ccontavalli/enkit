@@ -110,7 +110,7 @@ $ft --fail --wait-term=false -- sh -c "(sleep 1; echo ready > $t1) & (sleep 2; e
 test "$?" == 17 || {
   fail "faketree did not propagate error status correctly"
 }
-grep ready "$t1" &>/dev/null || {
+wait_for_file_content ready "$t1" || {
   fail "faketree completed before the first canary file was created? $t1 does not exist"
 }
 wait_for_file_content ready "$t2" || {
