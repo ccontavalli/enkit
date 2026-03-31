@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # This script generates a Debian APT repository from an input
 # directory of .debs.

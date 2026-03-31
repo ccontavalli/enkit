@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # This script builds the .debs for an Enfabrica kernel
 #

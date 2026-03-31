@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # This script builds kernel artifacts and publishes them to astore.
 

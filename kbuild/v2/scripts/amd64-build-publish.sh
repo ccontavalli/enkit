@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Build and publish amd64 kernel artifacts for a particular configuration
 

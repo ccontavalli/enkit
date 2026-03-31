@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Build and publish arm64 kernel artifacts for a particular configuration
 

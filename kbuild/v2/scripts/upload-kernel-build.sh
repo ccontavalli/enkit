@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # This script uploads kernel build tarball to enkit astore
 #

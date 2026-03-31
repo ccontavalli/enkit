@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
@@ -34,7 +34,6 @@ output_apt_config() {
        echo "Use this line for /etc/apt/sources.list.d/${APT_SOURCES_FILE}"
     fi
     echo "deb [arch=${ARCH} trusted=yes] copy:${BASE_DIR}/ $DIST $COMP"
-    exit 0
 }
 
 install_apt_config() {

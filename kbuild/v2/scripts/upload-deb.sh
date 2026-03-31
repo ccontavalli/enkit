@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # This script uploads kernel archives to enkit astore
 #

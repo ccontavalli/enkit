@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # This script initializes the build area and clones the kernel repo
 #
