@@ -110,9 +110,11 @@ func WaitChildren(timeout time.Duration, process *os.Process, termOnWait bool) e
 				// If the child exited with a signal, code will be 0, which is
 				// certainly not the exit() code we want to propagate.
 				//
-				// Mimic bash behavior here: return the signal # in that case.
+				// Mimic shell behavior here: return 128 + signal # in that case.
 				if status.Exited() {
 					perr = ExitStatus(status.ExitStatus())
+				} else if status.Signaled() {
+					perr = ExitStatus(128 + int(status.Signal()))
 				} else {
 					perr = ExitStatus(status)
 				}

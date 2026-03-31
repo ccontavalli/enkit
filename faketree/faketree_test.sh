@@ -10,6 +10,22 @@ function fail() {
   exit 1
 }
 
+function wait_for_file_content() {
+  local needle="$1"
+  local path="$2"
+  local tries="${3:-50}"
+  local delay="${4:-0.1}"
+  local i
+
+  for ((i = 0; i < tries; ++i)); do
+    if grep "$needle" "$path" &>/dev/null; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+  return 1
+}
+
 $ft --help &>/dev/null
 test "$?" == 125 || {
   fail "--help should return error status 125 but it returned ${$?}"
@@ -97,7 +113,7 @@ test "$?" == 17 || {
 grep ready "$t1" &>/dev/null || {
   fail "faketree completed before the first canary file was created? $t1 does not exist"
 }
-grep ready "$t2" &>/dev/null || {
+wait_for_file_content ready "$t2" || {
   fail "faketree completed before the second canary file was created? $t2 does not exist"
 }
 
@@ -112,12 +128,12 @@ $ft --fail -- sh -c "(trap '' TERM; sleep 1; echo ready > $t1) & (sleep 100; ech
 test "$?" == 17 || {
   fail "faketree did not propagate error status correctly"
 }
-grep ready "$t1" &>/dev/null || {
+wait_for_file_content ready "$t1" || {
   fail "faketree completed before the first canary file was created? $t1 does not exist"
 }
-grep -L ready "$t2" &>/dev/null || {
-  fail "faketree completed before the second canary file was created? $t2 does not exist"
-}
+if grep ready "$t2" &>/dev/null; then
+  fail "faketree did not terminate the second background command before it wrote $t2"
+fi
 
 # Check that we get the correct exit status even when inner processes
 # are killed with signals. A bit of a hack to find it (hint: grep on lockfile),
@@ -125,9 +141,10 @@ grep -L ready "$t2" &>/dev/null || {
 # dies (the short sleep inside, sleep is a subcommand).
 lock=$(mktemp $tmpdir/lock.XXXXXX)
 $ft --fail -- bash -c "echo 'ready' > $lock; while :; do sleep 0.5; done;" &
-while grep -L 'ready' $lock &>/dev/null; do sleep 0.2; done;
+ft_pid=$!
+until grep -q 'ready' "$lock"; do sleep 0.2; done
 kill -SEGV $(pgrep -nf $lock)
-wait %1
+wait "$ft_pid"
 status="$?"
 test "$status" == "139" || {
   fail "faketree did not propagate error status correctly - got $status"
@@ -137,13 +154,14 @@ test "$status" == "139" || {
 # should keep waiting as if nothing happened.
 lock=$(mktemp $tmpdir/lock.XXXXXX)
 $ft --fail -- bash -c "trap '' TERM; echo 'started' > $lock; sleep 2; echo 'ready' > $lock" &
+ft_pid=$!
 # Until bash gets to the "trap ''..." it is vulnerable to signals, it will die.
 # Wait until it is safe to do so before blasting it with SIGTERM.
-while grep -L 'started' $lock &>/dev/null; do sleep 0.2; done;
+until grep -q 'started' "$lock"; do sleep 0.2; done
 for r in {1..100}; do
-  kill -TERM %1
+  kill -TERM "$ft_pid"
 done
-wait %1
+wait "$ft_pid"
 status="$?"
 test "$status" == "0" || {
   fail "faketree was killed before completion? or failed? status $status"
