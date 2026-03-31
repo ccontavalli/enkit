@@ -24,6 +24,7 @@ go_test(
     embed = [":cryptstore"],
     deps = [
         "//lib/config",
+        "//lib/config/directory",
         "//lib/config/marshal",
         "//lib/config/memory",
         "//lib/kflags",

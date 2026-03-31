@@ -151,6 +151,10 @@ func (w *loaderWorkspaceWrap) Explore(name string, namespace ...string) (config.
 	return w.workspace.Explore(name, namespace...)
 }
 
+func (w *loaderWorkspaceWrap) ParsePath(path string) (config.ParsedPath, error) {
+	return w.workspace.ParsePath(path)
+}
+
 func (w *loaderWorkspaceWrap) Close() error {
 	return w.workspace.Close()
 }

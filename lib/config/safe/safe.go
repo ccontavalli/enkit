@@ -187,6 +187,10 @@ func (w *workspace) Open(app string, namespace ...string) (config.Store, error) 
 	}, nil
 }
 
+func (w *workspace) ParsePath(path string) (config.ParsedPath, error) {
+	return w.StoreWorkspace.ParsePath(path)
+}
+
 func (w *workspace) Close() error {
 	w.reg.unregister(w.id)
 	return w.StoreWorkspace.Close()

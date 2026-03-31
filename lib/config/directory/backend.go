@@ -2,12 +2,14 @@ package directory
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/mitchellh/go-homedir"
 )
 
 // Workspace provides Open and Explore over directory-based loaders.
@@ -39,7 +41,7 @@ func FromFlags(flags *Flags) Modifier {
 			return nil
 		}
 		if flags.Path != "" {
-			ws.root = flags.Path
+			ws.root = normalizeRoot(flags.Path)
 		}
 		return nil
 	}
@@ -51,7 +53,7 @@ type Modifier func(*Workspace) error
 // New returns a directory loader workspace rooted at the provided path.
 // If root is empty, the user config directory is used.
 func New(root string, mods ...Modifier) *Workspace {
-	ws := &Workspace{root: root}
+	ws := &Workspace{root: normalizeRoot(root)}
 	for _, mod := range mods {
 		if mod != nil {
 			_ = mod(ws)
@@ -72,6 +74,65 @@ func (d *Workspace) Open(app string, namespaces ...string) (config.Loader, error
 // Explore returns an explorer that lists child namespaces.
 func (d *Workspace) Explore(app string, namespaces ...string) (config.Explorer, error) {
 	return &explorator{backend: d, app: app, base: append([]string(nil), namespaces...)}, nil
+}
+
+func (d *Workspace) ParsePath(path string) (config.ParsedPath, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return config.ParsedPath{}, fmt.Errorf("config path cannot be empty")
+	}
+	if d.root == "" {
+		return config.ParsedPath{}, fmt.Errorf("filesystem path parsing requires an explicit directory root")
+	}
+
+	path, err := homedir.Expand(path)
+	if err != nil {
+		return config.ParsedPath{}, err
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return config.ParsedPath{}, err
+	}
+
+	absRoot, err := filepath.Abs(d.root)
+	if err != nil {
+		return config.ParsedPath{}, err
+	}
+
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return config.ParsedPath{}, err
+	}
+	if rel == "." || rel == "" {
+		return config.ParsedPath{}, fmt.Errorf("config path %q must identify a file", path)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return config.ParsedPath{}, fmt.Errorf("config path %q is outside directory root %q", path, absRoot)
+	}
+
+	dir := filepath.Dir(rel)
+	base := filepath.Base(rel)
+	namespaces := []string{}
+	if dir != "." {
+		namespaces = strings.Split(dir, string(filepath.Separator))
+	}
+
+	key := base
+	ext := filepath.Ext(base)
+	format := strings.TrimPrefix(ext, ".")
+	if ext != "" {
+		key = strings.TrimSuffix(base, ext)
+	}
+	key = config.DecodeKey(key)
+
+	return config.ParsedPath{
+		StoreRoot: config.StoreRoot{
+			AppName:    "/",
+			Namespaces: namespaces,
+		},
+		Descriptor: config.RequestedFormatKey(key, format),
+	}, nil
 }
 
 func (d *Workspace) Close() error {
@@ -105,11 +166,16 @@ func (e *explorator) List(mods ...config.ListModifier) ([]config.Descriptor, err
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(path)
+	root, err := os.OpenRoot(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
+		return nil, err
+	}
+	defer root.Close()
+	entries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
 		return nil, err
 	}
 	children := make([]string, 0, len(entries))
@@ -123,52 +189,35 @@ func (e *explorator) List(mods ...config.ListModifier) ([]config.Descriptor, err
 }
 
 func (e *explorator) Delete(desc config.Descriptor) error {
-	path := config.NamespacePathFromDescriptor(e.base, desc)
-	target, err := e.backend.namespacePath(e.app, path...)
+	parent, err := e.backend.namespacePath(e.app, e.base...)
 	if err != nil {
 		return err
 	}
-	if err := validateRemoveAllTarget(e.backend.root, target); err != nil {
+	root, err := os.OpenRoot(parent)
+	if err != nil {
 		return err
 	}
-	// NOTE: os.RemoveAll returns nil if the path does not exist, but we want
-	// os.ErrNotExist for consistency with other backends. This pre-check is racy
-	// by nature, but acceptable for namespace deletion semantics.
-	if _, err := os.Stat(target); err != nil {
+	defer root.Close()
+	path := config.NamespacePathFromDescriptor(e.base, desc)
+	rel := path[len(e.base):]
+	target := filepath.Join(rel...)
+	if target == "" || target == "." {
+		return fmt.Errorf("refusing to delete empty namespace path")
+	}
+	if _, err := root.Lstat(target); err != nil {
 		if os.IsNotExist(err) {
 			return os.ErrNotExist
 		}
 		return err
 	}
-	return os.RemoveAll(target)
+	return root.RemoveAll(target)
 }
 
 func (e *explorator) Close() error { return nil }
 
-func validateRemoveAllTarget(root string, target string) error {
-	if target == "" || target == string(filepath.Separator) {
-		return fmt.Errorf("refusing to delete empty path")
-	}
+func normalizeRoot(root string) string {
 	if root == "" {
-		return nil
+		return ""
 	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return err
-	}
-	absTarget, err := filepath.Abs(target)
-	if err != nil {
-		return err
-	}
-	rel, err := filepath.Rel(absRoot, absTarget)
-	if err != nil {
-		return err
-	}
-	if rel == "." || rel == string(filepath.Separator) || rel == "" {
-		return fmt.Errorf("refusing to delete root path %q", absTarget)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("refusing to delete path outside root: %q", absTarget)
-	}
-	return nil
+	return filepath.Clean(root)
 }

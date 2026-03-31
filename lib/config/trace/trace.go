@@ -328,6 +328,13 @@ func (t *tracedWorkspace) Explore(app string, namespace ...string) (config.Explo
 	return t.tracer.WrapExplorer(storeName(app, namespace), explorer), nil
 }
 
+func (t *tracedWorkspace) ParsePath(path string) (config.ParsedPath, error) {
+	t.logStart("WorkspaceParsePath", path)
+	resolved, err := t.workspace.ParsePath(path)
+	t.logEnd("WorkspaceParsePath", path, err, resolved)
+	return resolved, err
+}
+
 func (t *tracedWorkspace) Close() error {
 	t.logStart("WorkspaceClose", "")
 	err := t.workspace.Close()

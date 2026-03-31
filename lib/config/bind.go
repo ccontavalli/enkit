@@ -7,18 +7,18 @@ type Binding interface {
 
 type StoreBinding struct {
 	store Store
-	key   string
+	desc  Descriptor
 }
 
-func Bind(store Store, key string) *StoreBinding {
-	return &StoreBinding{store: store, key: key}
+func Bind(store Store, desc Descriptor) *StoreBinding {
+	return &StoreBinding{store: store, desc: desc}
 }
 
 func (b *StoreBinding) Marshal(value interface{}) error {
-	return b.store.Marshal(Key(b.key), value)
+	return b.store.Marshal(b.desc, value)
 }
 
 func (b *StoreBinding) Unmarshal(value interface{}) error {
-	_, err := b.store.Unmarshal(Key(b.key), value)
+	_, err := b.store.Unmarshal(b.desc, value)
 	return err
 }

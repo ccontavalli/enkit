@@ -10,8 +10,10 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//lib/config",
+        "//lib/config/marshal",
         "//lib/kflags",
         "@com_github_kirsle_configdir//:configdir",
+        "@com_github_mitchellh_go_homedir//:go-homedir",
     ],
 )
 

@@ -3,10 +3,13 @@ package cryptstore
 import (
 	"errors"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/config/memory"
 	"github.com/ccontavalli/enkit/lib/kflags"
@@ -240,6 +243,26 @@ func TestLoaderWrapDeterministicKeyCodecImplementsListFallback(t *testing.T) {
 	keys, err := wrapped.List(config.WithStartFrom(config.Key("b")), config.WithLimit(1))
 	require.NoError(t, err)
 	require.Equal(t, []string{"b"}, keys)
+}
+
+func TestLoaderWorkspaceWrapForwardsParsePath(t *testing.T) {
+	root, err := os.MkdirTemp("", "cryptstore-parsepath")
+	require.NoError(t, err)
+	defer os.RemoveAll(root)
+
+	wrapped, err := NewLoaderWorkspace(directory.New(root), WithValueEncoder(mustValueEncoder(t)))
+	require.NoError(t, err)
+
+	parsed, err := wrapped.ParsePath(filepath.Join(root, "etc", "enproxy.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, "/", parsed.AppName)
+	assert.Equal(t, []string{"etc"}, parsed.Namespaces)
+	assert.Equal(t, "enproxy", parsed.Descriptor.Key())
+
+	hinted, ok := parsed.Descriptor.(config.RequestedFormatDescriptor)
+	if assert.True(t, ok) {
+		assert.Equal(t, "yaml", hinted.Format())
+	}
 }
 
 func TestLoaderWrapPropagatesKeyCodecEncodeError(t *testing.T) {

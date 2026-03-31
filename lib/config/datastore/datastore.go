@@ -230,6 +230,10 @@ func (ds *Datastore) Explore(app string, namespaces ...string) (config.Explorer,
 	}, nil
 }
 
+func (ds *Datastore) ParsePath(path string) (config.ParsedPath, error) {
+	return config.DefaultParsePath(path)
+}
+
 type explorator struct {
 	parent          *Datastore
 	app             string

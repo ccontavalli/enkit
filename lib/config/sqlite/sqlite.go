@@ -239,6 +239,10 @@ func (s *SQLite) Explore(app string, namespaces ...string) (config.Explorer, err
 	return &explorator{db: s.db, app: app, base: append([]string(nil), namespaces...)}, nil
 }
 
+func (s *SQLite) ParsePath(path string) (config.ParsedPath, error) {
+	return config.DefaultParsePath(path)
+}
+
 type explorator struct {
 	db   *sql.DB
 	app  string

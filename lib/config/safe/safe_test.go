@@ -37,6 +37,10 @@ func (t testWorkspace) Explore(app string, namespace ...string) (config.Explorer
 	return testExplorer{closer: t.closer}, nil
 }
 
+func (t testWorkspace) ParsePath(path string) (config.ParsedPath, error) {
+	return config.DefaultParsePath(path)
+}
+
 func (t testWorkspace) Close() error {
 	return t.closer.Close()
 }

@@ -122,6 +122,10 @@ func (b *Bolt) Explore(app string, namespaces ...string) (config.Explorer, error
 	return &explorator{db: b.db, app: app, base: append([]string(nil), namespaces...)}, nil
 }
 
+func (b *Bolt) ParsePath(path string) (config.ParsedPath, error) {
+	return config.DefaultParsePath(path)
+}
+
 type explorator struct {
 	db   *bolt.DB
 	app  string

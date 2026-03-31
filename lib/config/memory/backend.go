@@ -38,6 +38,10 @@ func (b *Backend) Explore(app string, namespace ...string) (config.Explorer, err
 	return &explorator{backend: b, app: app, base: append([]string(nil), namespace...)}, nil
 }
 
+func (b *Backend) ParsePath(path string) (config.ParsedPath, error) {
+	return config.DefaultParsePath(path)
+}
+
 func (b *Backend) Close() error {
 	return nil
 }

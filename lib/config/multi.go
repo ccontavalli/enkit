@@ -47,6 +47,14 @@ func (m *multiWorkspace) Explore(name string, namespace ...string) (Explorer, er
 	return m.workspace.Explore(name, namespace...)
 }
 
+func (m *multiWorkspace) ParsePath(path string) (ParsedPath, error) {
+	parsed, err := m.workspace.ParsePath(path)
+	if err != nil {
+		return ParsedPath{}, err
+	}
+	return resolveMultiParsedPath(parsed, m.marshaller)
+}
+
 func (m *multiWorkspace) Close() error {
 	return m.workspace.Close()
 }
@@ -158,6 +166,16 @@ func (ss *MultiFormat) parseDesc(desc Descriptor) (string, marshal.FileMarshalle
 	switch t := desc.(type) {
 	case Key:
 		name = string(t)
+	case RequestedFormatDescriptor:
+		name = t.Key()
+		marshaller = marshal.FileMarshallers(ss.marshaller).ByFormat(t.Format())
+		if marshaller == nil {
+			return "", nil, fmt.Errorf("unknown descriptor format .%s", t.Format())
+		}
+		name, err = ss.pathForKey(name, marshaller)
+		if err != nil {
+			return "", nil, err
+		}
 	case *multiDescriptor:
 		name, err = ss.pathForKey(t.k, t.m)
 		if err != nil {
@@ -288,6 +306,16 @@ func (ss *MultiFormat) Unmarshal(desc Descriptor, value interface{}) (Descriptor
 			return nil, err
 		}
 		return load(t.m, path)
+	case RequestedFormatDescriptor:
+		m := marshal.FileMarshallers(ss.marshaller).ByFormat(t.Format())
+		if m == nil {
+			return nil, fmt.Errorf("unknown descriptor format .%s", t.Format())
+		}
+		path, err := ss.pathForKey(t.Key(), m)
+		if err != nil {
+			return nil, err
+		}
+		return load(m, path)
 	default:
 		return nil, fmt.Errorf("API Usage Error - MultiFormat.Unmarshal passed an unknown descriptor type - %#v", desc)
 	}

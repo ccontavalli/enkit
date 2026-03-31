@@ -2,19 +2,24 @@
 package directory
 
 import (
+	"fmt"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/kirsle/configdir"
 )
 
 type DirectoryStore struct {
-	path string
+	path   string
+	mu     sync.Mutex
+	closed bool
+	root   *os.Root
 }
 
 // Returns the absolute path to a specific folder within the
@@ -72,16 +77,20 @@ func (hd *DirectoryStore) List(mods ...config.ListModifier) ([]string, error) {
 	if err := config.ListModifiers(mods).Apply(opts); err != nil {
 		return nil, err
 	}
-	files, err := ioutil.ReadDir(hd.path)
+	root, err := hd.currentRoot(false)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	files, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return nil, err
+	}
 	paths := []string{}
 	for _, file := range files {
-		if !file.Mode().IsRegular() {
+		if !file.Type().IsRegular() {
 			continue
 		}
 		paths = append(paths, file.Name())
@@ -91,47 +100,73 @@ func (hd *DirectoryStore) List(mods ...config.ListModifier) ([]string, error) {
 }
 
 func (hd *DirectoryStore) Delete(name string) error {
-	path := filepath.Join(hd.path, name)
-	return os.Remove(path)
+	root, err := hd.currentRoot(false)
+	if err != nil {
+		return err
+	}
+	return root.Remove(name)
 }
 
 func (hd *DirectoryStore) Read(name string) ([]byte, error) {
-	path := filepath.Join(hd.path, name)
-	return ioutil.ReadFile(path)
+	root, err := hd.currentRoot(false)
+	if err != nil {
+		return nil, err
+	}
+	return root.ReadFile(name)
 }
 
 func (hd *DirectoryStore) Write(name string, data []byte) error {
-	if err := os.MkdirAll(hd.path, 0770); err != nil {
+	root, err := hd.currentRoot(true)
+	if err != nil {
 		return err
 	}
 
 	// Don't write the file in place, use rename to guarantee filesystem atomicity.
-	tmp, err := ioutil.TempFile(hd.path, name)
+	tmpName, tmp, err := createTempFile(hd.path, name)
 	if err != nil {
 		return err
 	}
-	tmp.Close()
-
-	if err := ioutil.WriteFile(tmp.Name(), data, 0660); err != nil {
-		os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		root.Remove(tmpName)
 		return err
 	}
-
-	return os.Rename(tmp.Name(), filepath.Join(hd.path, name))
-}
-
-func (hd *DirectoryStore) Close() error {
+	if err := tmp.Close(); err != nil {
+		root.Remove(tmpName)
+		return err
+	}
+	if err := root.Rename(tmpName, name); err != nil {
+		root.Remove(tmpName)
+		return err
+	}
 	return nil
 }
 
+func (hd *DirectoryStore) Close() error {
+	hd.mu.Lock()
+	root := hd.root
+	hd.closed = true
+	hd.mu.Unlock()
+
+	if root == nil {
+		return nil
+	}
+	return root.Close()
+}
+
 func (hd *DirectoryStore) Reader(name string) (io.ReadCloser, error) {
-	path := filepath.Join(hd.path, name)
-	return os.Open(path)
+	root, err := hd.currentRoot(false)
+	if err != nil {
+		return nil, err
+	}
+	return root.Open(name)
 }
 
 type atomicFileWriter struct {
+	root      *os.Root
 	file      *os.File
-	finalPath string
+	tmpName   string
+	finalName string
 }
 
 func (w *atomicFileWriter) Write(p []byte) (int, error) {
@@ -140,26 +175,63 @@ func (w *atomicFileWriter) Write(p []byte) (int, error) {
 
 func (w *atomicFileWriter) Close() error {
 	if err := w.file.Close(); err != nil {
-		os.Remove(w.file.Name())
+		w.root.Remove(w.tmpName)
 		return err
 	}
-	if err := os.Rename(w.file.Name(), w.finalPath); err != nil {
-		os.Remove(w.file.Name())
+	if err := w.root.Rename(w.tmpName, w.finalName); err != nil {
+		w.root.Remove(w.tmpName)
 		return err
 	}
 	return nil
 }
 
 func (hd *DirectoryStore) Writer(name string) (io.WriteCloser, error) {
-	if err := os.MkdirAll(hd.path, 0770); err != nil {
+	root, err := hd.currentRoot(true)
+	if err != nil {
 		return nil, err
 	}
-	tmp, err := ioutil.TempFile(hd.path, name)
+	tmpName, tmp, err := createTempFile(hd.path, name)
 	if err != nil {
 		return nil, err
 	}
 	return &atomicFileWriter{
+		root:      root,
 		file:      tmp,
-		finalPath: filepath.Join(hd.path, name),
+		tmpName:   tmpName,
+		finalName: name,
 	}, nil
+}
+
+func (hd *DirectoryStore) currentRoot(create bool) (*os.Root, error) {
+	hd.mu.Lock()
+	defer hd.mu.Unlock()
+	if hd.closed {
+		return nil, fs.ErrClosed
+	}
+	if hd.root != nil {
+		return hd.root, nil
+	}
+	if create {
+		if err := os.MkdirAll(hd.path, 0770); err != nil {
+			return nil, err
+		}
+	}
+	root, err := os.OpenRoot(hd.path)
+	if err != nil {
+		return nil, err
+	}
+	hd.root = root
+	return root, nil
+}
+
+func createTempFile(dir string, name string) (string, *os.File, error) {
+	prefix := filepath.Base(name)
+	if prefix == "" || prefix == "." {
+		prefix = "config"
+	}
+	file, err := os.CreateTemp(dir, fmt.Sprintf(".%s.tmp.*", prefix))
+	if err != nil {
+		return "", nil, err
+	}
+	return filepath.Base(file.Name()), file, nil
 }

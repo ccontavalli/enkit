@@ -46,6 +46,14 @@ func (s *simpleWorkspace) Explore(name string, namespace ...string) (Explorer, e
 	return s.workspace.Explore(name, namespace...)
 }
 
+func (s *simpleWorkspace) ParsePath(path string) (ParsedPath, error) {
+	parsed, err := s.workspace.ParsePath(path)
+	if err != nil {
+		return ParsedPath{}, err
+	}
+	return resolveSimpleParsedPath(parsed, s.marshaller)
+}
+
 func (s *simpleWorkspace) Close() error {
 	return s.workspace.Close()
 }
@@ -117,7 +125,11 @@ func (ss *SimpleStore) Marshal(desc Descriptor, value interface{}) error {
 	if desc == nil {
 		return fmt.Errorf("API Usage Error - SimpleStore.Marshal must be passed a non-nil descriptor")
 	}
-	name, err := ss.pathForKey(desc.Key())
+	key, err := ss.parseDesc(desc)
+	if err != nil {
+		return err
+	}
+	name, err := ss.pathForKey(key)
 	if err != nil {
 		return err
 	}
@@ -132,7 +144,10 @@ func (ss *SimpleStore) Unmarshal(desc Descriptor, value interface{}) (Descriptor
 	if desc == nil {
 		return nil, fmt.Errorf("API Usage Error - SimpleStore.Unmarshal must be passed a non-nil descriptor")
 	}
-	key := desc.Key()
+	key, err := ss.parseDesc(desc)
+	if err != nil {
+		return Key(desc.Key()), err
+	}
 	path, err := ss.pathForKey(key)
 	if err != nil {
 		return Key(key), err
@@ -151,7 +166,11 @@ func (ss *SimpleStore) Delete(desc Descriptor) error {
 	if desc == nil {
 		return fmt.Errorf("API Usage Error - SimpleStore.Delete must be passed a non-nil descriptor")
 	}
-	name, err := ss.pathForKey(desc.Key())
+	key, err := ss.parseDesc(desc)
+	if err != nil {
+		return err
+	}
+	name, err := ss.pathForKey(key)
 	if err != nil {
 		return err
 	}
@@ -168,6 +187,15 @@ func (ss *SimpleStore) pathForKey(key string) (string, error) {
 		return "", err
 	}
 	return encoded + "." + ss.marshaller.Extension(), nil
+}
+
+func (ss *SimpleStore) parseDesc(desc Descriptor) (string, error) {
+	if hinted, ok := desc.(RequestedFormatDescriptor); ok {
+		if hinted.Format() != ss.marshaller.Extension() {
+			return "", fmt.Errorf("descriptor format .%s does not match store format .%s", hinted.Format(), ss.marshaller.Extension())
+		}
+	}
+	return desc.Key(), nil
 }
 
 func (ss *SimpleStore) encodeKey(name string) (string, error) {

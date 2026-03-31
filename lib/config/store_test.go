@@ -10,6 +10,9 @@ import (
 )
 
 func TestStoreImplementations(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	directory.Refresh()
+
 	hd, err := directory.OpenHomeDir("application")
 	assert.Nil(t, err)
 

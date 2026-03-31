@@ -94,6 +94,16 @@ type Explorer interface {
 type LoaderWorkspace interface {
 	Open(name string, namespace ...string) (Loader, error)
 	Explore(name string, namespace ...string) (Explorer, error)
+	// ParsePath resolves a user-supplied path using the workspace's native path
+	// syntax and returns the namespace root plus descriptor it refers to.
+	//
+	// Backends may interpret the path differently. Directory-backed workspaces
+	// accept filesystem paths rooted under the configured directory, while
+	// database-like or in-memory backends typically accept logical app/ns/key
+	// paths. The returned descriptor may carry backend-specific metadata such as
+	// an explicit requested format; callers should generally pass the ParsedPath
+	// back to OpenStore/Bind rather than reconstructing it manually.
+	ParsePath(path string) (ParsedPath, error)
 	Close() error
 }
 
@@ -101,6 +111,16 @@ type LoaderWorkspace interface {
 type StoreWorkspace interface {
 	Open(name string, namespace ...string) (Store, error)
 	Explore(name string, namespace ...string) (Explorer, error)
+	// ParsePath resolves a user-supplied path using the workspace's native path
+	// syntax and returns the namespace root plus descriptor it refers to.
+	//
+	// Backends may interpret the path differently. Directory-backed workspaces
+	// accept filesystem paths rooted under the configured directory, while
+	// database-like or in-memory backends typically accept logical app/ns/key
+	// paths. The returned descriptor may carry backend-specific metadata such as
+	// an explicit requested format; callers should generally pass the ParsedPath
+	// back to OpenStore/Bind rather than reconstructing it manually.
+	ParsePath(path string) (ParsedPath, error)
 	Close() error
 }
 

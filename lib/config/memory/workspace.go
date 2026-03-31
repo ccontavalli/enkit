@@ -38,6 +38,10 @@ func (m *Workspace) Explore(name string, namespace ...string) (config.Explorer, 
 	return &simpleExplorator{explorer: m, app: name, base: append([]string(nil), namespace...)}, nil
 }
 
+func (m *Workspace) ParsePath(path string) (config.ParsedPath, error) {
+	return config.DefaultParsePath(path)
+}
+
 func (m *Workspace) Close() error {
 	return nil
 }
