@@ -466,6 +466,7 @@ TEST(ParseSection, NssExample) {
   EXPECT_EQ(result.match[0].min_uid, 32);
 
   free(result.match);
+  result.match = NULL;
   result.matchn = 0;
   buffer = "Seed foobarbaz\n"
     "MinUid 32\n"
@@ -477,6 +478,7 @@ TEST(ParseSection, NssExample) {
   EXPECT_EQ(33, result.match[1].min_uid);
 
   free(result.match);
+  result.match = NULL;
   result.matchn = 0;
   buffer = "Seed foobarbaz\n"
     "  # this should end up a default match.\n"
@@ -493,6 +495,7 @@ TEST(ParseSection, NssExample) {
   EXPECT_EQ(33, result.match[1].min_uid);
 
   free(result.match);
+  result.match = NULL;
   result.matchn = 0;
   buffer = "Seed foobarbaz\n"
     "  # this should end up a default match.\n"

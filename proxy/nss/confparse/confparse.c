@@ -190,7 +190,7 @@ error_code_e adapter_uint8(parse_context_t *ctx, const char *start,
 {
 	uint64_t value = 0;
 	int status = parse_uint64(ctx, UINT8_MAX, &value);
-	*(uint16_t *)((char *)(dest) + data->offset) = value;
+	*(uint8_t *)((char *)(dest) + data->offset) = value;
 	return status;
 }
 
