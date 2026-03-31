@@ -44,7 +44,8 @@ var (
 	)
 )
 
-type BuildEventService struct{}
+type BuildEventService struct {
+}
 
 func (s *BuildEventService) PublishLifecycleEvent(ctx context.Context, req *bpb.PublishLifecycleEventRequest) (*emptypb.Empty, error) {
 	glog.V(2).Infof("# BEP LifecycleEvent message:\n%s", prototext.Format(req))

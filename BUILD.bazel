@@ -1,8 +1,8 @@
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("@buildifier_prebuilt//:rules.bzl", "buildifier")
+load("@gazelle//:def.bzl", "gazelle")
 load("@rules_multirun//:defs.bzl", "multirun")
 load("@rules_python//python/pip_install:requirements.bzl", "compile_pip_requirements")
-load("//bazel/gazelle:def.bzl", "gazelle")
 
 # To update and generate the BUILD.bazel files, run:
 #     bazelisk run //:gazelle
@@ -41,7 +41,12 @@ gazelle(
 )
 
 # Repository-local Gazelle settings.
-# gazelle:go_grpc_compilers	//bazel/go:go_grpc
+# gazelle:go_grpc_compilers @rules_go//proto:go_proto,@rules_go//proto:go_grpc_v2
+# gazelle:resolve go github.com/bazelbuild/rules_go/go/runfiles @rules_go//go/runfiles
+# gazelle:resolve go github.com/bazelbuild/rules_go/go/tools/bazel @rules_go//go/tools/bazel
+# gazelle:resolve go github.com/google/go-jsonnet @jsonnet_go//:go_default_library
+# gazelle:resolve go github.com/bazelbuild/remote-apis/build/bazel/remote/asset/v1 @com_github_bazelbuild_remote_apis//build/bazel/remote/asset/v1:go_default_library
+# gazelle:resolve go github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2 @com_github_bazelbuild_remote_apis//build/bazel/remote/execution/v2:go_default_library
 
 exports_files(
     [

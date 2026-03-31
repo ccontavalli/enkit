@@ -2,11 +2,7 @@ module github.com/ccontavalli/enkit
 
 go 1.24.6
 
-replace (
-	github.com/GoogleCloudPlatform/cloud-build-notifiers => github.com/minor-fixes/cloud-build-notifiers v0.0.0-20230424124639-02281bcdd3d5
-	github.com/grpc-ecosystem/grpc-gateway/v2 => github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.1
-	go.uber.org/mock => go.uber.org/mock v0.4.0
-)
+replace github.com/GoogleCloudPlatform/cloud-build-notifiers => github.com/minor-fixes/cloud-build-notifiers v0.0.0-20230424124639-02281bcdd3d5
 
 require (
 	cloud.google.com/go/bigquery v1.69.0
@@ -87,7 +83,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250811230008-5f3141c8851a
 	google.golang.org/grpc v1.74.2
 	google.golang.org/grpc/security/advancedtls v1.0.0
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.10
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	gopkg.in/yaml.v2 v2.4.0
 	modernc.org/sqlite v1.21.2
@@ -231,7 +227,6 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
-	github.com/mattn/go-sqlite3 v1.14.16 // indirect
 	github.com/mitchellh/cli v1.1.5 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.2-0.20210821155943-2d9075ca8770 // indirect
@@ -316,15 +311,12 @@ require (
 	lukechampine.com/uint128 v1.3.0 // indirect
 	modernc.org/cc/v3 v3.40.0 // indirect
 	modernc.org/ccgo/v3 v3.16.13 // indirect
-	modernc.org/httpfs v1.0.6 // indirect
 	modernc.org/libc v1.22.4 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
 	modernc.org/opt v0.1.3 // indirect
 	modernc.org/strutil v1.1.3 // indirect
-	modernc.org/tcl v1.15.1 // indirect
 	modernc.org/token v1.1.0 // indirect
-	modernc.org/z v1.7.0 // indirect
 	nhooyr.io/websocket v1.8.6 // indirect
 	oss.indeed.com/go/libtime v1.6.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect

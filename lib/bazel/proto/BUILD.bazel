@@ -1,6 +1,6 @@
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_go//go:def.bzl", "go_library")
 load("@rules_go//proto:def.bzl", "go_proto_library")
-load("@rules_proto//proto:defs.bzl", "proto_library")
 
 # keep
 genrule(
@@ -62,8 +62,8 @@ go_library(
     name = "proto",
     embed = [
         ":build_go_proto",  # keep
-        ":workspace_log_go_proto",  # keep
+        ":workspace_log_go_proto",
     ],
-    importpath = "github.com/ccontavalli/enkit/lib/bazel/proto",  # keep
+    importpath = "github.com/ccontavalli/enkit/lib/bazel/proto",
     visibility = ["//lib/bazel:__subpackages__"],
 )

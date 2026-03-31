@@ -1,5 +1,5 @@
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_go//proto:def.bzl", "go_proto_library")
-load("@rules_proto//proto:defs.bzl", "proto_library")
 load("//bazel/proto:py_proto_library.bzl", "py_proto_library")
 
 proto_library(
@@ -19,7 +19,10 @@ proto_library(
 
 go_proto_library(
     name = "allocation_manager_go_proto",
-    compilers = ["//bazel/go:go_grpc"],
+    compilers = [
+        "@rules_go//proto:go_grpc_v2",
+        "@rules_go//proto:go_proto",
+    ],
     importpath = "github.com/ccontavalli/enkit/allocation_manager/proto",
     proto = ":proto",
     visibility = ["//visibility:public"],

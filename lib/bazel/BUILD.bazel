@@ -15,7 +15,8 @@ go_library(
     importpath = "github.com/ccontavalli/enkit/lib/bazel",
     visibility = ["//visibility:public"],
     deps = [
-        # keep
+        "//enkit/proto",
+        "//lib/bazel/proto",
         "//lib/goroutine",
         "//lib/logger",
         "//lib/multierror",
@@ -23,8 +24,6 @@ go_library(
         "@com_github_bazelbuild_buildtools//wspace",
         "@org_golang_google_protobuf//encoding/protojson",
         "@org_golang_google_protobuf//proto",
-        "//enkit/proto",
-        "//lib/bazel/proto",
     ],
 )
 
