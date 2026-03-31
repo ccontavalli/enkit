@@ -696,7 +696,6 @@ function _startup_checks() {
   if [[ ! -d "${GEE_REPO_DIR}/${MAIN}" ]]; then
     _die "Directory ${GEE_REPO_DIR}/${MAIN} not found." \
       "Somehow your ${MAIN} branch got removed?"
-    exit 1
   fi
 
   # 1.5. Make sure we're not in one of bazel's weird symlink directories.
@@ -1554,7 +1553,6 @@ function _local_branch_exists() {
     return 0
   else
     _fatal "Branch ${BRANCH} exists but could not create worktree."
-    return 1
   fi
 }
 
@@ -3732,7 +3730,6 @@ function gee__commit() {
           _check_diff_for_merge_conflict_markers
         else
           _fatal "Aborted commit --amend operation because origin is ahead of local branch."
-          return 0
         fi
       fi
     fi
@@ -3812,7 +3809,7 @@ function gee__revert() {
   local -a ADDED=()
   local F REL_F
   for F in "$@"; do
-    REL_F="$(realpath --relative-base="${CURRENT_ROOT}" -e ${F})"
+    REL_F="$(realpath --relative-base="${CURRENT_ROOT}" -e "${F}")"
     if git cat-file blob "${PARENT_BRANCH}:${REL_F}" >/dev/null 2>&1; then
       MODIFIED+=("${F}")
     else
@@ -4414,7 +4411,6 @@ EndOfPrTemplate
 
     if grep --quiet -E "^\s*ABORT" "${TRIMMED}"; then
       _fatal "Aborting creation of new PR, as requested."
-      exit 1
     fi
 
     if _check_pr_description "${TRIMMED}"; then
@@ -5114,7 +5110,7 @@ function _remove_a_branch() {
   local PREV_PARENT
   PREV_PARENT="${PARENTS["${BR}"]}"
   if [[ -z "${PREV_PARENT}" ]]; then PREV_PARENT="${MAIN}"; fi
-  unset PARENTS["${BR}"]
+  unset 'PARENTS[$BR]'
   local K
   for K in "${!PARENTS[@]}"; do
     if [[ "${PARENTS["$K"]}" == "${BR}" ]]; then
