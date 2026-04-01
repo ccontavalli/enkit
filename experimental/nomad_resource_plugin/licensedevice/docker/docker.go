@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	dockertypes "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/client"
 	"github.com/prometheus/client_golang/prometheus"
@@ -83,7 +83,7 @@ func (c *Client) GetCurrent(ctx context.Context) ([]*types.License, error) {
 	defer metricGetCurrentDuration.Observe(float64(time.Now().Sub(startTime).Seconds()))
 
 	inUse := []*types.License{}
-	containers, err := c.docker.ContainerList(ctx, dockertypes.ContainerListOptions{})
+	containers, err := c.docker.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
 		metricDockerCounter.WithLabelValues("GetCurrent", "error_container_list").Inc()
 		return nil, fmt.Errorf("failed to list containers: %w", err)
@@ -137,7 +137,7 @@ reconnect:
 		default:
 		}
 
-		eventsChan, errChan := c.docker.Events(ctx, dockertypes.EventsOptions{})
+		eventsChan, errChan := c.docker.Events(ctx, events.ListOptions{})
 
 	nextMessage:
 		for {

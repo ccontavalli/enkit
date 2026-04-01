@@ -33,9 +33,9 @@ go_test(
 
 sh_test(
     name = "faketree_sh_test",
-    local = True,
     srcs = ["faketree_test.sh"],
     data = [":faketree"],
+    local = True,
     tags = [
         # This test exercises nested user, pid, and mount namespaces, which
         # conflict with Bazel's linux-sandbox wrapper.

@@ -7,7 +7,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//experimental/nomad_resource_plugin/licensedevice/types",
-        "@com_github_docker_docker//api/types",
+        "@com_github_docker_docker//api/types/container",
         "@com_github_docker_docker//api/types/events",
         "@com_github_docker_docker//client",
         "@com_github_prometheus_client_golang//prometheus",
