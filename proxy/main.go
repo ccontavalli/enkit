@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/ccontavalli/enkit/lib/client"
 	"github.com/ccontavalli/enkit/lib/kflags/kcobra"
 	"github.com/ccontavalli/enkit/lib/srand"
@@ -8,7 +9,6 @@ import (
 	"github.com/ccontavalli/enkit/proxy/enproxy"
 	"github.com/spf13/cobra"
 	"math/rand"
-	"fmt"
 	"os"
 )
 
@@ -19,7 +19,7 @@ func main() {
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Example: `  $ enproxy -c ./mappings.toml
+		Example: `  $ enproxy --config ./mappings.toml
 	To start a proxy mapping the urls defined in mappings.toml.`,
 	}
 
@@ -33,8 +33,8 @@ func main() {
 
 	var validateOnly bool
 	set.BoolVar(&validateOnly, "validate-only", false,
-		"If this flag is set, no proxy is started. Instead, the config file and command line " +
-		"flags are validated, and a non-zero status returned if invalid")
+		"If this flag is set, no proxy is started. Instead, the config file and command line "+
+			"flags are validated, and a non-zero status returned if invalid")
 
 	root.RunE = func(cmd *cobra.Command, args []string) error {
 		ep, err := enproxy.New(rng, enproxy.WithLogging(base.Log), enproxy.FromFlags(flags))

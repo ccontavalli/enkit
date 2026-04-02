@@ -3,7 +3,11 @@ package enproxy
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/ccontavalli/enkit/lib/config/factory"
+	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/khttp/krequest"
 	"github.com/ccontavalli/enkit/lib/khttp/ktest"
 	"github.com/ccontavalli/enkit/lib/khttp/protocol"
@@ -22,6 +26,8 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -125,6 +131,52 @@ func countProxyModules(modules map[string]runtimeModule) int {
 	return total
 }
 
+func writeDefaultConfigForFlags(t *testing.T, flags *factory.Flags, cfg Config) {
+	t.Helper()
+
+	ws, err := factory.NewStore(rand.New(rand.NewSource(1)), factory.FromFlags(flags))
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer ws.Close()
+
+	parsed, err := config.ResolvePathWithinStore(config.StoreRoot{AppName: "enproxy"}, "enproxy")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	store, err := parsed.OpenStore(ws)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer store.Close()
+
+	assert.NoError(t, parsed.Bind(store).Marshal(cfg))
+}
+
+func deleteDefaultConfigForFlags(t *testing.T, flags *factory.Flags) {
+	t.Helper()
+
+	ws, err := factory.NewStore(rand.New(rand.NewSource(1)), factory.FromFlags(flags))
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer ws.Close()
+
+	parsed, err := config.ResolvePathWithinStore(config.StoreRoot{AppName: "enproxy"}, "enproxy")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	store, err := parsed.OpenStore(ws)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer store.Close()
+
+	assert.NoError(t, store.Delete(parsed.Descriptor))
+}
+
 func TestInvalidConfig(t *testing.T) {
 	var url string
 	rng := rand.New(rand.NewSource(1))
@@ -183,6 +235,227 @@ func TestSemanticallyInvalidConfigFileFailsStartup(t *testing.T) {
 	)
 	assert.Regexp(t, "config file.*has no Mapping.*defined", err)
 	assert.Nil(t, ep)
+}
+
+func TestFromFlagsLoadsConfigFromStoreBinding(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	data, err := json.Marshal(PublicConfig("test.lan", "/", s1, "*"))
+	assert.NoError(t, err)
+
+	configPath := filepath.Join(t.TempDir(), "enproxy.json")
+	err = os.WriteFile(configPath, data, 0600)
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.ConfigPath = configPath
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, FromFlags(flags), WithHttpStarter(Server(&wg, &fe)))
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+}
+
+func TestFromFlagsLoadsDefaultConfigBindingWhenConfigOmitted(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	writeDefaultConfigForFlags(t, flags.ConfigStore, PublicConfig("test.lan", "/", s1, "*"))
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, FromFlags(flags), WithHttpStarter(Server(&wg, &fe)))
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+}
+
+func TestFromFlagsUsesEmbeddedDefaultWhenDefaultConfigMissing(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	data, err := json.Marshal(PublicConfig("test.lan", "/", s1, "*"))
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.ConfigPath = ""
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(
+		rng,
+		WithDefaultConfigFile("embedded-default.json", data),
+		FromFlags(flags),
+		WithHttpStarter(Server(&wg, &fe)),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+}
+
+func TestFromFlagsRejectsMissingDefaultConfigWithoutEmbeddedFallback(t *testing.T) {
+	flags := DefaultFlags()
+	flags.ConfigPath = ""
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, FromFlags(flags))
+	assert.Regexp(t, "Default configuration \"enproxy/enproxy\" does not exist", err)
+	assert.Nil(t, ep)
+}
+
+func TestFromFlagsRejectsMissingConfigBinding(t *testing.T) {
+	flags := DefaultFlags()
+	flags.ConfigPath = filepath.Join(t.TempDir(), "missing.json")
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, FromFlags(flags))
+	assert.Regexp(t, "does not exist in the configured store", err)
+	assert.Nil(t, ep)
+}
+
+func TestFromFlagsUsesEmbeddedDefaultWhenExplicitConfigMissingAndPolicyIsEmbedded(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	data, err := json.Marshal(PublicConfig("test.lan", "/", s1, "*"))
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.ConfigPath = filepath.Join(t.TempDir(), "missing.json")
+	flags.ConfigMissing = MissingConfigEmbedded
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(
+		rng,
+		WithDefaultConfigFile("embedded-default.json", data),
+		FromFlags(flags),
+		WithHttpStarter(Server(&wg, &fe)),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+}
+
+func TestFromFlagsRejectsMissingDefaultConfigWhenPolicyIsError(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	data, err := json.Marshal(PublicConfig("test.lan", "/", s1, "*"))
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.ConfigPath = ""
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	flags.ConfigMissing = MissingConfigError
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, WithDefaultConfigFile("embedded-default.json", data), FromFlags(flags))
+	assert.Regexp(t, "Default configuration \"enproxy/enproxy\" does not exist", err)
+	assert.Nil(t, ep)
+}
+
+func TestReloadConfigReloadsFromBoundStore(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	writeDefaultConfigForFlags(t, flags.ConfigStore, PublicConfig("test.lan", "/", s1, "*"))
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rng, FromFlags(flags), WithHttpStarter(Server(&wg, &fe)))
+	assert.NoError(t, err)
+	defer ep.Close()
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s1", body)
+
+	writeDefaultConfigForFlags(t, flags.ConfigStore, PublicConfig("test.lan", "/", s2, "*"))
+
+	err = ep.ReloadConfig()
+	assert.NoError(t, err)
+
+	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
+	assert.NoError(t, err)
+	assert.Equal(t, "s2", body)
+}
+
+func TestReloadConfigMissingStoreEntryIsRuntimeError(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	writeDefaultConfigForFlags(t, flags.ConfigStore, PublicConfig("test.lan", "/", s1, "*"))
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, FromFlags(flags))
+	assert.NoError(t, err)
+	defer ep.Close()
+
+	deleteDefaultConfigForFlags(t, flags.ConfigStore)
+
+	err = ep.ReloadConfig()
+	assert.Error(t, err)
+	var usageErr *kflags.UsageError
+	assert.False(t, errors.As(err, &usageErr))
+	assert.Regexp(t, `configuration does not exist in the configured store`, err.Error())
 }
 
 func TestInvalidConfigDoesNotPollutePrometheusRegistry(t *testing.T) {

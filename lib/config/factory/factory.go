@@ -61,6 +61,51 @@ func DefaultFlags() *Flags {
 	}
 }
 
+// DefaultConfigFileFlags returns store flags suitable for applications that
+// want --config to address a concrete, readable and writable config file.
+//
+// The returned flags use a directory-backed multi-format store rooted at "/",
+// so backend-native path parsing can accept filesystem paths and the file
+// extension selects the serialization format.
+//
+// Example:
+// Use this if you want --config=/etc/config.yaml to resolve to that specific
+// file on disk.
+func DefaultConfigFileFlags() *Flags {
+	flags := DefaultFlags()
+	flags.StoreType = "directory:multi"
+	if flags.Directory == nil {
+		flags.Directory = directory.DefaultFlags()
+	}
+	flags.Directory.Path = "/"
+	return flags
+}
+
+// DefaultAppConfigFlags returns store flags suitable for an application's
+// default config object stored under its normal app/namespace location.
+//
+// The returned flags use a directory-backed multi-format store with the normal
+// backend-selected root, so callers can resolve a logical app/key path via
+// ResolvePathWithinStore without hardcoding filesystem layout.
+//
+// Example:
+// Use this if you want --config=enproxy/config to mean "load application
+// enproxy, key config" from the configured store backend.
+//
+// With the default directory store on a Linux system, that would resolve to
+// a file such as ~/.config/enproxy/config.toml, ~/.config/enproxy/config.yaml,
+// or ~/.config/enproxy/config.json, depending on which format exists or is
+// written by the selected store wrapper.
+func DefaultAppConfigFlags() *Flags {
+	flags := DefaultFlags()
+	flags.StoreType = "directory:multi"
+	if flags.Directory == nil {
+		flags.Directory = directory.DefaultFlags()
+	}
+	flags.Directory.Path = ""
+	return flags
+}
+
 // Register registers the configuration flags with the provided FlagSet.
 //
 // The flags will be prefixed with the given string.

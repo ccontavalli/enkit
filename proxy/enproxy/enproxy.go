@@ -37,7 +37,17 @@ package enproxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
+	"math/rand"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+
+	"github.com/ccontavalli/enkit/lib/config"
+	"github.com/ccontavalli/enkit/lib/config/factory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/khttp"
@@ -50,10 +60,6 @@ import (
 	"github.com/ccontavalli/enkit/proxy/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"log"
-	"math/rand"
-	"net/http"
-	"sync"
 )
 
 // Config is the content of the proxy configuration file.
@@ -64,6 +70,25 @@ type Config struct {
 	Domains []string
 	// List of allowed tunnels.
 	Tunnels []string
+}
+
+type MissingConfigPolicy string
+
+const (
+	MissingConfigAuto     MissingConfigPolicy = "auto"
+	MissingConfigEmbedded MissingConfigPolicy = "embedded"
+	MissingConfigError    MissingConfigPolicy = "error"
+)
+
+var errMissingConfig = errors.New("missing config")
+
+func (m MissingConfigPolicy) Valid() bool {
+	switch m {
+	case MissingConfigAuto, MissingConfigEmbedded, MissingConfigError:
+		return true
+	default:
+		return false
+	}
 }
 
 // Warnings represents a list of warnings.
@@ -115,9 +140,13 @@ type Flags struct {
 	Oauth      *oauth.RedirectorFlags
 	Nassh      *nasshp.Flags
 	Prometheus *khttp.Flags
+	// ConfigStore controls the backend used to resolve and read --config.
+	ConfigStore *factory.Flags
 
-	ConfigContent          []byte
-	ConfigName             string
+	// ConfigPath identifies the config entry to read from ConfigStore.
+	ConfigPath string
+	// ConfigMissing controls what happens when the selected config is missing.
+	ConfigMissing          MissingConfigPolicy
 	DisabledAuthentication bool
 }
 
@@ -127,10 +156,12 @@ type Flags struct {
 // configuration parameters.
 func DefaultFlags() *Flags {
 	fl := &Flags{
-		Http:       khttp.DefaultFlags(),
-		Oauth:      oauth.DefaultRedirectorFlags(),
-		Nassh:      nasshp.DefaultFlags(),
-		Prometheus: khttp.DefaultFlags(),
+		Http:          khttp.DefaultFlags(),
+		Oauth:         oauth.DefaultRedirectorFlags(),
+		Nassh:         nasshp.DefaultFlags(),
+		Prometheus:    khttp.DefaultFlags(),
+		ConfigStore:   factory.DefaultAppConfigFlags(),
+		ConfigMissing: MissingConfigAuto,
 	}
 
 	// By default, disable the prometheus server.
@@ -144,8 +175,11 @@ func (fl *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
 	fl.Oauth.Register(set, prefix)
 	fl.Nassh.Register(set, prefix)
 	fl.Prometheus.Register(set, prefix+"prometheus-")
+	fl.ConfigStore.Register(set, prefix)
 
-	set.ByteFileVar(&fl.ConfigContent, prefix+"config", fl.ConfigName, "Default config file location.", kflags.WithFilename(&fl.ConfigName))
+	set.StringVar(&fl.ConfigPath, prefix+"config", fl.ConfigPath,
+		"Path of the proxy config entry to load from the configured config store. Directory-backed stores accept filesystem paths; other backends typically use app/ns/key.")
+	set.StringVar((*string)(&fl.ConfigMissing), prefix+"config-missing", string(fl.ConfigMissing), "What to do when the selected config is missing: auto, embedded, or error.")
 	set.BoolVar(&fl.DisabledAuthentication, prefix+"without-authentication", false, "allow tunneling even without authentication")
 
 	return fl
@@ -169,6 +203,7 @@ func StarterFromFlags(flags *khttp.Flags) Starter {
 }
 
 type Options struct {
+	rng *rand.Rand
 	log logger.Logger
 
 	proxy   Starter
@@ -177,9 +212,12 @@ type Options struct {
 	gatherer prometheus.Gatherer
 	register prometheus.Registerer
 
-	configFileContent []byte
-	configFileName    string
-	config            *Config
+	configWorkspace config.StoreWorkspace
+	configStore     config.Store
+	configBinding   config.Binding
+	configMissing   MissingConfigPolicy
+	defaultConfig   *Config
+	config          *Config
 
 	pmods []httpp.Modifier
 	nmods []nasshp.Modifier
@@ -188,6 +226,11 @@ type Options struct {
 	withoutNasshAuthentication bool
 }
 
+// Modifier updates enproxy construction options.
+//
+// Modifiers are applied in order, and later modifiers win. In particular,
+// config source modifiers such as FromFlags, WithConfig, WithConfigFile, and
+// WithConfigStore intentionally override earlier config sources.
 type Modifier func(opt *Options) error
 type Modifiers []Modifier
 
@@ -200,21 +243,145 @@ func (mods Modifiers) Apply(o *Options) error {
 	return nil
 }
 
+func (op *Options) closeConfigStore() error {
+	store := op.configStore
+	workspace := op.configWorkspace
+	op.configBinding = nil
+	op.configStore = nil
+	op.configWorkspace = nil
+
+	var errs []error
+	if store != nil {
+		errs = append(errs, store.Close())
+	}
+	if workspace != nil {
+		errs = append(errs, workspace.Close())
+	}
+	return errors.Join(errs...)
+}
+
 func WithConfig(config Config) Modifier {
 	return func(op *Options) error {
-		copy := config
-		op.config = &copy
-		op.configFileContent = nil
-		op.configFileName = ""
+		if err := op.closeConfigStore(); err != nil {
+			return err
+		}
+		op.config = &config
 		return nil
 	}
 }
 
+// WithConfigFile parses the provided config immediately and overrides any
+// earlier config source modifier.
 func WithConfigFile(name string, data []byte) Modifier {
 	return func(op *Options) error {
-		op.config = nil
-		op.configFileName = name
-		op.configFileContent = append([]byte{}, data...)
+		if err := op.closeConfigStore(); err != nil {
+			return err
+		}
+		var parsed Config
+		if err := marshal.UnmarshalDefault(name, data, marshal.Json, &parsed); err != nil {
+			return kflags.NewUsageErrorf("Invalid configuration file '%s': %w", name, err)
+		}
+		op.config = &parsed
+		return nil
+	}
+}
+
+func withConfigStore(workspace config.StoreWorkspace, store config.Store, binding config.Binding, explicit bool) Modifier {
+	return func(op *Options) error {
+		if err := op.closeConfigStore(); err != nil {
+			return err
+		}
+		op.configWorkspace = workspace
+		op.configStore = store
+		op.configBinding = binding
+
+		var loaded Config
+		err := binding.Unmarshal(&loaded)
+		if err == nil {
+			op.config = &loaded
+			return nil
+		}
+		if !os.IsNotExist(err) {
+			_ = op.closeConfigStore()
+			return fmt.Errorf("failed to load configuration from the configured store: %w", err)
+		}
+
+		missingErr := kflags.NewUsageErrorf("Default configuration %q does not exist in the configured store", defaultConfigTargetLabel)
+		if explicit {
+			missingErr = kflags.NewUsageErrorf("Configuration does not exist in the configured store")
+		}
+
+		switch op.configMissing {
+		case MissingConfigAuto:
+			if explicit {
+				_ = op.closeConfigStore()
+				return missingErr
+			}
+		case MissingConfigError:
+			_ = op.closeConfigStore()
+			return missingErr
+		case MissingConfigEmbedded:
+			// fall through
+		default:
+			if !op.configMissing.Valid() {
+				_ = op.closeConfigStore()
+				return kflags.NewUsageErrorf("Invalid value for --config-missing: %q", op.configMissing)
+			}
+		}
+
+		if op.defaultConfig == nil {
+			_ = op.closeConfigStore()
+			return missingErr
+		}
+		op.config = op.defaultConfig
+		return nil
+	}
+}
+
+// WithConfigStore installs an explicitly selected config store binding and
+// loads it immediately.
+//
+// Order matters: later config source modifiers override earlier ones. Apply
+// WithDefaultConfigFile before WithConfigStore if you want the embedded config
+// to be used as the missing-config fallback when the missing-config policy
+// allows it.
+func WithConfigStore(workspace config.StoreWorkspace, store config.Store, binding config.Binding) Modifier {
+	return withConfigStore(workspace, store, binding, true)
+}
+
+// WithDefaultConfigStore installs the implicit default config store binding and
+// loads it immediately.
+//
+// Order matters: later config source modifiers override earlier ones. Apply
+// WithDefaultConfigFile before WithDefaultConfigStore if you want the embedded
+// config to be used as the missing-config fallback when the missing-config
+// policy allows it.
+func WithDefaultConfigStore(workspace config.StoreWorkspace, store config.Store, binding config.Binding) Modifier {
+	return withConfigStore(workspace, store, binding, false)
+}
+
+// WithDefaultConfigFile provides an embedded fallback config used when the
+// selected config is missing and the missing-config policy allows it.
+//
+// Order matters: apply this before WithConfigStore or FromFlags if you want it
+// to affect their eager config loading.
+func WithDefaultConfigFile(name string, data []byte) Modifier {
+	return func(op *Options) error {
+		var parsed Config
+		if err := marshal.UnmarshalDefault(name, data, marshal.Json, &parsed); err != nil {
+			return kflags.NewUsageErrorf("Invalid configuration file '%s': %w", name, err)
+		}
+		op.defaultConfig = &parsed
+		return nil
+	}
+}
+
+func WithConfigMissing(policy MissingConfigPolicy) Modifier {
+	return func(op *Options) error {
+		if !policy.Valid() {
+			return kflags.NewUsageErrorf("Invalid value for --config-missing: %q", policy)
+		}
+		op.configMissing = policy
 		return nil
 	}
 }
@@ -306,30 +473,72 @@ func WithLogging(logger logger.Logger) Modifier {
 	}
 }
 
+// FromFlags applies the current CLI configuration to enproxy.
+//
+// Like every other modifier, order matters: later modifiers may override the
+// config source, HTTP starter, metrics starter, or authentication configured
+// here. FromFlags is intentionally a thin wrapper around the corresponding
+// With* modifiers. It also loads the selected config store binding
+// immediately, so apply WithDefaultConfigFile before FromFlags if you want
+// embedded fallback to participate in missing-config handling.
 func FromFlags(flags *Flags) Modifier {
 	return func(op *Options) error {
-		if len(flags.ConfigContent) <= 0 {
-			return kflags.NewUsageErrorf("Config file is empty, or no config file specified. Check the --config flag.")
+		mods := Modifiers{
+			WithConfigMissing(flags.ConfigMissing),
+			WithDisabledNasshAuthentication(flags.DisabledAuthentication),
+			WithNasshpMods(nasshp.FromFlags(flags.Nassh)),
+			WithHttpFlags(flags.Http),
+			WithMetricsFlags(flags.Prometheus),
 		}
-
 		if flags.Oauth.AuthURL != "" && !flags.DisabledAuthentication {
-			if err := WithOauthRedirector(flags.Oauth)(op); err != nil {
-				return err
+			mods = append(mods, WithOauthRedirector(flags.Oauth))
+		}
+		if err := mods.Apply(op); err != nil {
+			return err
+		}
+
+		path := strings.TrimSpace(flags.ConfigPath)
+		storeFlags := flags.ConfigStore
+		if path != "" && storeFlags.Directory.Path == "" {
+			flagsClone := *storeFlags
+			dirClone := *storeFlags.Directory
+			dirClone.Path = "/"
+			flagsClone.Directory = &dirClone
+			storeFlags = &flagsClone
+		}
+
+		workspace, err := factory.NewStore(op.rng, factory.FromFlags(storeFlags))
+		if err != nil {
+			return err
+		}
+
+		parsed := config.ParsedPath{}
+		explicit := false
+		if path != "" {
+			parsed, err = config.ResolvePathNative(workspace, path)
+			explicit = true
+		} else {
+			parsed, err = config.ResolvePathWithinStore(config.StoreRoot{AppName: "enproxy"}, "enproxy")
+		}
+		if err != nil {
+			_ = workspace.Close()
+			return err
+		}
+
+		store, err := parsed.OpenStore(workspace)
+		if err != nil {
+			_ = workspace.Close()
+			target := defaultConfigTargetLabel
+			if path != "" {
+				target = path
 			}
+			return fmt.Errorf("failed to open config namespace for %q: %w", target, err)
 		}
 
-		if err := WithNasshpMods(nasshp.FromFlags(flags.Nassh))(op); err != nil {
-			return err
+		if explicit {
+			return WithConfigStore(workspace, store, parsed.Bind(store))(op)
 		}
-
-		if err := WithHttpFlags(flags.Http)(op); err != nil {
-			return err
-		}
-		if err := WithMetricsFlags(flags.Prometheus)(op); err != nil {
-			return err
-		}
-
-		return WithConfigFile(flags.ConfigName, flags.ConfigContent)(op)
+		return WithDefaultConfigStore(workspace, store, parsed.Bind(store))(op)
 	}
 }
 
@@ -349,16 +558,26 @@ type Enproxy struct {
 	register prometheus.Registerer
 	gatherer prometheus.Gatherer
 
+	configWorkspace config.StoreWorkspace
+	configStore     config.Store
+	configBinding   config.Binding
+
 	proxy   Starter
 	metrics Starter
 
 	pmods []httpp.Modifier
 }
 
+// New constructs an Enproxy by applying modifiers in order.
+//
+// Modifier order is part of the API. Callers are expected to choose a coherent
+// sequence, and later modifiers override earlier ones.
 func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 	op := &Options{
-		log:   &logger.DefaultLogger{Printer: log.Printf},
-		proxy: StarterFromFlags(khttp.DefaultFlags()),
+		rng:           rng,
+		log:           &logger.DefaultLogger{Printer: log.Printf},
+		proxy:         StarterFromFlags(khttp.DefaultFlags()),
+		configMissing: MissingConfigAuto,
 	}
 	if err := Modifiers(mods).Apply(op); err != nil {
 		return nil, err
@@ -398,6 +617,13 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 	}
 	ep.nproxy = nproxy
 
+	cleanupConfig := true
+	defer func() {
+		if cleanupConfig {
+			_ = ep.closeConfigStore()
+		}
+	}()
+
 	if op.metrics != nil {
 		if op.gatherer == nil || op.register == nil {
 			ep.gatherer = prometheus.DefaultGatherer
@@ -405,19 +631,16 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 		}
 	}
 
-	switch {
-	case op.config != nil:
-		if err := ep.ApplyConfigStruct(*op.config); err != nil {
-			return nil, err
-		}
-	case len(op.configFileContent) > 0:
-		if err := ep.ApplyConfigFile(op.configFileName, op.configFileContent); err != nil {
-			return nil, err
-		}
-	default:
-		if err := ep.ApplyConfigStruct(Config{}); err != nil {
-			return nil, err
-		}
+	ep.configWorkspace = op.configWorkspace
+	ep.configStore = op.configStore
+	ep.configBinding = op.configBinding
+
+	config := Config{}
+	if op.config != nil {
+		config = *op.config
+	}
+	if err := ep.ApplyConfigStruct(config); err != nil {
+		return nil, err
 	}
 
 	if ep.metrics != nil && nproxy != nil {
@@ -426,6 +649,7 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 		}
 	}
 
+	cleanupConfig = false
 	return ep, nil
 }
 
@@ -442,6 +666,8 @@ func normalizeDomains(domains []string) []string {
 	}
 	return out
 }
+
+const defaultConfigTargetLabel = "enproxy/enproxy"
 
 func sameDomains(one, two []string) bool {
 	left := normalizeDomains(one)
@@ -480,6 +706,36 @@ func (ep *Enproxy) ApplyConfigFile(name string, data []byte) error {
 		return kflags.NewUsageErrorf("Invalid configuration file '%s': %w", name, err)
 	}
 	return ep.ApplyConfigStruct(config)
+}
+
+func (ep *Enproxy) closeConfigStore() error {
+	store := ep.configStore
+	workspace := ep.configWorkspace
+	ep.configBinding = nil
+	ep.configStore = nil
+	ep.configWorkspace = nil
+
+	var errs []error
+	if store != nil {
+		errs = append(errs, store.Close())
+	}
+	if workspace != nil {
+		errs = append(errs, workspace.Close())
+	}
+	return errors.Join(errs...)
+}
+
+// ReloadConfig reloads the active config from the configured store binding.
+func (ep *Enproxy) ReloadConfig() error {
+	var loaded Config
+	err := ep.configBinding.Unmarshal(&loaded)
+	if err == nil {
+		return ep.ApplyConfigStruct(loaded)
+	}
+	if os.IsNotExist(err) {
+		return fmt.Errorf("configuration does not exist in the configured store")
+	}
+	return fmt.Errorf("failed to load configuration from the configured store: %w", err)
 }
 
 func (ep *Enproxy) ApplyConfigStruct(config Config) error {
@@ -556,6 +812,19 @@ func (ep *Enproxy) ApplyConfigStruct(config Config) error {
 		}
 	}
 	return nil
+}
+
+func (ep *Enproxy) Close() error {
+	ep.applyMu.Lock()
+	defer ep.applyMu.Unlock()
+
+	var errs []error
+	for _, module := range ep.modules {
+		errs = append(errs, module.Close())
+	}
+	ep.modules = map[string]runtimeModule{}
+	errs = append(errs, ep.closeConfigStore())
+	return errors.Join(errs...)
 }
 
 func (ep *Enproxy) RunMetrics() error {

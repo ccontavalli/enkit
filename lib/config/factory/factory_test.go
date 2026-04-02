@@ -25,6 +25,24 @@ func TestDefaultFlags(t *testing.T) {
 	// On non-GCE environment (CI/local), likely "directory".
 }
 
+func TestDefaultConfigFileFlags(t *testing.T) {
+	flags := DefaultConfigFileFlags()
+	assert.Equal(t, "directory:multi", flags.StoreType)
+	if assert.NotNil(t, flags.Directory) {
+		assert.Equal(t, "/", flags.Directory.Path)
+	}
+	assert.NotNil(t, flags.Crypt)
+}
+
+func TestDefaultAppConfigFlags(t *testing.T) {
+	flags := DefaultAppConfigFlags()
+	assert.Equal(t, "directory:multi", flags.StoreType)
+	if assert.NotNil(t, flags.Directory) {
+		assert.Equal(t, "", flags.Directory.Path)
+	}
+	assert.NotNil(t, flags.Crypt)
+}
+
 func TestNewDirectoryStore(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "config-factory-test")
 	assert.Nil(t, err)
