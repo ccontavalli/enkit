@@ -1,0 +1,44 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "cli_lib",
+    srcs = [
+        "legacy.go",
+        "main.go",
+    ],
+    importpath = "github.com/ccontavalli/enkit/proxy/enproxy/cli",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//lib/config",
+        "//lib/config/factory",
+        "//lib/config/marshal",
+        "//lib/kflags",
+        "//lib/kflags/kcobra",
+        "//lib/khttp",
+        "//lib/srand",
+        "//proxy/enproxy",
+        "//proxy/httpp",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)
+
+go_binary(
+    name = "enproxyctl",
+    embed = [":cli_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "cli_test",
+    srcs = [
+        "legacy_test.go",
+        "main_test.go",
+    ],
+    embed = [":cli_lib"],
+    deps = [
+        "//lib/srand",
+        "//proxy/httpp",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)
