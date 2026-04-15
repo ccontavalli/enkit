@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
@@ -77,6 +78,7 @@ func TestBasic(t *testing.T) {
 		rng,
 		nil,
 		WithLogging(&logger.DefaultLogger{Printer: t.Logf}),
+		WithRelayHost("nassh.test"),
 		WithSymmetricOptions(token.WithGeneratedSymmetricKey(0)),
 		WithOriginChecker(func(r *http.Request) bool { return true }),
 	)
@@ -168,6 +170,7 @@ func TestInjectResolver(t *testing.T) {
 		rng,
 		nil,
 		WithLogging(&logger.DefaultLogger{Printer: t.Logf}),
+		WithRelayHost("nassh.test"),
 		WithSymmetricOptions(token.WithGeneratedSymmetricKey(0)),
 		WithOriginChecker(func(r *http.Request) bool { return true }),
 		WithResolver(MultiResolver([]Resolver{
@@ -230,6 +233,36 @@ func TestInjectResolver(t *testing.T) {
 	_, m, err := c.ReadMessage()
 	assert.Equal(t, uint32(len(wisdom)), binary.BigEndian.Uint32(m[:4]))
 	assert.Equal(t, string(wisdom), string(m[4:]))
+}
+
+func TestNewAllowsMissingRelayHost(t *testing.T) {
+	rng := rand.New(srand.Source)
+	nassh, err := New(
+		rng,
+		nil,
+		WithLogging(&logger.DefaultLogger{Printer: t.Logf}),
+		WithSymmetricOptions(token.WithGeneratedSymmetricKey(0)),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, nassh)
+}
+
+func TestServeCookieRequiresRelayHost(t *testing.T) {
+	rng := rand.New(srand.Source)
+	nassh, err := New(
+		rng,
+		nil,
+		WithLogging(&logger.DefaultLogger{Printer: t.Logf}),
+		WithSymmetricOptions(token.WithGeneratedSymmetricKey(0)),
+	)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/cookie?ext=test-ext&path=html/nassh.html", nil)
+	rec := httptest.NewRecorder()
+	nassh.ServeCookie(rec, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, rec.Body.String(), "relay host is not configured")
 }
 
 type FakeTime struct {

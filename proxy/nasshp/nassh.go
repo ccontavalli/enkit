@@ -339,9 +339,6 @@ func WithFilter(filter Filter) Modifier {
 func FromFlags(fl *Flags) Modifier {
 	return func(np *NasshProxy, o *options) error {
 		relayHost := strings.TrimSpace(fl.RelayHost)
-		if len(relayHost) == 0 {
-			return kflags.NewUsageErrorf("specifying --host-port is mandatory - there's no automated way to guess a dns name and port where this proxy (or a relay) is running")
-		}
 
 		if len(fl.SymmetricKey) == 0 {
 			key, err := token.GenerateSymmetricKey(o.rng, 0)
@@ -351,14 +348,25 @@ func FromFlags(fl *Flags) Modifier {
 			fl.SymmetricKey = key
 		}
 		mods := Modifiers{
-			WithRelayHost(fl.RelayHost),
 			WithSymmetricOptions(token.UseSymmetricKey(fl.SymmetricKey)),
 			WithBufferSize(fl.BufferSize),
 			WithTimeouts(fl.Timeouts),
 			WithExpirationPolicy(fl.ExpirationPolicy),
 		}
+		if relayHost != "" {
+			mods = append(mods, WithRelayHost(relayHost))
+		}
 		return mods.Apply(np, o)
 	}
+}
+
+func RelayHostFromModifiers(rng *rand.Rand, mods ...Modifier) (string, error) {
+	o := &options{rng: rng, bufferSize: 8192}
+	np := &NasshProxy{}
+	if err := Modifiers(mods).Apply(np, o); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(np.relayHost), nil
 }
 
 func WithSymmetricOptions(mods ...token.SymmetricSetter) Modifier {
@@ -456,6 +464,12 @@ func (np *NasshProxy) requestErrorStatus(counter *utils.Counter, w http.Response
 }
 
 func (np *NasshProxy) ServeCookie(w http.ResponseWriter, r *http.Request) {
+	relayHost := strings.TrimSpace(np.relayHost)
+	if relayHost == "" {
+		http.Error(w, "nassh relay host is not configured", http.StatusInternalServerError)
+		return
+	}
+
 	params := r.URL.Query()
 	ext := params.Get("ext")
 	path := params.Get("path")
@@ -467,7 +481,7 @@ func (np *NasshProxy) ServeCookie(w http.ResponseWriter, r *http.Request) {
 	target := &url.URL{
 		Scheme:   "chrome-extension",
 		Path:     ext + "/" + path,
-		Fragment: "nasshp-enkit@" + np.relayHost,
+		Fragment: "nasshp-enkit@" + relayHost,
 	}
 
 	if np.authenticator != nil {
@@ -648,13 +662,13 @@ func (np *NasshProxy) ServeConnect(w http.ResponseWriter, r *http.Request) {
 // - but the browser can appear or disappear at any time, there can even be old lingering sessions pending.
 //
 // The approach used:
-// - when reading from ssh and writing into the browser, we don't get rid of the buffer with the data
-//   until the browser acknowledges reception.
-//   If there is no browser active at that time, the code will keep waiting for a browser to become
-//   available without consuming the ssh buffer, which should cause back pressure on the terminal.
-// - when reading from the browser and writing into ssh, we discard any data up to the point we have
-//   already written. If there is a gap, there's nothing we can really do, as the protocol does not
-//   provide any mechanism to ask for missing data.
+//   - when reading from ssh and writing into the browser, we don't get rid of the buffer with the data
+//     until the browser acknowledges reception.
+//     If there is no browser active at that time, the code will keep waiting for a browser to become
+//     available without consuming the ssh buffer, which should cause back pressure on the terminal.
+//   - when reading from the browser and writing into ssh, we discard any data up to the point we have
+//     already written. If there is a gap, there's nothing we can really do, as the protocol does not
+//     provide any mechanism to ask for missing data.
 type readWriter struct {
 	*Timeouts
 	*ReadWriterCounters
@@ -819,17 +833,17 @@ func (np *readWriter) Attach(wc *websocket.Conn, wack, rack uint32) waiter {
 // unless we bypass the standard go library and use syscall select directly.
 //
 // The approach taken is that:
-// 1) For each connection, we start a proxyToBrowser function as a goroutine.
-// 2) If the browser goes away, the goroutine stops reading from the ssh session,
-//    and waits for a browser to reconnect. This creates back pressure in the
-//    TCP buffer, and should eventually slow down the sender, which is the desired
-//    outcome.
-// 3) The goroutine will only exit:
-//    a) If there are errors on the ssh session (nothing we can do there).
-//    b) If the browser goes away forever.
-//    c) If the browser comes back, but for one or another we can't recover the
-//       session (would happen if our buffers don't have enough data to sync back
-//       with the browser).
+//  1. For each connection, we start a proxyToBrowser function as a goroutine.
+//  2. If the browser goes away, the goroutine stops reading from the ssh session,
+//     and waits for a browser to reconnect. This creates back pressure in the
+//     TCP buffer, and should eventually slow down the sender, which is the desired
+//     outcome.
+//  3. The goroutine will only exit:
+//     a) If there are errors on the ssh session (nothing we can do there).
+//     b) If the browser goes away forever.
+//     c) If the browser comes back, but for one or another we can't recover the
+//     session (would happen if our buffers don't have enough data to sync back
+//     with the browser).
 func (np *readWriter) proxyToBrowser(ssh net.Conn) (err error) {
 	np.BrowserWriterStarted.Increment()
 	defer func() {
