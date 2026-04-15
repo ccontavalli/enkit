@@ -4,6 +4,7 @@ go_library(
     name = "enproxy",
     srcs = [
         "enproxy.go",
+        "metrics.go",
         "reconcile.go",
     ],
     importpath = "github.com/ccontavalli/enkit/proxy/enproxy",

@@ -77,10 +77,38 @@ func Server(wg *sync.WaitGroup, url *string) Starter {
 	}
 }
 
+func GetWithHost(t *testing.T, target, host string) (*http.Response, string) {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodGet, target, nil)
+	if !assert.NoError(t, err) {
+		return nil, ""
+	}
+	req.Host = host
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Do(req)
+	if !assert.NoError(t, err) {
+		return nil, ""
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if !assert.NoError(t, err) {
+		return resp, ""
+	}
+	return resp, string(body)
+}
+
 func PublicConfig(host, path, to string, tunnels ...string) Config {
 	return Config{
-		Mapping: []httpp.Mapping{
-			{
+		Mapping: ProxyMappings(
+			httpp.Mapping{
 				From: httpp.HostPath{
 					Host: host,
 					Path: path,
@@ -88,8 +116,47 @@ func PublicConfig(host, path, to string, tunnels ...string) Config {
 				Auth: httpp.MappingPublic,
 				To:   to,
 			},
-		},
+		),
 		Tunnels: tunnels,
+	}
+}
+
+func ProxyMapping(mapping httpp.Mapping) Mapping {
+	return Mapping{
+		Name:   mapping.Name,
+		From:   mapping.From,
+		Auth:   mapping.Auth,
+		Target: Target{Proxy: &ProxyTarget{To: mapping.To, Transform: mapping.Transform}},
+	}
+}
+
+func NamedProxyMapping(module string, mapping httpp.Mapping) Mapping {
+	result := ProxyMapping(mapping)
+	result.Module = module
+	return result
+}
+
+func ProxyMappings(mappings ...httpp.Mapping) []Mapping {
+	converted := make([]Mapping, 0, len(mappings))
+	for _, mapping := range mappings {
+		converted = append(converted, ProxyMapping(mapping))
+	}
+	return converted
+}
+
+func NasshMapping(host string) Mapping {
+	relayHost := host
+	if relayHost == "" {
+		relayHost = "nassh.test"
+	}
+	return Mapping{
+		From: httpp.HostPath{
+			Host: host,
+			Path: "/",
+		},
+		Target: Target{
+			Nassh: &NasshTarget{RelayHost: relayHost},
+		},
 	}
 }
 
@@ -108,11 +175,8 @@ func singleProxyModule(t *testing.T, modules map[string]runtimeModule) *proxyRun
 	return nil
 }
 
-func proxyModuleForMapping(t *testing.T, modules map[string]runtimeModule, mapping httpp.Mapping) *proxyRuntimeModule {
-	key, err := httpp.ModuleKey(mapping)
-	assert.NoError(t, err)
-
-	module, ok := modules["proxy:"+key]
+func proxyModuleForMapping(t *testing.T, modules map[string]runtimeModule, mapping Mapping) *proxyRuntimeModule {
+	module, ok := modules["proxy:"+canonicalModuleName(mapping.Module)]
 	assert.True(t, ok)
 
 	proxy, ok := module.(*proxyRuntimeModule)
@@ -187,14 +251,15 @@ func TestInvalidConfig(t *testing.T) {
 	assert.Nil(t, ep)
 
 	config := Config{
-		Mapping: []httpp.Mapping{
+		Mapping: ProxyMappings(
 			httpp.Mapping{
 				From: httpp.HostPath{
 					Host: "test.lan",
 					Path: "/",
 				},
-				To: "toast.lan"},
-		},
+				To: "toast.lan",
+			},
+		),
 	}
 
 	// One mapping is provided, now authentication is required.
@@ -210,7 +275,37 @@ func TestInvalidConfig(t *testing.T) {
 	assert.NotNil(t, ep)
 
 	events := accumulator.Retrieve()
-	assert.True(t, len(events) >= 4, "%v", events)
+	assert.True(t, len(events) >= 3, "%v", events)
+}
+
+func TestConfigRejectsEmptyModuleMapKeys(t *testing.T) {
+	proxyConfig := Config{
+		ProxyModules: map[string]ProxyModule{
+			"": {To: "https://backend.example.com"},
+		},
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{Host: "test.lan", Path: "/"},
+				Target: Target{
+					Proxy: &ProxyTarget{},
+				},
+			},
+		},
+	}
+	_, _, err := (&proxyConfig).Parse()
+	assert.Regexp(t, `proxy module map cannot use an empty name.*default`, err)
+
+	nasshConfig := Config{
+		NasshModules: map[string]NasshModule{
+			"": {RelayHost: "nassh.test"},
+		},
+		Mapping: []Mapping{
+			NasshMapping("nassh.test"),
+		},
+		Tunnels: []string{"*"},
+	}
+	_, _, err = (&nasshConfig).Parse()
+	assert.Regexp(t, `nassh module map cannot use an empty name.*default`, err)
 }
 
 func TestInvalidConfigFileFailsStartup(t *testing.T) {
@@ -564,18 +659,28 @@ func TestApplyConfigStructReconcilesMixedRouteChanges(t *testing.T) {
 	}
 
 	initial := Config{
-		Mapping: []httpp.Mapping{
-			unchangedInitial,
-			changedInitial,
-			removedInitial,
+		ProxyModules: map[string]ProxyModule{
+			"unchanged": {},
+			"changed":   {},
+			"removed":   {},
+		},
+		Mapping: []Mapping{
+			NamedProxyMapping("unchanged", unchangedInitial),
+			NamedProxyMapping("changed", changedInitial),
+			NamedProxyMapping("removed", removedInitial),
 		},
 		Tunnels: []string{"*"},
 	}
 	updated := Config{
-		Mapping: []httpp.Mapping{
-			unchangedInitial,
-			changedUpdated,
-			addedUpdated,
+		ProxyModules: map[string]ProxyModule{
+			"unchanged": {},
+			"changed":   {},
+			"added":     {},
+		},
+		Mapping: []Mapping{
+			NamedProxyMapping("unchanged", unchangedInitial),
+			NamedProxyMapping("changed", changedUpdated),
+			NamedProxyMapping("added", addedUpdated),
 		},
 		Tunnels: []string{"*"},
 	}
@@ -586,9 +691,9 @@ func TestApplyConfigStructReconcilesMixedRouteChanges(t *testing.T) {
 	ep, err := New(rng, WithHttpStarter(Server(&wg, &fe)), WithConfig(initial))
 	assert.NoError(t, err)
 
-	unchangedBefore := proxyModuleForMapping(t, ep.modules, unchangedInitial)
-	changedBefore := proxyModuleForMapping(t, ep.modules, changedInitial)
-	removedBefore := proxyModuleForMapping(t, ep.modules, removedInitial)
+	unchangedBefore := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("unchanged", unchangedInitial))
+	changedBefore := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("changed", changedInitial))
+	removedBefore := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("removed", removedInitial))
 
 	err = ep.Run()
 	assert.NoError(t, err)
@@ -608,16 +713,14 @@ func TestApplyConfigStructReconcilesMixedRouteChanges(t *testing.T) {
 	err = ep.ApplyConfigStruct(updated)
 	assert.NoError(t, err)
 
-	unchangedAfter := proxyModuleForMapping(t, ep.modules, unchangedInitial)
-	changedAfter := proxyModuleForMapping(t, ep.modules, changedUpdated)
-	addedAfter := proxyModuleForMapping(t, ep.modules, addedUpdated)
+	unchangedAfter := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("unchanged", unchangedInitial))
+	changedAfter := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("changed", changedUpdated))
+	addedAfter := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("added", addedUpdated))
 	assert.Same(t, unchangedBefore, unchangedAfter)
-	assert.NotSame(t, changedBefore, changedAfter)
+	assert.Same(t, changedBefore, changedAfter)
 	assert.NotNil(t, addedAfter)
 
-	removedKey, err := httpp.ModuleKey(removedInitial)
-	assert.NoError(t, err)
-	_, found := ep.modules["proxy:"+removedKey]
+	_, found := ep.modules["proxy:removed"]
 	assert.False(t, found)
 	assert.NotNil(t, removedBefore)
 
@@ -738,8 +841,8 @@ func TestApplyConfigStructRejectsNormalizedHostCollisions(t *testing.T) {
 	assert.NoError(t, err)
 
 	config := Config{
-		Mapping: []httpp.Mapping{
-			{
+		Mapping: ProxyMappings(
+			httpp.Mapping{
 				From: httpp.HostPath{
 					Host: "TEST.LAN",
 					Path: "/",
@@ -747,7 +850,7 @@ func TestApplyConfigStructRejectsNormalizedHostCollisions(t *testing.T) {
 				Auth: httpp.MappingPublic,
 				To:   s1,
 			},
-			{
+			httpp.Mapping{
 				From: httpp.HostPath{
 					Host: "test.lan.",
 					Path: "/",
@@ -755,7 +858,7 @@ func TestApplyConfigStructRejectsNormalizedHostCollisions(t *testing.T) {
 				Auth: httpp.MappingPublic,
 				To:   s2,
 			},
-		},
+		),
 		Tunnels: []string{"*"},
 	}
 
@@ -800,11 +903,6 @@ func TestApplyConfigFileSwapsActiveRoutes(t *testing.T) {
 }
 
 func TestApplyConfigStructReusesNasshProxy(t *testing.T) {
-	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
-	assert.NoError(t, err)
-	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
-	assert.NoError(t, err)
-
 	cookie := &oauth.CredentialsCookie{
 		Identity: oauth.Identity{
 			Id:           "id",
@@ -813,8 +911,18 @@ func TestApplyConfigStructReusesNasshProxy(t *testing.T) {
 		},
 	}
 
-	initial := PublicConfig("test.lan", "/", s1, "tcp|10.0.0.1:22")
-	updated := PublicConfig("test.lan", "/", s2, "tcp|10.0.0.2:22")
+	initial := Config{
+		Mapping: []Mapping{
+			NasshMapping(""),
+		},
+		Tunnels: []string{"tcp|10.0.0.1:22"},
+	}
+	updated := Config{
+		Mapping: []Mapping{
+			NasshMapping(""),
+		},
+		Tunnels: []string{"tcp|10.0.0.2:22"},
+	}
 
 	rng := rand.New(rand.NewSource(1))
 	ep, err := New(rng,
@@ -823,17 +931,163 @@ func TestApplyConfigStructReusesNasshProxy(t *testing.T) {
 		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
 	)
 	assert.NoError(t, err)
-	assert.NotNil(t, ep.nproxy)
+	nasshModule, ok := ep.modules["nassh:default"]
+	assert.True(t, ok)
+	nproxy, ok := nasshModule.(*nasshRuntimeModule)
+	assert.True(t, ok)
 
-	nproxy := ep.nproxy
 	assert.Equal(t, utils.VerdictAllow, ep.whitelist.Allow("tcp", "10.0.0.1:22", cookie))
 	assert.Equal(t, utils.VerdictDrop, ep.whitelist.Allow("tcp", "10.0.0.2:22", cookie))
 
 	err = ep.ApplyConfigStruct(updated)
 	assert.NoError(t, err)
-	assert.Same(t, nproxy, ep.nproxy)
+	nasshUpdated, ok := ep.modules["nassh:default"]
+	assert.True(t, ok)
+	assert.Same(t, nproxy, nasshUpdated)
 	assert.Equal(t, utils.VerdictDrop, ep.whitelist.Allow("tcp", "10.0.0.1:22", cookie))
 	assert.Equal(t, utils.VerdictAllow, ep.whitelist.Allow("tcp", "10.0.0.2:22", cookie))
+}
+
+func TestOmittedNasshModuleUsesDefaultIdentity(t *testing.T) {
+	config := Config{
+		NasshModules: map[string]NasshModule{
+			"default": {},
+		},
+		Mapping: []Mapping{
+			NasshMapping("nassh.test"),
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(
+		rng,
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+	)
+	assert.NoError(t, err)
+	assert.Contains(t, ep.modules, "nassh:default")
+	assert.NotContains(t, ep.modules, "nassh:")
+}
+
+func TestNasshMappingHostBindsAndDefinesRelayHost(t *testing.T) {
+	flags := DefaultFlags()
+	flags.Nassh.RelayHost = "relay.test:8443"
+
+	config := Config{
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "frontend.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &fe)),
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.FromFlags(flags.Nassh)),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	resp, _ := GetWithHost(t, fe+"cookie?ext=test-ext&path=html/nassh.html", "frontend.test")
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Location"), "#nasshp-enkit@frontend.test")
+
+	resp, _ = GetWithHost(t, fe+"cookie?ext=test-ext&path=html/nassh.html", "relay.test:8443")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestNasshRelayHostFromConfigOverridesGlobalDefault(t *testing.T) {
+	config := Config{
+		NasshModules: map[string]NasshModule{
+			"module": {RelayHost: "module.test:8443"},
+		},
+		Mapping: []Mapping{
+			{
+				Module: "module",
+				From: httpp.HostPath{
+					Host: "frontend.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &fe)),
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(
+			nasshp.WithRelayHost("global.test:443"),
+			nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0)),
+		),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	resp, _ := GetWithHost(t, fe+"cookie?ext=test-ext&path=html/nassh.html", "frontend.test")
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Location"), "#nasshp-enkit@module.test:8443")
+
+	resp, _ = GetWithHost(t, fe+"cookie?ext=test-ext&path=html/nassh.html", "module.test:8443")
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Location"), "#nasshp-enkit@module.test:8443")
+
+	resp, _ = GetWithHost(t, fe+"cookie?ext=test-ext&path=html/nassh.html", "global.test:443")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestApplyConfigStructCollectsNasshDomains(t *testing.T) {
+	config := Config{
+		NasshModules: map[string]NasshModule{
+			"module": {RelayHost: "relay.test:8443"},
+		},
+		Mapping: []Mapping{
+			{
+				Module: "module",
+				From: httpp.HostPath{
+					Host: "frontend.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(
+		rng,
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+	)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []string{"frontend.test", "relay.test"}, ep.domains)
 }
 
 func TestApplyConfigStructReusesUnchangedProxyHandlers(t *testing.T) {
@@ -842,8 +1096,28 @@ func TestApplyConfigStructReusesUnchangedProxyHandlers(t *testing.T) {
 	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
 	assert.NoError(t, err)
 
-	initial := PublicConfig("test.lan", "/", s1, "*")
-	updated := PublicConfig("test.lan", "/", s2, "*")
+	initial := Config{
+		ProxyModules: map[string]ProxyModule{
+			"default": {To: s1},
+		},
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{Host: "test.lan", Path: "/"},
+				Auth: httpp.MappingPublic,
+				Target: Target{
+					Proxy: &ProxyTarget{},
+				},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+	updated := Config{
+		ProxyModules: map[string]ProxyModule{
+			"default": {To: s2},
+		},
+		Mapping: initial.Mapping,
+		Tunnels: []string{"*"},
+	}
 
 	rng := rand.New(rand.NewSource(1))
 	ep, err := New(rng, WithConfig(initial))
@@ -865,8 +1139,8 @@ func TestApplyConfigStructSharesModulesAcrossHosts(t *testing.T) {
 	assert.NoError(t, err)
 
 	config := Config{
-		Mapping: []httpp.Mapping{
-			{
+		Mapping: ProxyMappings(
+			httpp.Mapping{
 				From: httpp.HostPath{
 					Host: "one.lan",
 					Path: "/",
@@ -874,7 +1148,7 @@ func TestApplyConfigStructSharesModulesAcrossHosts(t *testing.T) {
 				Auth: httpp.MappingPublic,
 				To:   s1,
 			},
-			{
+			httpp.Mapping{
 				From: httpp.HostPath{
 					Host: "two.lan",
 					Path: "/",
@@ -882,7 +1156,7 @@ func TestApplyConfigStructSharesModulesAcrossHosts(t *testing.T) {
 				Auth: httpp.MappingPublic,
 				To:   s1,
 			},
-		},
+		),
 		Tunnels: []string{"*"},
 	}
 
@@ -897,8 +1171,12 @@ func TestApplyConfigStructSeparatesNamedModules(t *testing.T) {
 	assert.NoError(t, err)
 
 	config := Config{
-		Mapping: []httpp.Mapping{
-			{
+		ProxyModules: map[string]ProxyModule{
+			"one": {},
+			"two": {},
+		},
+		Mapping: []Mapping{
+			NamedProxyMapping("one", httpp.Mapping{
 				Name: "one",
 				From: httpp.HostPath{
 					Host: "one.lan",
@@ -906,8 +1184,8 @@ func TestApplyConfigStructSeparatesNamedModules(t *testing.T) {
 				},
 				Auth: httpp.MappingPublic,
 				To:   s1,
-			},
-			{
+			}),
+			NamedProxyMapping("two", httpp.Mapping{
 				Name: "two",
 				From: httpp.HostPath{
 					Host: "two.lan",
@@ -915,7 +1193,7 @@ func TestApplyConfigStructSeparatesNamedModules(t *testing.T) {
 				},
 				Auth: httpp.MappingPublic,
 				To:   s1,
-			},
+			}),
 		},
 		Tunnels: []string{"*"},
 	}
@@ -939,57 +1217,58 @@ func TestSimpleHTTP(t *testing.T) {
 
 	// Frontend proxy config.
 	config := Config{
-		Mapping: []httpp.Mapping{
-			// A single file path on this host.
-			httpp.Mapping{
-				From: httpp.HostPath{
-					Host: "test1.lan",
-					Path: "/glad",
+		Mapping: append(
+			ProxyMappings(
+				// A single file path on this host.
+				httpp.Mapping{
+					From: httpp.HostPath{
+						Host: "test1.lan",
+						Path: "/glad",
+					},
+					Auth: httpp.MappingPublic,
+					To:   s1,
 				},
-				Auth: httpp.MappingPublic,
-				To:   s1,
-			},
 
-			// Multiple overlapping paths on test2.
-			httpp.Mapping{
-				From: httpp.HostPath{
-					Host: "test2.lan",
-					Path: "/",
+				// Multiple overlapping paths on test2.
+				httpp.Mapping{
+					From: httpp.HostPath{
+						Host: "test2.lan",
+						Path: "/",
+					},
+					Auth: httpp.MappingPublic,
+					To:   s2,
 				},
-				Auth: httpp.MappingPublic,
-				To:   s2,
-			},
 
-			// ... this one is private (but a directory).
-			httpp.Mapping{
-				From: httpp.HostPath{
-					Host: "test2.lan",
-					Path: "/oppose/",
+				// ... this one is private (but a directory).
+				httpp.Mapping{
+					From: httpp.HostPath{
+						Host: "test2.lan",
+						Path: "/oppose/",
+					},
+					To: s3,
 				},
-				To: s3,
-			},
 
-			// ... this one is also private - but access will be denied.
-			httpp.Mapping{
-				From: httpp.HostPath{
-					Host: "test2.lan",
-					Path: "/deny/",
+				// ... this one is also private - but access will be denied.
+				httpp.Mapping{
+					From: httpp.HostPath{
+						Host: "test2.lan",
+						Path: "/deny/",
+					},
+					To: s3,
 				},
-				To: s3,
-			},
 
-			// ... this one is a prefix of /oppose and public.
-			httpp.Mapping{
-				From: httpp.HostPath{
-					Host: "test2.lan",
-					Path: "/opp/",
+				// ... this one is a prefix of /oppose and public.
+				httpp.Mapping{
+					From: httpp.HostPath{
+						Host: "test2.lan",
+						Path: "/opp/",
+					},
+					Auth: httpp.MappingPublic,
+					To:   s4,
 				},
-				Auth: httpp.MappingPublic,
-				To:   s4,
-			},
-
-			// No wildcard match for now.
-		},
+			),
+			NasshMapping(""),
+		),
 
 		// Allow any tunnel.
 		Tunnels: []string{"*"},
@@ -1145,17 +1424,19 @@ func TestPedanticMetrics(t *testing.T) {
 
 	// Simple proxy config.
 	config := Config{
-		Mapping: []httpp.Mapping{
-			// A single file path on this host.
-			httpp.Mapping{
-				From: httpp.HostPath{
-					Host: "test1.lan",
-					Path: "/glad",
+		Mapping: append(
+			ProxyMappings(
+				httpp.Mapping{
+					From: httpp.HostPath{
+						Host: "test1.lan",
+						Path: "/glad",
+					},
+					Auth: httpp.MappingPublic,
+					To:   s1,
 				},
-				Auth: httpp.MappingPublic,
-				To:   s1,
-			},
-		},
+			),
+			NasshMapping(""),
+		),
 
 		// Allow any tunnel.
 		Tunnels: []string{"*"},
@@ -1202,16 +1483,205 @@ func TestPedanticMetrics(t *testing.T) {
 	assert.Regexp(t, "(?m)^(#|nasshp_)", body, "%s", body)
 }
 
-func TestBandwidth(t *testing.T) {
+func TestMetricsExportEveryNasshModule(t *testing.T) {
 	config := Config{
-		Mapping: []httpp.Mapping{
-			httpp.Mapping{
+		NasshModules: map[string]NasshModule{
+			"alpha": {RelayHost: "alpha.test"},
+			"beta":  {RelayHost: "beta.test:8443"},
+		},
+		Mapping: []Mapping{
+			{
+				Module: "alpha",
 				From: httpp.HostPath{
-					Host: "",
+					Host: "frontend-alpha.test",
 					Path: "/",
 				},
-				Auth: httpp.MappingPublic,
+				Target: Target{Nassh: &NasshTarget{}},
 			},
+			{
+				Module: "beta",
+				From: httpp.HostPath{
+					Host: "frontend-beta.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	var proxy string
+	var metrics string
+	var wg sync.WaitGroup
+	rng := rand.New(rand.NewSource(1))
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &proxy)),
+		WithMetricsStarter(Server(&wg, &metrics)),
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		WithPrometheus(reg, reg),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(metrics+"/metrics", protocol.Read(protocol.String(&body)))
+	assert.NoError(t, err)
+	assert.Contains(t, body, `nasshp_pool_gets{module="alpha"} 0`)
+	assert.Contains(t, body, `nasshp_pool_gets{module="beta"} 0`)
+	assert.NotContains(t, body, "nasshp_pool_gets 0")
+}
+
+func TestRejectedNasshReloadDoesNotSwapMetrics(t *testing.T) {
+	initial := Config{
+		NasshModules: map[string]NasshModule{
+			"default": {RelayHost: "nassh.test"},
+		},
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "nassh.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+	updated := Config{
+		NasshModules: map[string]NasshModule{
+			"default": {RelayHost: "other.test"},
+		},
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "other.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	var proxy string
+	var metrics string
+	var wg sync.WaitGroup
+	rng := rand.New(rand.NewSource(1))
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &proxy)),
+		WithMetricsStarter(Server(&wg, &metrics)),
+		WithConfig(initial),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		WithPrometheus(reg, reg),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	resp, _ := GetWithHost(t, proxy+"cookie", "nassh.test")
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	body := ""
+	err = protocol.Get(metrics+"/metrics", protocol.Read(protocol.String(&body)))
+	assert.NoError(t, err)
+	assert.Contains(t, body, `nasshp_url_errors{error="invalid parameters",module="default",type="bad client",url="/cookie"} 1`)
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.Regexp(t, "cannot apply config changing listener domains after proxy start", err)
+
+	body = ""
+	err = protocol.Get(metrics+"/metrics", protocol.Read(protocol.String(&body)))
+	assert.NoError(t, err)
+	assert.Contains(t, body, `nasshp_url_errors{error="invalid parameters",module="default",type="bad client",url="/cookie"} 1`)
+}
+
+func TestRemovedNasshModuleUnregistersMetrics(t *testing.T) {
+	backend, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("ok")))
+	assert.NoError(t, err)
+
+	proxyMapping := ProxyMapping(httpp.Mapping{
+		From: httpp.HostPath{
+			Host: "proxy.test",
+			Path: "/",
+		},
+		Auth: httpp.MappingPublic,
+		To:   backend,
+	})
+
+	initial := Config{
+		NasshModules: map[string]NasshModule{
+			"old": {RelayHost: "nassh.test"},
+		},
+		Mapping: []Mapping{
+			{
+				Module: "old",
+				From: httpp.HostPath{
+					Host: "nassh.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+			proxyMapping,
+		},
+		Tunnels: []string{"*"},
+	}
+	updated := Config{
+		Domains: []string{"nassh.test"},
+		Mapping: []Mapping{proxyMapping},
+		Tunnels: []string{"*"},
+	}
+
+	var proxy string
+	var metrics string
+	var wg sync.WaitGroup
+	rng := rand.New(rand.NewSource(1))
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &proxy)),
+		WithMetricsStarter(Server(&wg, &metrics)),
+		WithConfig(initial),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		WithPrometheus(reg, reg),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(metrics+"/metrics", protocol.Read(protocol.String(&body)))
+	assert.NoError(t, err)
+	assert.Contains(t, body, `nasshp_pool_gets{module="old"} 0`)
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.NoError(t, err)
+
+	body = ""
+	err = protocol.Get(metrics+"/metrics", protocol.Read(protocol.String(&body)))
+	assert.NoError(t, err)
+	assert.NotContains(t, body, `module="old"`)
+	assert.NotContains(t, body, "nasshp_pool_gets")
+}
+
+func TestBandwidth(t *testing.T) {
+	config := Config{
+		Mapping: []Mapping{
+			NasshMapping(""),
 		},
 
 		// Allow any tunnel.

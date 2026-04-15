@@ -36,7 +36,6 @@
 package enproxy
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -53,7 +52,6 @@ import (
 	"github.com/ccontavalli/enkit/lib/khttp"
 	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/ccontavalli/enkit/lib/oauth"
-	"github.com/ccontavalli/enkit/proxy/amux"
 	"github.com/ccontavalli/enkit/proxy/amux/amuxie"
 	"github.com/ccontavalli/enkit/proxy/httpp"
 	"github.com/ccontavalli/enkit/proxy/nasshp"
@@ -62,10 +60,46 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+type ProxyModule struct {
+	To        string
+	Transform *httpp.Transform
+}
+
+type ProxyTarget struct {
+	To        string
+	Transform *httpp.Transform
+}
+
+type NasshModule struct {
+	RelayHost string
+}
+
+type NasshTarget struct {
+	RelayHost string
+}
+
+type Target struct {
+	Proxy *ProxyTarget
+	Nassh *NasshTarget
+}
+
+type Mapping struct {
+	Name   string
+	From   httpp.HostPath
+	Auth   httpp.MappingAuth
+	Module string
+	Target Target
+}
+
+const defaultModuleName = "default"
+
 // Config is the content of the proxy configuration file.
 type Config struct {
-	// Which URLs to map to which other URLs.
-	Mapping []httpp.Mapping
+	ProxyModules map[string]ProxyModule
+	NasshModules map[string]NasshModule
+
+	// Which URLs to map to which modules or targets.
+	Mapping []Mapping
 	// Extra domains for which to obtain a certificate.
 	Domains []string
 	// List of allowed tunnels.
@@ -89,6 +123,132 @@ func (m MissingConfigPolicy) Valid() bool {
 	default:
 		return false
 	}
+}
+
+func (t Target) kindCount() int {
+	total := 0
+	if t.Proxy != nil {
+		total++
+	}
+	if t.Nassh != nil {
+		total++
+	}
+	return total
+}
+
+func canonicalModuleName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return defaultModuleName
+	}
+	return name
+}
+
+func validateModuleName(kind, name string) error {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return fmt.Errorf("%s module map cannot use an empty name; use %q", kind, defaultModuleName)
+	}
+	if trimmed != name {
+		return fmt.Errorf("%s module %q must not have leading or trailing whitespace", kind, name)
+	}
+	return nil
+}
+
+func validateProxyModuleNames(modules map[string]ProxyModule) error {
+	for name := range modules {
+		if err := validateModuleName("proxy", name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateNasshModuleNames(modules map[string]NasshModule) error {
+	for name := range modules {
+		if err := validateModuleName("nassh", name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func resolveProxyModule(modules map[string]ProxyModule, name string) (ProxyModule, error) {
+	name = canonicalModuleName(name)
+	if name == defaultModuleName {
+		if modules == nil {
+			return ProxyModule{}, nil
+		}
+		return modules[defaultModuleName], nil
+	}
+
+	module, ok := modules[name]
+	if !ok {
+		return ProxyModule{}, fmt.Errorf("unknown proxy module %q", name)
+	}
+	return module, nil
+}
+
+func resolveNasshModule(modules map[string]NasshModule, name string) (NasshModule, error) {
+	name = canonicalModuleName(name)
+	if name == defaultModuleName {
+		if modules == nil {
+			return NasshModule{}, nil
+		}
+		return modules[defaultModuleName], nil
+	}
+
+	module, ok := modules[name]
+	if !ok {
+		return NasshModule{}, fmt.Errorf("unknown nassh module %q", name)
+	}
+	return module, nil
+}
+
+func resolveProxyMapping(module ProxyModule, mapping Mapping) (httpp.Mapping, error) {
+	if mapping.Target.Proxy == nil {
+		return httpp.Mapping{}, fmt.Errorf("proxy target is missing")
+	}
+
+	to := strings.TrimSpace(module.To)
+	if targetTo := strings.TrimSpace(mapping.Target.Proxy.To); targetTo != "" {
+		to = targetTo
+	}
+	if to == "" {
+		return httpp.Mapping{}, fmt.Errorf("proxy target is missing a backend address")
+	}
+
+	transform := module.Transform
+	if mapping.Target.Proxy.Transform != nil {
+		transform = mapping.Target.Proxy.Transform
+	}
+
+	return httpp.Mapping{
+		Name: mapping.Name,
+		From: mapping.From,
+		Auth: mapping.Auth,
+		To:   to,
+
+		Transform: transform,
+	}, nil
+}
+
+func resolveNasshRelayHost(defaultRelayHost string, module NasshModule, mapping Mapping) string {
+	if mapping.Target.Nassh != nil {
+		if relay := strings.TrimSpace(mapping.Target.Nassh.RelayHost); relay != "" {
+			return relay
+		}
+	}
+	if relay := strings.TrimSpace(module.RelayHost); relay != "" {
+		return relay
+	}
+	if relay := strings.TrimSpace(mapping.From.Host); relay != "" {
+		return relay
+	}
+	if relay := strings.TrimSpace(defaultRelayHost); relay != "" {
+		return relay
+	}
+	return ""
 }
 
 // Warnings represents a list of warnings.
@@ -123,7 +283,47 @@ func (config *Config) Parse() (utils.PatternList, Warnings, error) {
 	if len(config.Mapping) <= 0 {
 		return nil, warn, kflags.NewUsageErrorf("config file: has no Mapping(s) defined")
 	}
-	if len(config.Tunnels) <= 0 {
+	if err := validateProxyModuleNames(config.ProxyModules); err != nil {
+		return nil, warn, kflags.NewUsageErrorf("config file: %w", err)
+	}
+	if err := validateNasshModuleNames(config.NasshModules); err != nil {
+		return nil, warn, kflags.NewUsageErrorf("config file: %w", err)
+	}
+
+	hasNassh := false
+	for ix, mapping := range config.Mapping {
+		if mapping.Target.kindCount() != 1 {
+			return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d must define exactly one target kind", ix)
+		}
+
+		switch {
+		case mapping.Target.Proxy != nil:
+			module, err := resolveProxyModule(config.ProxyModules, mapping.Module)
+			if err != nil {
+				return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - %w", ix, err)
+			}
+			if _, err := resolveProxyMapping(module, mapping); err != nil {
+				return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - %w", ix, err)
+			}
+
+		case mapping.Target.Nassh != nil:
+			hasNassh = true
+			if _, err := resolveNasshModule(config.NasshModules, mapping.Module); err != nil {
+				return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - %w", ix, err)
+			}
+
+			path := strings.TrimSpace(mapping.From.Path)
+			if path == "" {
+				path = "/"
+			}
+			if path != "/" {
+				return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - nassh targets must be mounted on /", ix)
+			}
+
+		}
+	}
+
+	if hasNassh && len(config.Tunnels) <= 0 {
 		warn.Add("config file: empty whitelist for tunnels - no tunnel will be allowed!")
 	}
 	wl, err := utils.NewPatternList(config.Tunnels)
@@ -543,6 +743,8 @@ func FromFlags(flags *Flags) Modifier {
 }
 
 type Enproxy struct {
+	rng *rand.Rand
+
 	log logger.Logger
 
 	applyMu sync.Mutex
@@ -551,9 +753,9 @@ type Enproxy struct {
 	domains      []string
 	proxyStarted bool
 
-	nproxy    *nasshp.NasshProxy
-	whitelist *utils.ReplaceableWhitelist
-	modules   map[string]runtimeModule
+	whitelist     *utils.ReplaceableWhitelist
+	modules       map[string]runtimeModule
+	moduleMetrics *moduleMetricsManager
 
 	register prometheus.Registerer
 	gatherer prometheus.Gatherer
@@ -565,7 +767,11 @@ type Enproxy struct {
 	proxy   Starter
 	metrics Starter
 
-	pmods []httpp.Modifier
+	pmods                      []httpp.Modifier
+	nmods                      []nasshp.Modifier
+	defaultNasshRelayHost      string
+	authenticate               oauth.Authenticate
+	withoutNasshAuthentication bool
 }
 
 // New constructs an Enproxy by applying modifiers in order.
@@ -584,38 +790,34 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 	}
 
 	ep := &Enproxy{
+		rng: rng,
 		log: op.log,
 		handler: khttp.NewReplaceableHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "configuration not loaded", http.StatusServiceUnavailable)
 		})),
-		whitelist: utils.NewReplaceableWhitelist(),
-		modules:   map[string]runtimeModule{},
-		proxy:     op.proxy,
-		metrics:   op.metrics,
-		gatherer:  op.gatherer,
-		register:  op.register,
-		pmods:     append([]httpp.Modifier{httpp.WithLogging(op.log), httpp.WithAuthenticator(op.authenticate)}, op.pmods...),
+		whitelist:                  utils.NewReplaceableWhitelist(),
+		modules:                    map[string]runtimeModule{},
+		proxy:                      op.proxy,
+		metrics:                    op.metrics,
+		gatherer:                   op.gatherer,
+		register:                   op.register,
+		pmods:                      append([]httpp.Modifier{httpp.WithLogging(op.log), httpp.WithAuthenticator(op.authenticate)}, op.pmods...),
+		authenticate:               op.authenticate,
+		withoutNasshAuthentication: op.withoutNasshAuthentication,
 	}
-
-	var (
-		err    error
-		nproxy *nasshp.NasshProxy
-	)
+	ep.nmods = append([]nasshp.Modifier{nasshp.WithFilter(ep.whitelist.Allow), nasshp.WithLogging(op.log)}, op.nmods...)
+	defaultRelayHost, err := nasshp.RelayHostFromModifiers(rng, ep.nmods...)
+	if err != nil {
+		return nil, err
+	}
+	ep.defaultNasshRelayHost = defaultRelayHost
 	if op.authenticate == nil && !op.withoutNasshAuthentication {
 		op.log.Warnf("ssh gateway disabled as no authentication was configured")
-	} else {
-		authenticate := op.authenticate
-		if op.withoutNasshAuthentication {
-			op.log.Errorf("Watch out! The proxy is being started without authentication! SSH tunneling will rely entirely on a filmsy whitelist")
-			authenticate = nil
-		}
-
-		nproxy, err = nasshp.New(rng, authenticate, append([]nasshp.Modifier{nasshp.WithFilter(ep.whitelist.Allow), nasshp.WithLogging(op.log)}, op.nmods...)...)
-		if err != nil {
-			return nil, err
-		}
 	}
-	ep.nproxy = nproxy
+	if op.withoutNasshAuthentication {
+		op.log.Errorf("Watch out! The proxy is being started without authentication! SSH tunneling will rely entirely on a filmsy whitelist")
+		ep.authenticate = nil
+	}
 
 	cleanupConfig := true
 	defer func() {
@@ -630,6 +832,7 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 			ep.register = prometheus.DefaultRegisterer
 		}
 	}
+	ep.moduleMetrics = newModuleMetricsManager(ep.register)
 
 	ep.configWorkspace = op.configWorkspace
 	ep.configStore = op.configStore
@@ -643,12 +846,6 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 		return nil, err
 	}
 
-	if ep.metrics != nil && nproxy != nil {
-		if err := nproxy.ExportMetrics(ep.register); err != nil {
-			return nil, err
-		}
-	}
-
 	cleanupConfig = false
 	return ep, nil
 }
@@ -657,7 +854,7 @@ func normalizeDomains(domains []string) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, domain := range domains {
-		normalized := utils.NormalizeHost(domain)
+		normalized := normalizeDomain(domain)
 		if normalized == "" || seen[normalized] {
 			continue
 		}
@@ -665,6 +862,10 @@ func normalizeDomains(domains []string) []string {
 		out = append(out, normalized)
 	}
 	return out
+}
+
+func normalizeDomain(domain string) string {
+	return utils.NormalizeHost(khttp.LooselyGetHost(domain))
 }
 
 const defaultConfigTargetLabel = "enproxy/enproxy"
@@ -691,7 +892,9 @@ func sameDomains(one, two []string) bool {
 func collectDomains(desired *desiredState, modules map[string]runtimeModule) []string {
 	domains := append([]string{}, desired.Domains...)
 	for _, route := range desired.Routes {
-		domains = append(domains, route.Host)
+		if route.Mapping.Target.kindCount() > 0 {
+			domains = append(domains, route.Mapping.From.Host)
+		}
 	}
 	for _, desiredModule := range desired.Modules {
 		module := modules[desiredModule.ID()]
@@ -749,7 +952,7 @@ func (ep *Enproxy) ApplyConfigStruct(config Config) error {
 		return err
 	}
 
-	desired, err := compileDesiredState(builder, ep.nproxy, ep.whitelist, config, wl, warns)
+	desired, err := compileDesiredState(builder, ep, config, wl, warns)
 	if err != nil {
 		return err
 	}
@@ -768,15 +971,16 @@ func (ep *Enproxy) ApplyConfigStruct(config Config) error {
 	}
 
 	mux := amuxie.New()
-	installer := newInstallContext(ep.log, amux.Mux(mux))
+	bindings := []httpp.Binding{}
 	seenBindings := map[string]int{}
 
 	for _, route := range desired.Routes {
-		module, ok := modules[route.ModuleID].(*proxyRuntimeModule)
-		if !ok {
-			return fmt.Errorf("module %s is not a proxy module", route.ModuleID)
+		module := modules[route.ModuleID]
+		moduleBindings, err := module.BindingsForMapping(route.Mapping)
+		if err != nil {
+			return fmt.Errorf("error in mapping entry %d - %w", route.Index, err)
 		}
-		for _, binding := range module.BindingsForHost(route.Host) {
+		for _, binding := range moduleBindings {
 			bkey := binding.Host + "\x00" + binding.Path
 			if previous, found := seenBindings[bkey]; found {
 				return fmt.Errorf(
@@ -785,23 +989,34 @@ func (ep *Enproxy) ApplyConfigStruct(config Config) error {
 				)
 			}
 			seenBindings[bkey] = route.Index
-			installer.InstallBinding(binding)
+			bindings = append(bindings, binding)
 		}
 	}
+	httpp.InstallBindings(mux, ep.log, bindings)
 
+	activations := []moduleActivation{}
 	for _, desiredModule := range desired.Modules {
-		module := modules[desiredModule.ID()]
-		if err := module.Install(installer); err != nil {
+		activation, err := modules[desiredModule.ID()].PrepareActivate()
+		if err != nil {
+			for i := len(activations) - 1; i >= 0; i-- {
+				activations[i].Rollback()
+			}
 			return err
 		}
+		activations = append(activations, activation)
 	}
 
-	for _, desiredModule := range desired.Modules {
-		if err := modules[desiredModule.ID()].Activate(); err != nil {
-			return err
+	metricsActivation := ep.moduleMetrics.Prepare(modules)
+	if err := metricsActivation.Commit(); err != nil {
+		for i := len(activations) - 1; i >= 0; i-- {
+			activations[i].Rollback()
 		}
+		return err
 	}
 
+	for _, activation := range activations {
+		activation.Commit()
+	}
 	desired.Warnings.Print(ep.log.Warnf)
 	ep.modules = modules
 	ep.domains = domains
@@ -819,6 +1034,7 @@ func (ep *Enproxy) Close() error {
 	defer ep.applyMu.Unlock()
 
 	var errs []error
+	ep.moduleMetrics.Close()
 	for _, module := range ep.modules {
 		errs = append(errs, module.Close())
 	}
@@ -851,11 +1067,6 @@ func (ep *Enproxy) RunProxy() error {
 func (ep *Enproxy) Run() error {
 	if ep.metrics != nil {
 		go ep.RunMetrics()
-	}
-	if ep.nproxy != nil {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		go ep.nproxy.Run(ctx)
 	}
 	return ep.RunProxy()
 }
