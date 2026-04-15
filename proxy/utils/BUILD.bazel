@@ -7,12 +7,16 @@ go_library(
         "clock.go",
         "counter.go",
         "host.go",
+        "metrics.go",
         "types.go",
         "whitelist.go",
     ],
     importpath = "github.com/ccontavalli/enkit/proxy/utils",
     visibility = ["//visibility:public"],
-    deps = ["//lib/oauth"],
+    deps = [
+        "//lib/oauth",
+        "@com_github_prometheus_client_golang//prometheus",
+    ],
 )
 
 go_test(

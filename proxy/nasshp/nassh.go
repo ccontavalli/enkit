@@ -1055,5 +1055,5 @@ func (np *NasshProxy) Register(add MuxHandle) {
 }
 
 func (np *NasshProxy) ExportMetrics(register prometheus.Registerer) error {
-	return register.Register((*nasshCollector)(np))
+	return register.Register(NewMetricsCollector(np))
 }
