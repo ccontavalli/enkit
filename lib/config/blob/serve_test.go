@@ -76,6 +76,237 @@ func TestServeStoreUploadDownload(t *testing.T) {
 	assert.Contains(t, resp.headers.Get("Content-Disposition"), "override.bin", "unexpected override content-disposition")
 }
 
+func TestServeStoreTokenCodecIgnoresUnsignedQueryOverrides(t *testing.T) {
+	dir := t.TempDir()
+	loader, err := directory.OpenDir(dir)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	mux := http.NewServeMux()
+	baseURL, err := ktest.StartURL(mux)
+	assert.NoError(t, err, "StartURL")
+	if err != nil {
+		return
+	}
+
+	rng := rand.New(rand.NewSource(6))
+	codec, err := NewTokenCodec(WithTokenRand(rng))
+	assert.NoError(t, err, "NewTokenCodec")
+	if err != nil {
+		return
+	}
+
+	store, err := NewServeStore(
+		loader,
+		mux.HandleFunc,
+		baseURL,
+		WithPrefix("/blobs/"),
+		WithMetadataStore(InlineMetadata{}),
+		WithCodec(codec),
+	)
+	assert.NoError(t, err, "NewServeStore")
+	if err != nil {
+		return
+	}
+
+	uploadURL, err := store.UploadURL(Key("item"), WithFilename("item.txt"), WithContentType("text/plain"))
+	assert.NoError(t, err, "UploadURL")
+	if err != nil {
+		return
+	}
+	assert.NoError(t, doRequest(http.MethodPut, uploadURL, "hello world"), "upload")
+
+	downloadURL, err := store.DownloadURL(Key("item"), WithFilename("signed.txt"), WithContentType("text/plain"))
+	assert.NoError(t, err, "DownloadURL")
+	if err != nil {
+		return
+	}
+
+	query := downloadURL.Query()
+	query.Set("filename", "unsigned.txt")
+	query.Set("content-type", "application/octet-stream")
+	query.Set("extra", "ignored")
+	downloadURL.RawQuery = query.Encode()
+
+	resp := fetch(t, downloadURL.String(), nil)
+	assert.Equal(t, http.StatusOK, resp.status, "unexpected status")
+	assert.Equal(t, "text/plain", resp.headers.Get("Content-Type"), "unexpected content-type")
+	assert.Contains(t, resp.headers.Get("Content-Disposition"), "signed.txt", "unexpected content-disposition")
+	assert.Equal(t, "hello world", string(resp.body), "unexpected body")
+}
+
+func TestServeStoreTokenCodecRejectsMissingTokenWithUnsignedQueryOverrides(t *testing.T) {
+	dir := t.TempDir()
+	loader, err := directory.OpenDir(dir)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	mux := http.NewServeMux()
+	baseURL, err := ktest.StartURL(mux)
+	assert.NoError(t, err, "StartURL")
+	if err != nil {
+		return
+	}
+
+	rng := rand.New(rand.NewSource(16))
+	codec, err := NewTokenCodec(WithTokenRand(rng))
+	assert.NoError(t, err, "NewTokenCodec")
+	if err != nil {
+		return
+	}
+
+	store, err := NewServeStore(
+		loader,
+		mux.HandleFunc,
+		baseURL,
+		WithPrefix("/blobs/"),
+		WithMetadataStore(InlineMetadata{}),
+		WithCodec(codec),
+	)
+	assert.NoError(t, err, "NewServeStore")
+	if err != nil {
+		return
+	}
+
+	uploadURL, err := store.UploadURL(Key("item"), WithFilename("item.txt"), WithContentType("text/plain"))
+	assert.NoError(t, err, "UploadURL")
+	if err != nil {
+		return
+	}
+	assert.NoError(t, doRequest(http.MethodPut, uploadURL, "hello world"), "upload")
+
+	downloadURL, err := store.DownloadURL(Key("item"), WithFilename("signed.txt"), WithContentType("text/plain"))
+	assert.NoError(t, err, "DownloadURL")
+	if err != nil {
+		return
+	}
+
+	query := downloadURL.Query()
+	query.Del("token")
+	query.Set("filename", "unsigned.txt")
+	query.Set("content-type", "application/octet-stream")
+	downloadURL.RawQuery = query.Encode()
+
+	resp := fetch(t, downloadURL.String(), nil)
+	assert.Equal(t, http.StatusBadRequest, resp.status, "unexpected status")
+}
+
+func TestServeStoreTokenParamsCodecBindsClearPathKey(t *testing.T) {
+	dir := t.TempDir()
+	loader, err := directory.OpenDir(dir)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	mux := http.NewServeMux()
+	baseURL, err := ktest.StartURL(mux)
+	assert.NoError(t, err, "StartURL")
+	if err != nil {
+		return
+	}
+
+	rng := rand.New(rand.NewSource(7))
+	codec, err := NewTokenParamsCodec(rng, "token")
+	assert.NoError(t, err, "NewTokenParamsCodec")
+	if err != nil {
+		return
+	}
+
+	store, err := NewServeStore(
+		loader,
+		mux.HandleFunc,
+		baseURL,
+		WithPrefix("/blobs/"),
+		WithMetadataStore(InlineMetadata{}),
+		WithCodec(codec),
+	)
+	assert.NoError(t, err, "NewServeStore")
+	if err != nil {
+		return
+	}
+
+	uploadURL, err := store.UploadURL(Key("item"), WithFilename("item.txt"), WithContentType("text/plain"))
+	assert.NoError(t, err, "UploadURL")
+	if err != nil {
+		return
+	}
+	assert.NoError(t, doRequest(http.MethodPut, uploadURL, "hello world"), "upload")
+
+	downloadURL, err := store.DownloadURL(Key("item"), WithFilename("signed.txt"), WithContentType("text/plain"))
+	assert.NoError(t, err, "DownloadURL")
+	if err != nil {
+		return
+	}
+
+	tamperedURL := *downloadURL
+	tamperedURL.Path = "/blobs/download/other"
+
+	resp := fetch(t, tamperedURL.String(), nil)
+	assert.Equal(t, http.StatusBadRequest, resp.status, "unexpected status")
+	assert.NotEmpty(t, string(resp.body), "unexpected empty error")
+}
+
+func TestServeStoreTokenParamsCodecRejectsMissingToken(t *testing.T) {
+	dir := t.TempDir()
+	loader, err := directory.OpenDir(dir)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	mux := http.NewServeMux()
+	baseURL, err := ktest.StartURL(mux)
+	assert.NoError(t, err, "StartURL")
+	if err != nil {
+		return
+	}
+
+	rng := rand.New(rand.NewSource(17))
+	codec, err := NewTokenParamsCodec(rng, "token")
+	assert.NoError(t, err, "NewTokenParamsCodec")
+	if err != nil {
+		return
+	}
+
+	store, err := NewServeStore(
+		loader,
+		mux.HandleFunc,
+		baseURL,
+		WithPrefix("/blobs/"),
+		WithMetadataStore(InlineMetadata{}),
+		WithCodec(codec),
+	)
+	assert.NoError(t, err, "NewServeStore")
+	if err != nil {
+		return
+	}
+
+	uploadURL, err := store.UploadURL(Key("item"), WithFilename("item.txt"), WithContentType("text/plain"))
+	assert.NoError(t, err, "UploadURL")
+	if err != nil {
+		return
+	}
+	assert.NoError(t, doRequest(http.MethodPut, uploadURL, "hello world"), "upload")
+
+	downloadURL, err := store.DownloadURL(Key("item"), WithFilename("signed.txt"), WithContentType("text/plain"))
+	assert.NoError(t, err, "DownloadURL")
+	if err != nil {
+		return
+	}
+
+	query := downloadURL.Query()
+	query.Del("token")
+	downloadURL.RawQuery = query.Encode()
+
+	resp := fetch(t, downloadURL.String(), nil)
+	assert.Equal(t, http.StatusBadRequest, resp.status, "unexpected status")
+}
+
 func ExampleServeStore() {
 	dir, err := os.MkdirTemp("", "blob-serve")
 	if err != nil {
@@ -267,7 +498,7 @@ func TestTokenPathPayloadDeterministic(t *testing.T) {
 	params.Add("a", "1")
 	params.Add("a", "0")
 
-	payload := tokenPathPayload{
+	payload := tokenKeyParamsPayload{
 		Key:    "key",
 		Params: encodeTokenParams(params),
 	}

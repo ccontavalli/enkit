@@ -47,11 +47,14 @@ import (
 //  6. Build key/params codecs directly from modifiers:
 //     rng := rand.New(rand.NewSource(seed))
 //     keyCodec, err := NewTokenKeyCodec(rng, WithEncoderValidity(time.Hour))
+//     paramsOnlyCodec, err := NewTokenParamsOnlyCodec(rng, "token", WithEncoderValidity(time.Hour))
 //     paramsCodec, err := NewTokenParamsCodec(rng, "token", WithEncoderValidity(time.Hour))
 //
 // URLCodec encodes and decodes URL paths and query parameters.
 //
-// Decode should ignore parameters it does not understand and leave them as-is.
+// Decode semantics for unrelated query parameters are codec-specific. Some
+// codecs preserve them, while others intentionally discard them once an
+// authenticated token is present.
 type URLCodec interface {
 	Encode(key string, params url.Values) (encodedKey string, encodedParams url.Values, err error)
 	Decode(encodedKey string, encodedParams url.Values) (key string, params url.Values, err error)
@@ -81,19 +84,28 @@ type tokenParamEntry struct {
 	Values []string `json:"values,omitempty"`
 }
 
-type tokenPathPayload struct {
+type tokenKeyParamsPayload struct {
 	Key    string            `json:"key"`
 	Params []tokenParamEntry `json:"params,omitempty"`
 }
 
-// TokenParamsCodec signs or encrypts parameters into a single token query field.
-type TokenParamsCodec struct {
+// TokenParamsOnlyCodec signs or encrypts parameters into a single token query field.
+//
+// If a token is present on decode, the decoded token payload is authoritative
+// and any other query parameters are ignored.
+type TokenParamsOnlyCodec struct {
 	enc       *token.TypeEncoder
 	paramName string
 }
 
-// NewTokenParamsCodec creates a token-based codec using encoder modifiers.
-func NewTokenParamsCodec(rng *rand.Rand, paramName string, mods ...TokenEncoderOption) (*TokenParamsCodec, error) {
+func normalizeTokenParamName(paramName string) string {
+	if paramName == "" {
+		return "token"
+	}
+	return paramName
+}
+
+func newTokenTypeEncoder(rng *rand.Rand, mods ...TokenEncoderOption) (*token.TypeEncoder, error) {
 	opts := tokenEncoderOptions{}
 	TokenEncoderOptions(mods).Apply(&opts)
 	enc := opts.encoder
@@ -111,20 +123,77 @@ func NewTokenParamsCodec(rng *rand.Rand, paramName string, mods ...TokenEncoderO
 			return nil, err
 		}
 	}
-	if paramName == "" {
-		paramName = "token"
-	}
 	typeSetters := append([]token.TypeEncoderSetter{
 		token.WithMarshaller(marshal.Json),
 	}, opts.typeSetters...)
+	return token.NewTypeEncoder(enc, typeSetters...), nil
+}
+
+// NewTokenParamsOnlyCodec creates a token-based codec using encoder modifiers.
+func NewTokenParamsOnlyCodec(rng *rand.Rand, paramName string, mods ...TokenEncoderOption) (*TokenParamsOnlyCodec, error) {
+	enc, err := newTokenTypeEncoder(rng, mods...)
+	if err != nil {
+		return nil, err
+	}
+	return &TokenParamsOnlyCodec{
+		enc:       enc,
+		paramName: normalizeTokenParamName(paramName),
+	}, nil
+}
+
+func (c *TokenParamsOnlyCodec) Encode(key string, params url.Values) (string, url.Values, error) {
+	raw, err := c.enc.Encode(encodeTokenParams(params))
+	if err != nil {
+		return "", nil, err
+	}
+	values := url.Values{}
+	values.Set(c.paramName, string(raw))
+	return key, values, nil
+}
+
+func (c *TokenParamsOnlyCodec) Decode(key string, encodedParams url.Values) (string, url.Values, error) {
+	values := url.Values{}
+	for k, v := range encodedParams {
+		values[k] = append([]string(nil), v...)
+	}
+	tokenValue := values.Get(c.paramName)
+	if tokenValue == "" {
+		return "", nil, fmt.Errorf("missing signed params token %q", c.paramName)
+	}
+	var payload []tokenParamEntry
+	if _, err := c.enc.Decode(context.Background(), []byte(tokenValue), &payload); err != nil {
+		return "", nil, err
+	}
+	return key, decodeTokenParams(payload), nil
+}
+
+// TokenParamsCodec signs or encrypts key-bound parameters into a single token query field.
+//
+// The cleartext path key remains unchanged and is bound to the token via
+// associated data. If a token is present on decode, the decoded token payload
+// is authoritative and any other query parameters are ignored.
+type TokenParamsCodec struct {
+	enc       *token.TypeEncoder
+	paramName string
+}
+
+// NewTokenParamsCodec creates a key-binding token codec using encoder modifiers.
+func NewTokenParamsCodec(rng *rand.Rand, paramName string, mods ...TokenEncoderOption) (*TokenParamsCodec, error) {
+	enc, err := newTokenTypeEncoder(rng, mods...)
+	if err != nil {
+		return nil, err
+	}
+	if !enc.SupportsAssociatedData() {
+		return nil, fmt.Errorf("token params codec requires an encoder supporting associated data: %w", token.ErrAssociatedDataUnsupported)
+	}
 	return &TokenParamsCodec{
-		enc:       token.NewTypeEncoder(enc, typeSetters...),
-		paramName: paramName,
+		enc:       enc,
+		paramName: normalizeTokenParamName(paramName),
 	}, nil
 }
 
 func (c *TokenParamsCodec) Encode(key string, params url.Values) (string, url.Values, error) {
-	raw, err := c.enc.Encode(encodeTokenParams(params))
+	raw, err := c.enc.EncodeWithAssociatedData(encodeTokenParams(params), []byte(key))
 	if err != nil {
 		return "", nil, err
 	}
@@ -140,20 +209,13 @@ func (c *TokenParamsCodec) Decode(key string, encodedParams url.Values) (string,
 	}
 	tokenValue := values.Get(c.paramName)
 	if tokenValue == "" {
-		return key, values, nil
+		return "", nil, fmt.Errorf("missing signed params token %q", c.paramName)
 	}
 	var payload []tokenParamEntry
-	if _, err := c.enc.Decode(context.Background(), []byte(tokenValue), &payload); err != nil {
+	if _, err := c.enc.DecodeWithAssociatedData(context.Background(), []byte(tokenValue), []byte(key), &payload); err != nil {
 		return "", nil, err
 	}
-	delete(values, c.paramName)
-	decoded := decodeTokenParams(payload)
-	for k, v := range decoded {
-		for _, value := range v {
-			values.Add(k, value)
-		}
-	}
-	return key, values, nil
+	return key, decodeTokenParams(payload), nil
 }
 
 // TokenKeyCodec signs or encrypts keys into a token-safe string.
@@ -229,7 +291,7 @@ func NewTokenPathCodec(rng *rand.Rand, mods ...TokenEncoderOption) (*TokenPathCo
 }
 
 func (c TokenPathCodec) Encode(key string, params url.Values) (string, url.Values, error) {
-	raw, err := c.enc.Encode(tokenPathPayload{Key: key, Params: encodeTokenParams(params)})
+	raw, err := c.enc.Encode(tokenKeyParamsPayload{Key: key, Params: encodeTokenParams(params)})
 	if err != nil {
 		return "", nil, err
 	}
@@ -237,7 +299,7 @@ func (c TokenPathCodec) Encode(key string, params url.Values) (string, url.Value
 }
 
 func (c TokenPathCodec) Decode(encodedKey string, encodedParams url.Values) (string, url.Values, error) {
-	var payload tokenPathPayload
+	var payload tokenKeyParamsPayload
 	if _, err := c.enc.Decode(context.Background(), []byte(encodedKey), &payload); err != nil {
 		return "", nil, err
 	}
@@ -358,6 +420,11 @@ func WithTokenFlags(flags *TokenCodecFlags) TokenCodecOption {
 	}
 }
 
+// NewTokenCodec returns the default split-token configuration: TokenKeyCodec
+// for the path and TokenParamsOnlyCodec for the query parameters.
+//
+// TokenParamsCodec is kept opt-in so callers can explicitly choose between the
+// existing split-token shape and the clear-path, key-bound query-token shape.
 func NewTokenCodec(mods ...TokenCodecOption) (*TokenCodec, error) {
 	opts := tokenCodecOptions{}
 	for _, mod := range mods {
@@ -394,7 +461,7 @@ func NewTokenCodec(mods ...TokenCodecOption) (*TokenCodec, error) {
 	if err != nil {
 		return nil, err
 	}
-	paramsCodec, err := NewTokenParamsCodec(nil, "token", WithEncoder(enc))
+	paramsCodec, err := NewTokenParamsOnlyCodec(nil, "token", WithEncoder(enc))
 	if err != nil {
 		return nil, err
 	}
