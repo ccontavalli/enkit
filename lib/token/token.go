@@ -36,6 +36,7 @@ package token
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 )
 
@@ -56,6 +57,62 @@ type BinaryEncoder interface {
 	// The context can be used to access additional metadata.
 	// See examples below.
 	Decode(context.Context, []byte) (context.Context, []byte, error)
+}
+
+// AssociatedDataEncoder augments BinaryEncoder with support for authenticating
+// external associated data alongside the encoded payload.
+type AssociatedDataEncoder interface {
+	EncodeWithAssociatedData([]byte, []byte) ([]byte, error)
+	DecodeWithAssociatedData(context.Context, []byte, []byte) (context.Context, []byte, error)
+}
+
+// ErrAssociatedDataUnsupported is returned when non-empty associated data is
+// supplied to an encoder that does not support it.
+var ErrAssociatedDataUnsupported = errors.New("associated data unsupported")
+
+// EncodeWithAssociatedData invokes be with associated data when supported.
+//
+// If aad is empty, it falls back to the encoder's regular Encode method.
+func EncodeWithAssociatedData(be BinaryEncoder, data, aad []byte) ([]byte, error) {
+	if len(aad) == 0 {
+		return be.Encode(data)
+	}
+	if ade, ok := be.(AssociatedDataEncoder); ok {
+		return ade.EncodeWithAssociatedData(data, aad)
+	}
+	return nil, ErrAssociatedDataUnsupported
+}
+
+// DecodeWithAssociatedData invokes be with associated data when supported.
+//
+// If aad is empty, it falls back to the encoder's regular Decode method.
+func DecodeWithAssociatedData(be BinaryEncoder, ctx context.Context, data, aad []byte) (context.Context, []byte, error) {
+	if len(aad) == 0 {
+		return be.Decode(ctx, data)
+	}
+	if ade, ok := be.(AssociatedDataEncoder); ok {
+		return ade.DecodeWithAssociatedData(ctx, data, aad)
+	}
+	return ctx, nil, ErrAssociatedDataUnsupported
+}
+
+// SupportsAssociatedData reports whether the encoder can actually authenticate
+// non-empty associated data.
+func SupportsAssociatedData(be BinaryEncoder) bool {
+	if be == nil {
+		return false
+	}
+	if ce, ok := be.(*ChainedEncoder); ok {
+		encs := []BinaryEncoder(*ce)
+		for _, enc := range encs {
+			if SupportsAssociatedData(enc) {
+				return true
+			}
+		}
+		return false
+	}
+	_, ok := be.(AssociatedDataEncoder)
+	return ok
 }
 
 // ChainedEncoder is a set of BinaryEncoders to be applied in sequence.
@@ -80,6 +137,27 @@ func (ce *ChainedEncoder) Encode(data []byte) ([]byte, error) {
 	return data, nil
 }
 
+func (ce *ChainedEncoder) EncodeWithAssociatedData(data, aad []byte) ([]byte, error) {
+	encs := ([]BinaryEncoder)(*ce)
+	used := len(aad) == 0
+	for _, enc := range encs {
+		var err error
+		if ade, ok := enc.(AssociatedDataEncoder); ok {
+			data, err = ade.EncodeWithAssociatedData(data, aad)
+			used = true
+		} else {
+			data, err = enc.Encode(data)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	if !used {
+		return nil, ErrAssociatedDataUnsupported
+	}
+	return data, nil
+}
+
 func (ce *ChainedEncoder) Decode(ctx context.Context, data []byte) (context.Context, []byte, error) {
 	encs := ([]BinaryEncoder)(*ce)
 	var first error
@@ -96,6 +174,37 @@ func (ce *ChainedEncoder) Decode(ctx context.Context, data []byte) (context.Cont
 				break
 			}
 		}
+	}
+	return ctx, data, first
+}
+
+func (ce *ChainedEncoder) DecodeWithAssociatedData(ctx context.Context, data, aad []byte) (context.Context, []byte, error) {
+	encs := ([]BinaryEncoder)(*ce)
+	var first error
+	supported := len(aad) == 0 || SupportsAssociatedData(ce)
+	for ix := range encs {
+		enc := encs[len(encs)-ix-1]
+
+		var err error
+		if ade, ok := enc.(AssociatedDataEncoder); ok {
+			ctx, data, err = ade.DecodeWithAssociatedData(ctx, data, aad)
+		} else {
+			ctx, data, err = enc.Decode(ctx, data)
+		}
+		if err != nil {
+			if first == nil {
+				first = err
+			}
+			if data == nil {
+				break
+			}
+		}
+	}
+	if !supported {
+		if first != nil {
+			return ctx, nil, errors.Join(first, ErrAssociatedDataUnsupported)
+		}
+		return ctx, nil, ErrAssociatedDataUnsupported
 	}
 	return ctx, data, first
 }
@@ -137,6 +246,13 @@ func NewTypeEncoder(be BinaryEncoder, setter ...TypeEncoderSetter) *TypeEncoder 
 	return te
 }
 
+func (t *TypeEncoder) SupportsAssociatedData() bool {
+	if t == nil {
+		return false
+	}
+	return SupportsAssociatedData(t.be)
+}
+
 func (t *TypeEncoder) Encode(data interface{}) ([]byte, error) {
 	buffer, err := t.ma.Marshal(data)
 	if err != nil {
@@ -145,8 +261,31 @@ func (t *TypeEncoder) Encode(data interface{}) ([]byte, error) {
 	return t.be.Encode(buffer)
 }
 
+func (t *TypeEncoder) EncodeWithAssociatedData(data interface{}, aad []byte) ([]byte, error) {
+	buffer, err := t.ma.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	return EncodeWithAssociatedData(t.be, buffer, aad)
+}
+
 func (t *TypeEncoder) Decode(ctx context.Context, data []byte, output interface{}) (context.Context, error) {
 	ctx, data, derr := t.be.Decode(ctx, data)
+	if data == nil && derr != nil {
+		return ctx, derr
+	}
+
+	nerr := t.ma.Unmarshal(data, output)
+
+	err := derr
+	if err == nil {
+		err = nerr
+	}
+	return ctx, err
+}
+
+func (t *TypeEncoder) DecodeWithAssociatedData(ctx context.Context, data, aad []byte, output interface{}) (context.Context, error) {
+	ctx, data, derr := DecodeWithAssociatedData(t.be, ctx, data, aad)
 	if data == nil && derr != nil {
 		return ctx, derr
 	}

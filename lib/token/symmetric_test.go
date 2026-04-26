@@ -104,3 +104,25 @@ func TestSymmetricNonceHelpers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, SymmetricNonceSize(), len(nonce))
 }
+
+func TestSymmetricAssociatedData(t *testing.T) {
+	rng := rand.New(rand.NewSource(5))
+	be, err := NewSymmetricEncoder(rng, WithGeneratedSymmetricKey(128))
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	data, err := be.EncodeWithAssociatedData([]byte("payload"), []byte("key"))
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+
+	_, original, err := be.DecodeWithAssociatedData(context.Background(), data, []byte("key"))
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("payload"), original)
+
+	_, _, err = be.DecodeWithAssociatedData(context.Background(), data, []byte("other"))
+	assert.Error(t, err)
+}

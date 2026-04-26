@@ -222,6 +222,10 @@ var SymmetricCreator CryptoFactory = func(rng *rand.Rand, key []byte) (BinaryEnc
 }
 
 func (t *SymmetricEncoder) Encode(data []byte) ([]byte, error) {
+	return t.EncodeWithAssociatedData(data, nil)
+}
+
+func (t *SymmetricEncoder) EncodeWithAssociatedData(data, aad []byte) ([]byte, error) {
 	var nonce []byte
 	if len(t.nonce) > 0 {
 		nonce = t.nonce
@@ -239,11 +243,15 @@ func (t *SymmetricEncoder) Encode(data []byte) ([]byte, error) {
 		}
 	}
 
-	ciphertext := t.cipher.Seal(nonce, nonce, data, nil)
+	ciphertext := t.cipher.Seal(nonce, nonce, data, aad)
 	return ciphertext, nil
 }
 
 func (t *SymmetricEncoder) Decode(ctx context.Context, ciphertext []byte) (context.Context, []byte, error) {
+	return t.DecodeWithAssociatedData(ctx, ciphertext, nil)
+}
+
+func (t *SymmetricEncoder) DecodeWithAssociatedData(ctx context.Context, ciphertext, aad []byte) (context.Context, []byte, error) {
 	if len(ciphertext) < t.cipher.NonceSize() {
 		return ctx, nil, fmt.Errorf("ciphertext too short to contain nonce")
 	}
@@ -251,7 +259,7 @@ func (t *SymmetricEncoder) Decode(ctx context.Context, ciphertext []byte) (conte
 	nonce := ciphertext[:t.cipher.NonceSize()]
 	ciphertext = ciphertext[t.cipher.NonceSize():]
 
-	plaintext, err := t.cipher.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := t.cipher.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
 		return ctx, nil, err
 	}
