@@ -3,7 +3,6 @@ package main
 import (
 	"strings"
 
-	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/khttp"
 	"github.com/ccontavalli/enkit/proxy/enproxy"
@@ -83,47 +82,4 @@ func legacyNasshMapping(relayHost string) (enproxy.Mapping, error) {
 		},
 		Target: enproxy.Target{Nassh: target},
 	}, nil
-}
-
-func loadBinding(binding config.Binding, relayHost string) (enproxy.Config, bool, error) {
-	var current enproxy.Config
-	if err := binding.Unmarshal(&current); err == nil {
-		_, _, parseErr := current.Parse()
-		if parseErr == nil {
-			return current, false, nil
-		}
-
-		var legacy legacyConfig
-		if legacyErr := binding.Unmarshal(&legacy); legacyErr == nil && legacy.looksLegacy() {
-			upgraded, err := legacy.upgrade(relayHost)
-			if err != nil {
-				return enproxy.Config{}, false, err
-			}
-			if _, _, err := (&upgraded).Parse(); err != nil {
-				return enproxy.Config{}, false, err
-			}
-			return upgraded, true, nil
-		}
-		return enproxy.Config{}, false, parseErr
-	}
-
-	var legacy legacyConfig
-	if err := binding.Unmarshal(&legacy); err == nil && legacy.looksLegacy() {
-		upgraded, err := legacy.upgrade(relayHost)
-		if err != nil {
-			return enproxy.Config{}, false, err
-		}
-		if _, _, err := (&upgraded).Parse(); err != nil {
-			return enproxy.Config{}, false, err
-		}
-		return upgraded, true, nil
-	}
-
-	var currentErr error
-	if err := binding.Unmarshal(&current); err == nil {
-		_, _, currentErr = current.Parse()
-	} else {
-		currentErr = err
-	}
-	return enproxy.Config{}, false, currentErr
 }

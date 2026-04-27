@@ -7,105 +7,55 @@ import (
 	"strings"
 
 	"github.com/ccontavalli/enkit/lib/config"
-	"github.com/ccontavalli/enkit/lib/config/factory"
 	"github.com/ccontavalli/enkit/lib/config/marshal"
 	"github.com/ccontavalli/enkit/lib/kflags"
 	"github.com/ccontavalli/enkit/lib/kflags/kcobra"
+	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/ccontavalli/enkit/lib/srand"
 	"github.com/ccontavalli/enkit/proxy/enproxy"
 	"github.com/spf13/cobra"
 )
 
-type ConfigFlags struct {
-	Store     *factory.Flags
-	Path      string
-	RelayHost string
+const legacyConfigMessage = "selected config uses the legacy enproxy format; run `enproxyctl config update` first"
+
+func rejectLegacyConfig() error {
+	return kflags.NewUsageErrorf(legacyConfigMessage)
 }
 
-func DefaultConfigFlags() *ConfigFlags {
-	return &ConfigFlags{
-		Store: factory.DefaultAppConfigFlags(),
-	}
-}
-
-func (cf *ConfigFlags) Register(set kflags.FlagSet) *ConfigFlags {
-	cf.Store.Register(set, "")
-	set.StringVar(&cf.Path, "config", cf.Path,
-		"Path of the enproxy config entry to load from the configured config store. Directory-backed stores accept filesystem paths; other backends typically use app/ns/key.")
-	set.StringVar(&cf.RelayHost, "host-port", cf.RelayHost,
-		"Relay hostname and port to embed when upgrading legacy configs with tunnels.")
-	return cf
-}
-
-func (cf *ConfigFlags) Open(rng *rand.Rand) (config.StoreWorkspace, config.Store, config.Binding, error) {
-	path := strings.TrimSpace(cf.Path)
-	storeFlags := cf.Store
-	if path != "" && storeFlags.Directory.Path == "" {
-		flagsClone := *storeFlags
-		dirClone := *storeFlags.Directory
-		dirClone.Path = "/"
-		flagsClone.Directory = &dirClone
-		storeFlags = &flagsClone
+func currentConfigOrRejectLegacy(binding config.Binding, normalizer *enproxy.ConfigNormalizer) (enproxy.Config, enproxy.Warnings, error) {
+	current, warnings, err := normalizer.ParseConfigBinding(binding)
+	if err == nil {
+		return current, warnings, nil
 	}
 
-	workspace, err := factory.NewStore(rng, factory.FromFlags(storeFlags))
-	if err != nil {
-		return nil, nil, nil, err
+	var legacy legacyConfig
+	if legacyErr := binding.Unmarshal(&legacy); legacyErr == nil && legacy.looksLegacy() {
+		return enproxy.Config{}, nil, rejectLegacyConfig()
 	}
-
-	parsed := config.ParsedPath{}
-	if path != "" {
-		parsed, err = config.ResolvePathNative(workspace, path)
-	} else {
-		parsed, err = config.ResolvePathWithinStore(config.StoreRoot{AppName: "enproxy"}, "enproxy")
-	}
-	if err != nil {
-		_ = workspace.Close()
-		return nil, nil, nil, err
-	}
-
-	store, err := parsed.OpenStore(workspace)
-	if err != nil {
-		_ = workspace.Close()
-		target := "enproxy/enproxy"
-		if path != "" {
-			target = path
-		}
-		return nil, nil, nil, fmt.Errorf("failed to open config namespace for %q: %w", target, err)
-	}
-
-	return workspace, store, parsed.Bind(store), nil
-}
-
-func loadConfig(binding config.Binding, relayHost string) (enproxy.Config, enproxy.Warnings, bool, error) {
-	cfg, legacy, err := loadBinding(binding, relayHost)
-	if err != nil {
-		return enproxy.Config{}, nil, false, err
-	}
-
-	_, warnings, err := cfg.Parse()
-	if err != nil {
-		return enproxy.Config{}, nil, false, err
-	}
-	return cfg, warnings, legacy, nil
+	return enproxy.Config{}, nil, err
 }
 
 func loadLegacyConfig(binding config.Binding, relayHost string) (legacyConfig, error) {
 	var legacy legacyConfig
+	if err := binding.Unmarshal(&legacy); err == nil && legacy.looksLegacy() {
+		upgraded, err := legacy.upgrade(relayHost)
+		if err != nil {
+			return legacyConfig{}, err
+		}
+		if _, _, err := (&upgraded).Parse(); err != nil {
+			return legacyConfig{}, err
+		}
+		return legacy, nil
+	}
+
+	if _, _, err := enproxy.ParseConfigBinding(binding, relayHost); err == nil {
+		return legacyConfig{}, kflags.NewUsageErrorf("selected config is already in the current enproxy format")
+	}
+
 	if err := binding.Unmarshal(&legacy); err != nil {
 		return legacyConfig{}, err
 	}
-	if !legacy.looksLegacy() {
-		return legacyConfig{}, kflags.NewUsageErrorf("selected config is not in the legacy enproxy format")
-	}
-	upgraded, err := legacy.upgrade(relayHost)
-	if err != nil {
-		return legacyConfig{}, err
-	}
-	if _, _, err := (&upgraded).Parse(); err != nil {
-		return legacyConfig{}, err
-	}
-	return legacy, nil
+	return legacyConfig{}, kflags.NewUsageErrorf("selected config is not in the legacy enproxy format")
 }
 
 func printWarnings(out io.Writer, warnings enproxy.Warnings) {
@@ -114,65 +64,92 @@ func printWarnings(out io.Writer, warnings enproxy.Warnings) {
 	}
 }
 
-func marshalConfig(cfg enproxy.Config, format string) ([]byte, error) {
-	marshaller := marshal.ByFormat(format)
-	if marshaller == nil {
-		return nil, kflags.NewUsageErrorf("unknown output format %q", format)
+func loadableCurrentConfig(rng *rand.Rand, flags *enproxy.Flags, current enproxy.Config) error {
+	mods, err := enproxy.RuntimeModifiersFromFlags(flags)
+	if err != nil {
+		return err
 	}
-	return marshaller.Marshal(cfg)
+	mods = append(mods, enproxy.WithConfig(current), enproxy.WithLogging(logger.Nil))
+	ep, err := enproxy.New(rng, mods...)
+	if err != nil {
+		return err
+	}
+	return ep.Close()
 }
 
-func NewConfigCheckCommand(rng *rand.Rand, flags *ConfigFlags) *cobra.Command {
+func NewConfigCheckCommand(rng *rand.Rand, flags *enproxy.Flags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Validate the selected enproxy config",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workspace, store, binding, err := flags.Open(rng)
+			normalizer, err := enproxy.NewConfigNormalizer(
+				strings.TrimSpace(flags.Nassh.RelayHost),
+				flags.DisabledAuthentication,
+				flags.UnsafeIgnoreAuthentication,
+			)
+			if err != nil {
+				return err
+			}
+
+			workspace, store, binding, _, err := enproxy.OpenConfigBinding(rng, flags)
 			if err != nil {
 				return err
 			}
 			defer workspace.Close()
 			defer store.Close()
 
-			_, warnings, legacy, err := loadConfig(binding, flags.RelayHost)
+			current, warnings, err := currentConfigOrRejectLegacy(binding, normalizer)
 			if err != nil {
-				return err
-			}
-			if legacy {
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: selected config uses the legacy enproxy format; run `enproxyctl config update` to rewrite it")
+				if err.Error() == legacyConfigMessage {
+					return err
+				}
+				return fmt.Errorf("selected config is not loadable: %w", err)
 			}
 			printWarnings(cmd.ErrOrStderr(), warnings)
+			if err := loadableCurrentConfig(rng, flags, current); err != nil {
+				return fmt.Errorf("selected config is not loadable: %w", err)
+			}
 			return nil
 		},
 	}
 	return cmd
 }
 
-func NewConfigPrintCommand(rng *rand.Rand, flags *ConfigFlags) *cobra.Command {
+func NewConfigPrintCommand(rng *rand.Rand, flags *enproxy.Flags) *cobra.Command {
 	format := "yaml"
 	cmd := &cobra.Command{
 		Use:   "print",
-		Short: "Print the selected enproxy config after loading and normalization",
+		Short: "Print the selected effective enproxy config",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workspace, store, binding, err := flags.Open(rng)
+			normalizer, err := enproxy.NewConfigNormalizer(
+				strings.TrimSpace(flags.Nassh.RelayHost),
+				flags.DisabledAuthentication,
+				flags.UnsafeIgnoreAuthentication,
+			)
+			if err != nil {
+				return err
+			}
+
+			workspace, store, binding, _, err := enproxy.OpenConfigBinding(rng, flags)
 			if err != nil {
 				return err
 			}
 			defer workspace.Close()
 			defer store.Close()
 
-			cfg, warnings, legacy, err := loadConfig(binding, flags.RelayHost)
+			current, warnings, err := currentConfigOrRejectLegacy(binding, normalizer)
 			if err != nil {
 				return err
 			}
-			if legacy {
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: selected config uses the legacy enproxy format; printing the upgraded config in the current format")
-			}
 			printWarnings(cmd.ErrOrStderr(), warnings)
 
-			data, err := marshalConfig(cfg, format)
+			marshaller := marshal.ByFormat(format)
+			if marshaller == nil {
+				return kflags.NewUsageErrorf("unknown output format %q", format)
+			}
+			data, err := marshaller.Marshal(current)
 			if err != nil {
 				return err
 			}
@@ -189,24 +166,25 @@ func NewConfigPrintCommand(rng *rand.Rand, flags *ConfigFlags) *cobra.Command {
 	return cmd
 }
 
-func NewConfigUpdateCommand(rng *rand.Rand, flags *ConfigFlags) *cobra.Command {
+func NewConfigUpdateCommand(rng *rand.Rand, flags *enproxy.Flags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Rewrite a legacy enproxy config into the current format",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workspace, store, binding, err := flags.Open(rng)
+			workspace, store, binding, _, err := enproxy.OpenConfigBinding(rng, flags)
 			if err != nil {
 				return err
 			}
 			defer workspace.Close()
 			defer store.Close()
 
-			legacy, err := loadLegacyConfig(binding, flags.RelayHost)
+			relayHost := strings.TrimSpace(flags.Nassh.RelayHost)
+			legacy, err := loadLegacyConfig(binding, relayHost)
 			if err != nil {
 				return err
 			}
-			upgraded, err := legacy.upgrade(flags.RelayHost)
+			upgraded, err := legacy.upgrade(relayHost)
 			if err != nil {
 				return err
 			}
@@ -219,7 +197,7 @@ func NewConfigUpdateCommand(rng *rand.Rand, flags *ConfigFlags) *cobra.Command {
 	return cmd
 }
 
-func NewConfigCommand(rng *rand.Rand, flags *ConfigFlags) *cobra.Command {
+func NewConfigCommand(rng *rand.Rand, flags *enproxy.Flags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Query and rewrite enproxy configuration",
@@ -240,7 +218,7 @@ func NewRoot(rng *rand.Rand) *cobra.Command {
 		SilenceErrors: true,
 	}
 
-	flags := DefaultConfigFlags().Register(&kcobra.FlagSet{FlagSet: root.PersistentFlags()})
+	flags := enproxy.DefaultFlags().Register(&kcobra.FlagSet{FlagSet: root.PersistentFlags()}, "")
 	root.AddCommand(NewConfigCommand(rng, flags))
 	return root
 }

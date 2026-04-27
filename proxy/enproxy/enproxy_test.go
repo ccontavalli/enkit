@@ -21,6 +21,7 @@ import (
 	"github.com/ccontavalli/enkit/proxy/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"io"
 	"log"
 	"math/rand"
@@ -28,6 +29,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -160,6 +162,17 @@ func NasshMapping(host string) Mapping {
 	}
 }
 
+func MetricsMapping(host, path string) Mapping {
+	return Mapping{
+		From: httpp.HostPath{
+			Host: host,
+			Path: path,
+		},
+		Auth:   httpp.MappingPublic,
+		Target: Target{Metrics: &MetricsTarget{}},
+	}
+}
+
 func singleProxyModule(t *testing.T, modules map[string]runtimeModule) *proxyRuntimeModule {
 	proxies := []*proxyRuntimeModule{}
 	for _, module := range modules {
@@ -182,6 +195,44 @@ func proxyModuleForMapping(t *testing.T, modules map[string]runtimeModule, mappi
 	proxy, ok := module.(*proxyRuntimeModule)
 	assert.True(t, ok)
 	return proxy
+}
+
+func sameProxyHandlerCache(one, two *proxyRuntimeModule) bool {
+	return reflect.ValueOf(one.handlers).Pointer() == reflect.ValueOf(two.handlers).Pointer()
+}
+
+func samePrometheusValue(one, two interface{}) bool {
+	if one == nil || two == nil {
+		return one == two
+	}
+	return reflect.ValueOf(one).Pointer() == reflect.ValueOf(two).Pointer()
+}
+
+func TestNormalizeConfigMaterializesRepresentableDefaults(t *testing.T) {
+	normalized, err := NormalizeConfig(Config{
+		Domains: []string{" Example.COM:443 ", "example.com"},
+		Mapping: []Mapping{
+			{
+				From:   httpp.HostPath{Host: " FRONTEND.TEST ", Path: ""},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+			{
+				From:   httpp.HostPath{Path: ""},
+				Target: Target{Nassh: &NasshTarget{}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}, "relay.example.com:443")
+	require.NoError(t, err)
+	require.Len(t, normalized.Mapping, 2)
+	require.NotNil(t, normalized.Mapping[0].Target.Nassh)
+	require.NotNil(t, normalized.Mapping[1].Target.Nassh)
+	assert.Equal(t, []string{"example.com"}, normalized.Domains)
+	assert.Equal(t, "frontend.test", normalized.Mapping[0].From.Host)
+	assert.Equal(t, "/", normalized.Mapping[0].From.Path)
+	assert.Equal(t, "frontend.test", normalized.Mapping[0].Target.Nassh.RelayHost)
+	assert.Equal(t, "/", normalized.Mapping[1].From.Path)
+	assert.Equal(t, "relay.example.com:443", normalized.Mapping[1].Target.Nassh.RelayHost)
 }
 
 func countProxyModules(modules map[string]runtimeModule) int {
@@ -306,6 +357,17 @@ func TestConfigRejectsEmptyModuleMapKeys(t *testing.T) {
 	}
 	_, _, err = (&nasshConfig).Parse()
 	assert.Regexp(t, `nassh module map cannot use an empty name.*default`, err)
+
+	metricsConfig := Config{
+		MetricsModules: map[string]MetricsModule{
+			"": {},
+		},
+		Mapping: []Mapping{
+			MetricsMapping("metrics.test", "/metrics"),
+		},
+	}
+	_, _, err = (&metricsConfig).Parse()
+	assert.Regexp(t, `metrics module map cannot use an empty name.*default`, err)
 }
 
 func TestInvalidConfigFileFailsStartup(t *testing.T) {
@@ -385,6 +447,240 @@ func TestFromFlagsLoadsDefaultConfigBindingWhenConfigOmitted(t *testing.T) {
 	err = protocol.Get(fe, protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("test.lan")))
 	assert.NoError(t, err)
 	assert.Equal(t, "s1", body)
+}
+
+func TestFromFlagsAllowsPublicOnlyConfigWhenAuthenticationDisabled(t *testing.T) {
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	flags.DisabledAuthentication = true
+	flags.Oauth.AuthURL = "https://auth.example.test/login"
+
+	writeDefaultConfigForFlags(t, flags.ConfigStore, PublicConfig("test.lan", "/", "https://backend.example.com", "*"))
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, FromFlags(flags))
+	if assert.NoError(t, err) {
+		assert.NoError(t, ep.Close())
+	}
+}
+
+func TestFromFlagsRejectsProtectedMetricsWhenAuthenticationDisabled(t *testing.T) {
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	flags.DisabledAuthentication = true
+
+	writeDefaultConfigForFlags(t, flags.ConfigStore, Config{
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "metrics.test",
+					Path: "/metrics",
+				},
+				Target: Target{Metrics: &MetricsTarget{}},
+			},
+		},
+	})
+
+	reg := prometheus.NewPedanticRegistry()
+	_, err := New(rand.New(rand.NewSource(1)), FromFlags(flags), WithPrometheus(reg, reg))
+	assert.ErrorContains(t, err, "--unsafe-ignore-authentication")
+}
+
+func TestFromFlagsAllowsProtectedMetricsWhenUnsafeAuthenticationIgnored(t *testing.T) {
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	flags.DisabledAuthentication = true
+	flags.UnsafeIgnoreAuthentication = true
+
+	writeDefaultConfigForFlags(t, flags.ConfigStore, Config{
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "metrics.test",
+					Path: "/metrics",
+				},
+				Target: Target{Metrics: &MetricsTarget{}},
+			},
+		},
+	})
+
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(rand.New(rand.NewSource(1)), FromFlags(flags), WithPrometheus(reg, reg))
+	if assert.NoError(t, err) {
+		assert.NoError(t, ep.Close())
+	}
+}
+
+func TestFromFlagsRejectsUnsafeIgnoreAuthenticationWithoutGlobalDisable(t *testing.T) {
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	flags.UnsafeIgnoreAuthentication = true
+
+	writeDefaultConfigForFlags(t, flags.ConfigStore, PublicConfig("test.lan", "/", "https://backend.example.com", "*"))
+
+	_, err := New(rand.New(rand.NewSource(1)), FromFlags(flags))
+	assert.ErrorContains(t, err, "--unsafe-ignore-authentication requires --without-authentication")
+}
+
+func TestWithPrometheusRejectsPartialConfiguration(t *testing.T) {
+	config := PublicConfig("test.lan", "/", "https://backend.example.com", "*")
+
+	for _, tc := range []struct {
+		name string
+		mods []Modifier
+	}{
+		{
+			name: "gatherer only",
+			mods: []Modifier{WithConfig(config), WithPrometheus(prometheus.NewPedanticRegistry(), nil)},
+		},
+		{
+			name: "registerer only",
+			mods: []Modifier{WithConfig(config), WithPrometheus(nil, prometheus.NewPedanticRegistry())},
+		},
+		{
+			name: "wrapped registerer only",
+			mods: []Modifier{WithConfig(config), WithPrometheus(nil, prometheus.WrapRegistererWith(prometheus.Labels{"scope": "test"}, prometheus.NewPedanticRegistry()))},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := New(rand.New(rand.NewSource(1)), tc.mods...)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "prometheus gatherer and registerer must both be set or both be nil")
+		})
+	}
+}
+
+func TestFromFlagsAllowsLaterProtectedMetricsReloadWhenOAuthConfigured(t *testing.T) {
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	flags.Oauth.AuthURL = "https://auth.example.test/login"
+
+	symmetricKey, err := token.GenerateSymmetricKey(rand.New(rand.NewSource(2)), 128)
+	assert.NoError(t, err)
+	flags.Oauth.SymmetricKey = symmetricKey
+	verifyingKey, _, err := token.GenerateSigningKey(rand.New(rand.NewSource(3)))
+	assert.NoError(t, err)
+	flags.Oauth.TokenVerifyingKey = verifyingKey[:]
+
+	writeDefaultConfigForFlags(t, flags.ConfigStore, PublicConfig("test.lan", "/", "https://backend.example.com", "*"))
+
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(rand.New(rand.NewSource(1)), FromFlags(flags), WithPrometheus(reg, reg))
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer ep.Close()
+
+	err = ep.ApplyConfigStruct(Config{
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "metrics.test",
+					Path: "/metrics",
+				},
+				Target: Target{Metrics: &MetricsTarget{}},
+			},
+		},
+	})
+	assert.NoError(t, err)
+}
+
+func TestFromFlagsStripsOAuthCookieWhenAuthenticationDisabled(t *testing.T) {
+	var gotCookie string
+	backend, err := ktest.Start(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCookie = r.Header.Get("Cookie")
+		_, _ = w.Write([]byte("ok"))
+	}))
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.ConfigStore = factory.DefaultAppConfigFlags()
+	flags.ConfigStore.Directory.Path = t.TempDir()
+	flags.DisabledAuthentication = true
+	flags.Oauth.AuthURL = "https://auth.example.test/login"
+
+	writeDefaultConfigForFlags(t, flags.ConfigStore, PublicConfig("test.lan", "/", backend, "*"))
+
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(rand.New(rand.NewSource(1)), FromFlags(flags), WithHttpStarter(Server(&wg, &fe)))
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(
+		fe,
+		protocol.Read(protocol.String(&body)),
+		protocol.WithRequestOptions(
+			krequest.SetHost("test.lan"),
+			krequest.WithCookie(&http.Cookie{Name: "Creds", Value: "secret"}),
+			krequest.WithCookie(&http.Cookie{Name: "Other", Value: "keep"}),
+		),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "ok", body)
+	assert.NotContains(t, gotCookie, "Creds=secret")
+	assert.Contains(t, gotCookie, "Other=keep")
+}
+
+func TestWithOauthRedirectorStripsOAuthCookie(t *testing.T) {
+	var gotCookie string
+	backend, err := ktest.Start(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCookie = r.Header.Get("Cookie")
+		_, _ = w.Write([]byte("ok"))
+	}))
+	assert.NoError(t, err)
+
+	flags := DefaultFlags()
+	flags.Oauth.AuthURL = "https://auth.example.test/login"
+	symmetricKey, err := token.GenerateSymmetricKey(rand.New(rand.NewSource(2)), 128)
+	assert.NoError(t, err)
+	flags.Oauth.SymmetricKey = symmetricKey
+	verifyingKey, _, err := token.GenerateSigningKey(rand.New(rand.NewSource(3)))
+	assert.NoError(t, err)
+	flags.Oauth.TokenVerifyingKey = verifyingKey[:]
+
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(
+		rand.New(rand.NewSource(1)),
+		WithConfig(PublicConfig("test.lan", "/", backend, "*")),
+		WithHttpStarter(Server(&wg, &fe)),
+		WithOauthRedirector(flags.Oauth),
+	)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer ep.Close()
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(
+		fe,
+		protocol.Read(protocol.String(&body)),
+		protocol.WithRequestOptions(
+			krequest.SetHost("test.lan"),
+			krequest.WithCookie(&http.Cookie{Name: "Creds", Value: "secret"}),
+			krequest.WithCookie(&http.Cookie{Name: "Other", Value: "keep"}),
+		),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "ok", body)
+	assert.NotContains(t, gotCookie, "Creds=secret")
+	assert.Contains(t, gotCookie, "Other=keep")
 }
 
 func TestFromFlagsUsesEmbeddedDefaultWhenDefaultConfigMissing(t *testing.T) {
@@ -716,8 +1012,8 @@ func TestApplyConfigStructReconcilesMixedRouteChanges(t *testing.T) {
 	unchangedAfter := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("unchanged", unchangedInitial))
 	changedAfter := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("changed", changedUpdated))
 	addedAfter := proxyModuleForMapping(t, ep.modules, NamedProxyMapping("added", addedUpdated))
-	assert.Same(t, unchangedBefore, unchangedAfter)
-	assert.Same(t, changedBefore, changedAfter)
+	assert.True(t, sameProxyHandlerCache(unchangedBefore, unchangedAfter))
+	assert.True(t, sameProxyHandlerCache(changedBefore, changedAfter))
 	assert.NotNil(t, addedAfter)
 
 	_, found := ep.modules["proxy:removed"]
@@ -935,6 +1231,8 @@ func TestApplyConfigStructReusesNasshProxy(t *testing.T) {
 	assert.True(t, ok)
 	nproxy, ok := nasshModule.(*nasshRuntimeModule)
 	assert.True(t, ok)
+	registered := ep.moduleMetrics.active["nassh:default"]
+	require.NotNil(t, registered)
 
 	assert.Equal(t, utils.VerdictAllow, ep.whitelist.Allow("tcp", "10.0.0.1:22", cookie))
 	assert.Equal(t, utils.VerdictDrop, ep.whitelist.Allow("tcp", "10.0.0.2:22", cookie))
@@ -943,7 +1241,12 @@ func TestApplyConfigStructReusesNasshProxy(t *testing.T) {
 	assert.NoError(t, err)
 	nasshUpdated, ok := ep.modules["nassh:default"]
 	assert.True(t, ok)
-	assert.Same(t, nproxy, nasshUpdated)
+	nproxyUpdated, ok := nasshUpdated.(*nasshRuntimeModule)
+	assert.True(t, ok)
+	assert.Same(t, nproxy, nproxyUpdated)
+	assert.Same(t, nproxy.proxy, nproxyUpdated.proxy)
+	assert.Same(t, registered, ep.moduleMetrics.active["nassh:default"])
+	assert.Same(t, nproxyUpdated, ep.moduleMetrics.active["nassh:default"].module)
 	assert.Equal(t, utils.VerdictDrop, ep.whitelist.Allow("tcp", "10.0.0.1:22", cookie))
 	assert.Equal(t, utils.VerdictAllow, ep.whitelist.Allow("tcp", "10.0.0.2:22", cookie))
 }
@@ -1061,6 +1364,168 @@ func TestNasshRelayHostFromConfigOverridesGlobalDefault(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
+func TestApplyConfigStructAllowsSharedNasshRelayHostAcrossFrontendHosts(t *testing.T) {
+	config := Config{
+		Mapping: []Mapping{
+			{
+				From:   httpp.HostPath{Host: "front-a.test", Path: "/"},
+				Target: Target{Nassh: &NasshTarget{RelayHost: "relay.test:8443"}},
+			},
+			{
+				From:   httpp.HostPath{Host: "front-b.test", Path: "/"},
+				Target: Target{Nassh: &NasshTarget{RelayHost: "relay.test:8443"}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	ep, err := New(
+		rand.New(rand.NewSource(1)),
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+	)
+	require.NoError(t, err)
+	require.NoError(t, ep.Close())
+}
+
+func TestApplyConfigStructAllowsSharedNasshRelayHostAcrossFrontendAndRelayHosts(t *testing.T) {
+	for _, config := range []Config{
+		{
+			Mapping: []Mapping{
+				{
+					From:   httpp.HostPath{Host: "front-a.test", Path: "/"},
+					Target: Target{Nassh: &NasshTarget{RelayHost: "relay.test:8443"}},
+				},
+				{
+					From:   httpp.HostPath{Host: "relay.test:8443", Path: "/"},
+					Target: Target{Nassh: &NasshTarget{RelayHost: "relay.test:8443"}},
+				},
+			},
+			Tunnels: []string{"*"},
+		},
+		{
+			Mapping: []Mapping{
+				{
+					From:   httpp.HostPath{Host: "relay.test:8443", Path: "/"},
+					Target: Target{Nassh: &NasshTarget{RelayHost: "relay.test:8443"}},
+				},
+				{
+					From:   httpp.HostPath{Host: "front-a.test", Path: "/"},
+					Target: Target{Nassh: &NasshTarget{RelayHost: "relay.test:8443"}},
+				},
+			},
+			Tunnels: []string{"*"},
+		},
+	} {
+		ep, err := New(
+			rand.New(rand.NewSource(1)),
+			WithConfig(config),
+			WithDisabledNasshAuthentication(true),
+			WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		)
+		require.NoError(t, err)
+		require.NoError(t, ep.Close())
+	}
+}
+
+func TestApplyConfigStructRejectsDuplicateExplicitNasshMappingsOnSameHost(t *testing.T) {
+	config := Config{
+		Mapping: []Mapping{
+			{
+				From:   httpp.HostPath{Host: "relay.test:8443", Path: "/"},
+				Target: Target{Nassh: &NasshTarget{RelayHost: "relay.test:8443"}},
+			},
+			{
+				From:   httpp.HostPath{Host: "relay.test:8443", Path: "/"},
+				Target: Target{Nassh: &NasshTarget{RelayHost: "relay.test:8443"}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	_, err := New(
+		rand.New(rand.NewSource(1)),
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+	)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "duplicate route")
+}
+
+func TestNasshTargetRelayHostDoesNotReplaceModule(t *testing.T) {
+
+	initial := Config{
+		NasshModules: map[string]NasshModule{
+			"module": {},
+		},
+		Mapping: []Mapping{
+			{
+				Module: "module",
+				From: httpp.HostPath{
+					Host: "frontend.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{RelayHost: "old.test:443"}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+	updated := Config{
+		NasshModules: map[string]NasshModule{
+			"module": {},
+		},
+		Mapping: []Mapping{
+			{
+				Module: "module",
+				From: httpp.HostPath{
+					Host: "frontend.test",
+					Path: "/",
+				},
+				Target: Target{Nassh: &NasshTarget{RelayHost: "new.test:443"}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	var fe string
+	var wg sync.WaitGroup
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &fe)),
+		WithConfig(initial),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+	)
+	assert.NoError(t, err)
+	module, ok := ep.modules["nassh:module"].(*nasshRuntimeModule)
+	assert.True(t, ok)
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.NoError(t, err)
+	updatedModule, ok := ep.modules["nassh:module"].(*nasshRuntimeModule)
+	assert.True(t, ok)
+	assert.Same(t, module.proxy, updatedModule.proxy)
+	assert.ElementsMatch(t, []string{"frontend.test", "new.test"}, ep.domains)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	resp, _ := GetWithHost(t, fe+"cookie?ext=test-ext&path=html/nassh.html", "frontend.test")
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Location"), "#nasshp-enkit@new.test:443")
+
+	resp, _ = GetWithHost(t, fe+"cookie?ext=test-ext&path=html/nassh.html", "new.test:443")
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Location"), "#nasshp-enkit@new.test:443")
+
+	resp, _ = GetWithHost(t, fe+"cookie?ext=test-ext&path=html/nassh.html", "old.test:443")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
 func TestApplyConfigStructCollectsNasshDomains(t *testing.T) {
 	config := Config{
 		NasshModules: map[string]NasshModule{
@@ -1127,11 +1592,55 @@ func TestApplyConfigStructReusesUnchangedProxyHandlers(t *testing.T) {
 
 	err = ep.ApplyConfigStruct(initial)
 	assert.NoError(t, err)
-	assert.Same(t, reused, singleProxyModule(t, ep.modules))
+	assert.True(t, sameProxyHandlerCache(reused, singleProxyModule(t, ep.modules)))
 
 	err = ep.ApplyConfigStruct(updated)
 	assert.NoError(t, err)
-	assert.NotSame(t, reused, singleProxyModule(t, ep.modules))
+	assert.False(t, sameProxyHandlerCache(reused, singleProxyModule(t, ep.modules)))
+}
+
+func TestRejectedProxyReloadDoesNotCommitStagedHandlers(t *testing.T) {
+	s1, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s1")))
+	assert.NoError(t, err)
+	s2, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s2")))
+	assert.NoError(t, err)
+	s3, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("s3")))
+	assert.NoError(t, err)
+
+	initial := Config{
+		Mapping: ProxyMappings(httpp.Mapping{
+			From: httpp.HostPath{Host: "test.lan", Path: "/"},
+			Auth: httpp.MappingPublic,
+			To:   s1,
+		}),
+		Tunnels: []string{"*"},
+	}
+	updated := Config{
+		Mapping: ProxyMappings(
+			httpp.Mapping{
+				From: httpp.HostPath{Host: "test.lan", Path: "/"},
+				Auth: httpp.MappingPublic,
+				To:   s2,
+			},
+			httpp.Mapping{
+				From: httpp.HostPath{Host: "test.lan", Path: "/"},
+				Auth: httpp.MappingPublic,
+				To:   s3,
+			},
+		),
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, WithConfig(initial))
+	assert.NoError(t, err)
+	module := singleProxyModule(t, ep.modules)
+	assert.Len(t, module.handlers, 1)
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.ErrorContains(t, err, "duplicate route")
+	assert.Same(t, module, singleProxyModule(t, ep.modules))
+	assert.Len(t, module.handlers, 1)
 }
 
 func TestApplyConfigStructSharesModulesAcrossHosts(t *testing.T) {
@@ -1483,6 +1992,41 @@ func TestPedanticMetrics(t *testing.T) {
 	assert.Regexp(t, "(?m)^(#|nasshp_)", body, "%s", body)
 }
 
+func TestMetricsListenerIncludesDefaultGathererMetrics(t *testing.T) {
+	backend, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("ok")))
+	assert.NoError(t, err)
+
+	name := fmt.Sprintf("enproxy_default_metrics_%d", time.Now().UnixNano())
+	counter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: name,
+		Help: "test metric registered in the global default registry",
+	})
+	require.NoError(t, prometheus.DefaultRegisterer.Register(counter))
+	defer prometheus.DefaultRegisterer.Unregister(counter)
+	counter.Inc()
+
+	var proxy string
+	var metrics string
+	var wg sync.WaitGroup
+	ep, err := New(
+		rand.New(rand.NewSource(1)),
+		WithHttpStarter(Server(&wg, &proxy)),
+		WithMetricsStarter(Server(&wg, &metrics)),
+		WithConfig(PublicConfig("proxy.test", "/", backend)),
+	)
+	assert.NoError(t, err)
+	assert.False(t, samePrometheusValue(ep.register, prometheus.DefaultRegisterer))
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(metrics+"/metrics", protocol.Read(protocol.String(&body)))
+	assert.NoError(t, err)
+	assert.Contains(t, body, name+" 1")
+}
+
 func TestMetricsExportEveryNasshModule(t *testing.T) {
 	config := Config{
 		NasshModules: map[string]NasshModule{
@@ -1538,6 +2082,286 @@ func TestMetricsExportEveryNasshModule(t *testing.T) {
 	assert.NotContains(t, body, "nasshp_pool_gets 0")
 }
 
+func TestMetricsModuleServesGathererOnProxyListener(t *testing.T) {
+	config := Config{
+		Mapping: []Mapping{
+			MetricsMapping("metrics.test", "/metrics"),
+			NasshMapping("nassh.test"),
+		},
+		Tunnels: []string{"*"},
+	}
+
+	var proxy string
+	var wg sync.WaitGroup
+	rng := rand.New(rand.NewSource(1))
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &proxy)),
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		WithPrometheus(reg, reg),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(proxy+"metrics", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("metrics.test")))
+	assert.NoError(t, err)
+	assert.Contains(t, body, `nasshp_pool_gets{module="default"} 0`)
+
+	var herr *protocol.HTTPError
+	err = protocol.Get(proxy+"metrics", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("nassh.test")))
+	assert.ErrorAs(t, err, &herr)
+	assert.Equal(t, http.StatusNotFound, herr.Resp.StatusCode)
+}
+
+func TestMetricsModuleExpandsTrailingSlashRoute(t *testing.T) {
+	config := Config{
+		Mapping: []Mapping{
+			MetricsMapping("metrics.test", "/metrics/"),
+			NasshMapping("nassh.test"),
+		},
+		Tunnels: []string{"*"},
+	}
+
+	var proxy string
+	var wg sync.WaitGroup
+	rng := rand.New(rand.NewSource(1))
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &proxy)),
+		WithConfig(config),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		WithPrometheus(reg, reg),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(proxy+"metrics/", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("metrics.test")))
+	assert.NoError(t, err)
+	assert.Contains(t, body, `nasshp_pool_gets{module="default"} 0`)
+
+	body = ""
+	err = protocol.Get(proxy+"metrics/scrape", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("metrics.test")))
+	assert.NoError(t, err)
+	assert.Contains(t, body, `nasshp_pool_gets{module="default"} 0`)
+}
+
+func TestMetricsModuleRequiresAuthenticationByDefault(t *testing.T) {
+	config := Config{
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "metrics.test",
+					Path: "/metrics",
+				},
+				Target: Target{Metrics: &MetricsTarget{}},
+			},
+		},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	reg := prometheus.NewPedanticRegistry()
+	_, err := New(
+		rng,
+		WithConfig(config),
+		WithPrometheus(reg, reg),
+	)
+	assert.ErrorContains(t, err, "metrics target requires authentication")
+}
+
+func TestMetricsModuleUsesHTTPAuthWhenConfigured(t *testing.T) {
+	cookie := &oauth.CredentialsCookie{
+		Identity: oauth.Identity{
+			Id:           "id",
+			Username:     "username",
+			Organization: "organization",
+		},
+	}
+	config := Config{
+		Mapping: []Mapping{
+			{
+				From: httpp.HostPath{
+					Host: "metrics.test",
+					Path: "/metrics",
+				},
+				Target: Target{Metrics: &MetricsTarget{}},
+			},
+		},
+	}
+
+	var proxy string
+	var wg sync.WaitGroup
+	rng := rand.New(rand.NewSource(1))
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &proxy)),
+		WithConfig(config),
+		WithAuthenticator(Allow(cookie)),
+		WithPrometheus(reg, reg),
+	)
+	assert.NoError(t, err)
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(proxy+"metrics", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("metrics.test")))
+	assert.NoError(t, err)
+}
+
+func TestDisabledNasshAuthenticationPreservesHTTPAuthentication(t *testing.T) {
+	cookie := &oauth.CredentialsCookie{
+		Identity: oauth.Identity{
+			Id:           "id",
+			Username:     "username",
+			Organization: "organization",
+		},
+	}
+	config := Config{
+		Mapping: []Mapping{
+			NasshMapping("nassh.test"),
+			{
+				From: httpp.HostPath{
+					Host: "metrics.test",
+					Path: "/metrics",
+				},
+				Target: Target{Metrics: &MetricsTarget{}},
+			},
+		},
+		Tunnels: []string{"*"},
+	}
+
+	var proxy string
+	var wg sync.WaitGroup
+	rng := rand.New(rand.NewSource(1))
+	reg := prometheus.NewPedanticRegistry()
+	ep, err := New(
+		rng,
+		WithHttpStarter(Server(&wg, &proxy)),
+		WithConfig(config),
+		WithAuthenticator(Allow(cookie)),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+		WithPrometheus(reg, reg),
+	)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer ep.Close()
+
+	err = ep.Run()
+	assert.NoError(t, err)
+	wg.Wait()
+
+	body := ""
+	err = protocol.Get(proxy+"metrics", protocol.Read(protocol.String(&body)), protocol.WithRequestOptions(krequest.SetHost("metrics.test")))
+	assert.NoError(t, err)
+}
+
+func TestRejectedMetricsModuleKeepsPrivatePrometheusRegistry(t *testing.T) {
+	backend, err := ktest.Start(http.HandlerFunc(ktest.StringHandler("ok")))
+	assert.NoError(t, err)
+
+	initial := PublicConfig("proxy.test", "/", backend)
+	updated := Config{
+		Mapping: []Mapping{
+			MetricsMapping("metrics.test", "/metrics"),
+			{
+				From: httpp.HostPath{
+					Host: "proxy.test",
+					Path: "/",
+				},
+				Target: Target{Proxy: &ProxyTarget{}},
+			},
+		},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(rng, WithConfig(initial))
+	assert.NoError(t, err)
+	gatherer := ep.gatherer
+	register := ep.register
+	metricsRegister := ep.moduleMetrics.register
+	assert.NotNil(t, gatherer)
+	assert.NotNil(t, register)
+	assert.NotNil(t, metricsRegister)
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.ErrorContains(t, err, "proxy target is missing a backend address")
+	assert.True(t, samePrometheusValue(gatherer, ep.gatherer))
+	assert.True(t, samePrometheusValue(register, ep.register))
+	assert.True(t, samePrometheusValue(metricsRegister, ep.moduleMetrics.register))
+
+	err = ep.ApplyConfigStruct(initial)
+	assert.NoError(t, err)
+	assert.True(t, samePrometheusValue(gatherer, ep.gatherer))
+	assert.True(t, samePrometheusValue(register, ep.register))
+	assert.True(t, samePrometheusValue(metricsRegister, ep.moduleMetrics.register))
+}
+
+func TestRemovedMetricsModuleKeepsPrivatePrometheusRegistry(t *testing.T) {
+	initial := Config{
+		Mapping: []Mapping{
+			MetricsMapping("metrics.test", "/metrics"),
+			NasshMapping("nassh.test"),
+		},
+		Tunnels: []string{"*"},
+	}
+	updated := Config{
+		Mapping: []Mapping{
+			NasshMapping("nassh.test"),
+		},
+		Tunnels: []string{"*"},
+	}
+
+	rng := rand.New(rand.NewSource(1))
+	ep, err := New(
+		rng,
+		WithConfig(initial),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+	)
+	assert.NoError(t, err)
+	defer ep.Close()
+	gatherer := ep.gatherer
+	register := ep.register
+	metricsRegister := ep.moduleMetrics.register
+	assert.NotNil(t, gatherer)
+	assert.NotNil(t, register)
+	assert.NotNil(t, metricsRegister)
+
+	err = ep.ApplyConfigStruct(updated)
+	assert.NoError(t, err)
+	assert.True(t, samePrometheusValue(gatherer, ep.gatherer))
+	assert.True(t, samePrometheusValue(register, ep.register))
+	assert.True(t, samePrometheusValue(metricsRegister, ep.moduleMetrics.register))
+
+	next, err := New(
+		rand.New(rand.NewSource(2)),
+		WithConfig(initial),
+		WithDisabledNasshAuthentication(true),
+		WithNasshpMods(nasshp.WithSymmetricOptions(token.WithGeneratedSymmetricKey(0))),
+	)
+	assert.NoError(t, err)
+	defer next.Close()
+	assert.False(t, samePrometheusValue(register, next.register))
+	assert.False(t, samePrometheusValue(gatherer, next.gatherer))
+}
+
 func TestRejectedNasshReloadDoesNotSwapMetrics(t *testing.T) {
 	initial := Config{
 		NasshModules: map[string]NasshModule{
@@ -1552,7 +2376,7 @@ func TestRejectedNasshReloadDoesNotSwapMetrics(t *testing.T) {
 				Target: Target{Nassh: &NasshTarget{}},
 			},
 		},
-		Tunnels: []string{"*"},
+		Tunnels: []string{"tcp|10.0.0.1:22"},
 	}
 	updated := Config{
 		NasshModules: map[string]NasshModule{
@@ -1567,7 +2391,7 @@ func TestRejectedNasshReloadDoesNotSwapMetrics(t *testing.T) {
 				Target: Target{Nassh: &NasshTarget{}},
 			},
 		},
-		Tunnels: []string{"*"},
+		Tunnels: []string{"tcp|10.0.0.2:22"},
 	}
 
 	var proxy string
@@ -1585,6 +2409,9 @@ func TestRejectedNasshReloadDoesNotSwapMetrics(t *testing.T) {
 		WithPrometheus(reg, reg),
 	)
 	assert.NoError(t, err)
+	nasshBefore, ok := ep.modules["nassh:default"].(*nasshRuntimeModule)
+	assert.True(t, ok)
+	patternsBefore := append(utils.PatternList{}, nasshBefore.patterns...)
 
 	err = ep.Run()
 	assert.NoError(t, err)
@@ -1600,6 +2427,10 @@ func TestRejectedNasshReloadDoesNotSwapMetrics(t *testing.T) {
 
 	err = ep.ApplyConfigStruct(updated)
 	assert.Regexp(t, "cannot apply config changing listener domains after proxy start", err)
+	nasshAfter, ok := ep.modules["nassh:default"].(*nasshRuntimeModule)
+	assert.True(t, ok)
+	assert.Same(t, nasshBefore, nasshAfter)
+	assert.Equal(t, patternsBefore, nasshAfter.patterns)
 
 	body = ""
 	err = protocol.Get(metrics+"/metrics", protocol.Read(protocol.String(&body)))

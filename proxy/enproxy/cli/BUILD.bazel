@@ -15,6 +15,7 @@ go_library(
         "//lib/kflags",
         "//lib/kflags/kcobra",
         "//lib/khttp",
+        "//lib/logger",
         "//lib/srand",
         "//proxy/enproxy",
         "//proxy/httpp",
@@ -36,7 +37,8 @@ go_test(
     ],
     embed = [":cli_lib"],
     deps = [
-        "//lib/srand",
+        "//lib/config/marshal",
+        "//proxy/enproxy",
         "//proxy/httpp",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",

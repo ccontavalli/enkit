@@ -1,15 +1,11 @@
 package enproxy
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 
-	"github.com/ccontavalli/enkit/lib/oauth"
 	"github.com/ccontavalli/enkit/proxy/httpp"
-	"github.com/ccontavalli/enkit/proxy/nasshp"
 	"github.com/ccontavalli/enkit/proxy/utils"
 )
 
@@ -20,34 +16,127 @@ type desiredState struct {
 	Routes   []desiredRoute
 }
 
+// desiredModule is the module-level state requested by one config load.
+//
+// moduleKind.Build creates desiredModule values while compiling config. A
+// desiredModule does not serve traffic and must not hold live resources that
+// need cleanup if the config load is rejected before commit.
 type desiredModule interface {
+	// ID returns the stable runtime identity for this module.
+	//
+	// IDs are normally moduleID(kind, name). The ID selects the previous
+	// runtimeModule passed to Reconcile and associates routes with the resulting
+	// module plan.
 	ID() string
-	Reconcile(previous runtimeModule) (runtimeModule, error)
+
+	// Reconcile creates the runtime module for this config load.
+	//
+	// previous is the currently active runtime module with the same ID, if any.
+	// Reconcile may return a new runtimeModule that shares durable resources
+	// with previous, but it must not mutate any state that affects the active
+	// config. Active state may still need to keep serving if a later Plan, Map,
+	// metrics registration, or validation step fails.
+	//
+	// The bool return must be true only when the returned runtimeModule reuses
+	// resources owned by previous and previous must therefore not be closed as a
+	// stale module after commit. Return false when previous is incompatible or no
+	// resources are shared; an incompatible previous module will be closed after
+	// the new config is published.
+	Reconcile(previous runtimeModule) (runtimeModule, bool, error)
 }
 
-type moduleActivation interface {
-	Commit()
-	Rollback()
-}
-
+// runtimeModule is the live module object selected for a config generation.
+//
+// Runtime modules may be newly created or copy-on-write wrappers around durable
+// state from the previous generation. They should expose no externally visible
+// changes until their modulePlan.Commit method is called.
 type runtimeModule interface {
+	// ID returns the same stable identity as the desiredModule that produced it.
 	ID() string
-	BindingsForMapping(mapping Mapping) ([]httpp.Binding, error)
-	Domains() []string
+
+	// Plan starts one transactional apply for this module.
+	//
+	// Plan is called once per runtimeModule after all desired modules have been
+	// reconciled. The returned modulePlan receives every target mapped to this
+	// module. Plan may allocate per-apply scratch state, but it must not mutate
+	// active serving state; the current config must remain valid if a later step
+	// fails and Commit is never called.
+	Plan() (modulePlan, error)
+
+	// RegisterMetrics describes this module's metrics to the provided registry.
+	//
+	// RegisterMetrics is called during metrics activation, after planning and
+	// mapping have succeeded but before modulePlan.Commit. Implementations must
+	// only populate the provided registry object; they must not register directly
+	// with Prometheus or mutate serving state.
 	RegisterMetrics(metrics utils.MetricRegistry)
-	PrepareActivate() (moduleActivation, error)
+
+	// Close releases resources owned only by this runtime module.
+	//
+	// Close is called after a replacement config has been published for modules
+	// that were removed or not reused, and during Enproxy shutdown. It is not
+	// called for a previous runtime module when Reconcile reported that its
+	// resources were reused by the new runtime module.
 	Close() error
 }
 
-type noopActivation struct{}
+// modulePlan is the per-apply transaction for one runtime module.
+//
+// The call order is Plan, then Map for each route using the module, then
+// Domains, then Commit after every module has mapped successfully and metrics
+// activation has succeeded. If any step before Commit fails, Commit is not
+// called and the previous config must keep serving unchanged.
+type modulePlan interface {
+	// Map attaches one target to this module for the pending config.
+	//
+	// Map may create handlers and record tentative state in the plan. It should
+	// call register for each route it wants installed. Map must not publish
+	// changes to shared runtime state; put those changes in the plan and apply
+	// them from Commit.
+	Map(target moduleTarget, register RouteRegistrar) error
 
-func (noopActivation) Commit()   {}
-func (noopActivation) Rollback() {}
+	// Domains returns extra listener domains required by targets mapped so far.
+	//
+	// Domains is called once after all Map calls for this module. It should
+	// return normalized or normalizable host names only; collectDomains handles
+	// final normalization and de-duplication.
+	Domains() []string
+
+	// Commit publishes the plan's pending runtime changes.
+	//
+	// Commit is called only after all modules have planned and mapped
+	// successfully and metrics activation has committed. It must not fail. Any
+	// operation that can fail must happen earlier in Plan or Map so the active
+	// config can remain untouched on error.
+	Commit()
+}
+
+// RouteRegistrar records an HTTP handler for one route produced by modulePlan.Map.
+//
+// If from is nil, the mapping's configured From value is used. A non-nil from
+// lets a module expand one mapping into multiple concrete routes, such as
+// module-owned paths or relay host aliases. label is used for routing metadata
+// and diagnostics; handler is the HTTP handler to install if the config commits.
+type RouteRegistrar func(from *httpp.HostPath, label string, handler http.Handler) error
 
 type desiredRoute struct {
 	ModuleID string
-	Mapping  Mapping
+	Target   moduleTarget
 	Index    int
+}
+
+// moduleTarget is the target-level configuration passed from moduleKind.Build
+// to modulePlan.Map.
+//
+// Config contains the concrete target config for the module kind, for example
+// *ProxyTarget, *NasshTarget, or *MetricsTarget. Module-level config should have
+// already been parsed into the desired/runtime module; only per-target settings
+// belong here.
+type moduleTarget struct {
+	Name   string
+	From   httpp.HostPath
+	Auth   httpp.MappingAuth
+	Config any
 }
 
 func jsonKey(value interface{}) (string, error) {
@@ -58,206 +147,53 @@ func jsonKey(value interface{}) (string, error) {
 	return string(data), nil
 }
 
-type proxyDesiredModule struct {
-	id      string
-	key     string
-	module  ProxyModule
-	builder *httpp.Proxy
+type plannedModule struct {
+	id   string
+	plan modulePlan
 }
 
-func (dm *proxyDesiredModule) ID() string {
-	return dm.id
-}
-
-func (dm *proxyDesiredModule) Reconcile(previous runtimeModule) (runtimeModule, error) {
-	if existing, ok := previous.(*proxyRuntimeModule); ok && existing.key == dm.key {
-		existing.module = dm.module
-		existing.builder = dm.builder
-		return existing, nil
-	}
-
-	return &proxyRuntimeModule{
-		id:       dm.id,
-		key:      dm.key,
-		module:   dm.module,
-		builder:  dm.builder,
-		handlers: map[string]http.Handler{},
-	}, nil
-}
-
-type proxyRuntimeModule struct {
-	id       string
-	key      string
-	module   ProxyModule
-	builder  *httpp.Proxy
-	handlers map[string]http.Handler
-}
-
-func (pm *proxyRuntimeModule) ID() string {
-	return pm.id
-}
-
-func (pm *proxyRuntimeModule) BindingsForMapping(mapping Mapping) ([]httpp.Binding, error) {
-	effective, err := resolveProxyMapping(pm.module, mapping)
-	if err != nil {
-		return nil, err
-	}
-
-	key, err := httpp.ModuleKey(effective)
-	if err != nil {
-		return nil, err
-	}
-
-	handler := pm.handlers[key]
-	if handler == nil {
-		handler, err = pm.builder.CreateHandler(effective)
+func planModules(desired []desiredModule, modules map[string]runtimeModule) ([]plannedModule, map[string]modulePlan, error) {
+	ordered := []plannedModule{}
+	byID := map[string]modulePlan{}
+	for _, desiredModule := range desired {
+		id := desiredModule.ID()
+		plan, err := modules[id].Plan()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		pm.handlers[key] = handler
+		planned := plannedModule{
+			id:   id,
+			plan: plan,
+		}
+		ordered = append(ordered, planned)
+		byID[id] = plan
 	}
-
-	bindings, _ := httpp.BindingsForMapping(effective, handler)
-	return bindings, nil
+	return ordered, byID, nil
 }
 
-func (pm *proxyRuntimeModule) Domains() []string {
-	return nil
-}
-
-func (pm *proxyRuntimeModule) RegisterMetrics(metrics utils.MetricRegistry) {
-}
-
-func (pm *proxyRuntimeModule) PrepareActivate() (moduleActivation, error) {
-	return noopActivation{}, nil
-}
-
-func (pm *proxyRuntimeModule) Close() error {
-	return nil
-}
-
-type nasshDesiredModule struct {
-	id           string
-	key          string
-	relayHost    string
-	rng          *rand.Rand
-	authenticate oauth.Authenticate
-	mods         []nasshp.Modifier
-	whitelist    *utils.ReplaceableWhitelist
-	patterns     utils.PatternList
-}
-
-func (dm *nasshDesiredModule) ID() string {
-	return dm.id
-}
-
-func (dm *nasshDesiredModule) Reconcile(previous runtimeModule) (runtimeModule, error) {
-	if existing, ok := previous.(*nasshRuntimeModule); ok && existing.key == dm.key && existing.whitelist == dm.whitelist {
-		existing.patterns = dm.patterns
-		return existing, nil
+func commitModulePlans(plans []plannedModule) {
+	for _, planned := range plans {
+		planned.plan.Commit()
 	}
-
-	mods := append([]nasshp.Modifier{}, dm.mods...)
-	if dm.relayHost != "" {
-		mods = append(mods, nasshp.WithRelayHost(dm.relayHost))
-	}
-	proxy, err := nasshp.New(dm.rng, dm.authenticate, mods...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &nasshRuntimeModule{
-		id:        dm.id,
-		key:       dm.key,
-		proxy:     proxy,
-		whitelist: dm.whitelist,
-		patterns:  dm.patterns,
-	}, nil
 }
 
-type nasshRuntimeModule struct {
-	id        string
-	key       string
-	proxy     *nasshp.NasshProxy
-	whitelist *utils.ReplaceableWhitelist
-	patterns  utils.PatternList
-	cancel    context.CancelFunc
-}
-
-func (nm *nasshRuntimeModule) ID() string {
-	return nm.id
-}
-
-func (nm *nasshRuntimeModule) BindingsForMapping(mapping Mapping) ([]httpp.Binding, error) {
-	bindings := []httpp.Binding{}
-	for _, host := range nasshBindingHosts(mapping.From.Host, nm.proxy.RelayHost()) {
-		bindings = append(bindings,
-			httpp.Binding{Host: host, Path: "/cookie", To: "nasshp://cookie", Handler: http.HandlerFunc(nm.proxy.ServeCookie)},
-			httpp.Binding{Host: host, Path: "/proxy", To: "nasshp://proxy", Handler: http.HandlerFunc(nm.proxy.ServeProxy)},
-			httpp.Binding{Host: host, Path: "/connect", To: "nasshp://connect", Handler: http.HandlerFunc(nm.proxy.ServeConnect)},
-		)
-	}
-	return bindings, nil
-}
-
-func (nm *nasshRuntimeModule) Domains() []string {
-	relayHost := nm.proxy.RelayHost()
-	if relayHost == "" {
+func addDesiredModule(state *desiredState, seen map[string]string, ix int, kind, name, id, key string, module desiredModule) error {
+	if previous, found := seen[id]; found {
+		if previous != key {
+			return fmt.Errorf("error in mapping entry %d - %s module %q was defined with conflicting settings", ix, kind, name)
+		}
 		return nil
 	}
-	return []string{relayHost}
-}
 
-func nasshBindingHosts(hosts ...string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, host := range hosts {
-		normalized := utils.NormalizeHost(host)
-		if seen[normalized] {
-			continue
-		}
-		seen[normalized] = true
-		out = append(out, normalized)
-	}
-	return out
-}
-
-type nasshActivation struct {
-	module *nasshRuntimeModule
-}
-
-func (na *nasshActivation) Commit() {
-	nm := na.module
-	if nm.cancel == nil {
-		ctx, cancel := context.WithCancel(context.Background())
-		nm.cancel = cancel
-		go nm.proxy.Run(ctx)
-	}
-	nm.whitelist.Set(nm.patterns)
-}
-
-func (na *nasshActivation) Rollback() {
-}
-
-func (nm *nasshRuntimeModule) PrepareActivate() (moduleActivation, error) {
-	return &nasshActivation{module: nm}, nil
-}
-
-func (nm *nasshRuntimeModule) Close() error {
-	if nm.cancel != nil {
-		nm.cancel()
-		nm.cancel = nil
-	}
+	state.Modules = append(state.Modules, module)
+	seen[id] = key
 	return nil
-}
-
-func (nm *nasshRuntimeModule) RegisterMetrics(metrics utils.MetricRegistry) {
-	nm.proxy.RegisterMetrics(metrics)
 }
 
 func reconcileModules(desired []desiredModule, current map[string]runtimeModule) (map[string]runtimeModule, []runtimeModule, error) {
 	next := map[string]runtimeModule{}
 	seen := map[string]bool{}
+	reused := map[string]bool{}
 	for _, module := range desired {
 		id := module.ID()
 		if seen[id] {
@@ -265,16 +201,24 @@ func reconcileModules(desired []desiredModule, current map[string]runtimeModule)
 		}
 		seen[id] = true
 
-		reconciled, err := module.Reconcile(current[id])
+		previous := current[id]
+		reconciled, reusedPrevious, err := module.Reconcile(previous)
 		if err != nil {
 			return nil, nil, err
+		}
+		if previous != nil && reusedPrevious {
+			reused[id] = true
 		}
 		next[id] = reconciled
 	}
 
 	stale := []runtimeModule{}
 	for id, module := range current {
-		if next[id] != module {
+		if _, found := next[id]; !found {
+			stale = append(stale, module)
+			continue
+		}
+		if next[id] != module && !reused[id] {
 			stale = append(stale, module)
 		}
 	}
@@ -282,13 +226,7 @@ func reconcileModules(desired []desiredModule, current map[string]runtimeModule)
 }
 
 func compileDesiredState(builder *httpp.Proxy, ep *Enproxy, config Config, patterns utils.PatternList, warnings Warnings) (*desiredState, error) {
-	domains := []string{}
-	for _, domain := range config.Domains {
-		normalized := utils.NormalizeHost(domain)
-		if normalized != "" {
-			domains = append(domains, normalized)
-		}
-	}
+	domains := append([]string{}, config.Domains...)
 
 	state := &desiredState{
 		Warnings: warnings,
@@ -297,93 +235,22 @@ func compileDesiredState(builder *httpp.Proxy, ep *Enproxy, config Config, patte
 		Routes:   []desiredRoute{},
 	}
 
-	seenProxyModules := map[string]string{}
-	seenNasshHosts := map[string]string{}
+	build := moduleBuild{
+		builder:     builder,
+		ep:          ep,
+		config:      config,
+		patterns:    patterns,
+		gatherer:    ep.gatherer,
+		state:       state,
+		seenModules: map[string]string{},
+	}
 	for ix, mapping := range config.Mapping {
-		switch {
-		case mapping.Target.Proxy != nil:
-			moduleName := canonicalModuleName(mapping.Module)
-			module, err := resolveProxyModule(config.ProxyModules, mapping.Module)
-			if err != nil {
-				return nil, fmt.Errorf("error in mapping entry %d - %w", ix, err)
-			}
-
-			moduleID := "proxy:" + moduleName
-			key, err := jsonKey(module)
-			if err != nil {
-				return nil, fmt.Errorf("error in mapping entry %d - %w", ix, err)
-			}
-			if previous, found := seenProxyModules[moduleID]; !found {
-				state.Modules = append(state.Modules, &proxyDesiredModule{
-					id:      moduleID,
-					key:     key,
-					module:  module,
-					builder: builder,
-				})
-				seenProxyModules[moduleID] = key
-			} else if previous != key {
-				return nil, fmt.Errorf("error in mapping entry %d - proxy module %q was defined with conflicting settings", ix, moduleName)
-			}
-
-			state.Routes = append(state.Routes, desiredRoute{
-				ModuleID: moduleID,
-				Mapping:  mapping,
-				Index:    ix,
-			})
-
-		case mapping.Target.Nassh != nil:
-			if ep.authenticate == nil && !ep.withoutNasshAuthentication {
-				return nil, fmt.Errorf("error in mapping entry %d - nassh target requires authentication to be configured", ix)
-			}
-
-			moduleName := canonicalModuleName(mapping.Module)
-			module, err := resolveNasshModule(config.NasshModules, mapping.Module)
-			if err != nil {
-				return nil, fmt.Errorf("error in mapping entry %d - %w", ix, err)
-			}
-
-			moduleID := "nassh:" + moduleName
-			relayHost := resolveNasshRelayHost(ep.defaultNasshRelayHost, module, mapping)
-			if relayHost == "" {
-				return nil, fmt.Errorf("error in mapping entry %d - nassh target is missing a relay host", ix)
-			}
-			host := utils.NormalizeHost(mapping.From.Host)
-			if previous, found := seenNasshHosts[moduleID]; found && previous != host {
-				return nil, fmt.Errorf("error in mapping entry %d - nassh module %q cannot be mounted on multiple hosts", ix, moduleName)
-			}
-			seenNasshHosts[moduleID] = host
-
-			key, err := jsonKey(struct {
-				Module    NasshModule
-				RelayHost string
-			}{
-				Module:    module,
-				RelayHost: relayHost,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("error in mapping entry %d - %w", ix, err)
-			}
-			if _, found := seenProxyModules[moduleID]; !found {
-				state.Modules = append(state.Modules, &nasshDesiredModule{
-					id:           moduleID,
-					key:          key,
-					relayHost:    relayHost,
-					rng:          ep.rng,
-					authenticate: ep.authenticate,
-					mods:         ep.nmods,
-					whitelist:    ep.whitelist,
-					patterns:     patterns,
-				})
-				seenProxyModules[moduleID] = key
-			} else if seenProxyModules[moduleID] != key {
-				return nil, fmt.Errorf("error in mapping entry %d - nassh module %q was defined with conflicting settings", ix, moduleName)
-			}
-
-			state.Routes = append(state.Routes, desiredRoute{
-				ModuleID: moduleID,
-				Mapping:  mapping,
-				Index:    ix,
-			})
+		kind, err := moduleKindForTarget(moduleKinds, mapping.Target)
+		if err != nil {
+			return nil, fmt.Errorf("error in mapping entry %d - %w", ix, err)
+		}
+		if err := kind.Build(&build, ix, mapping); err != nil {
+			return nil, err
 		}
 	}
 

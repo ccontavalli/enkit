@@ -464,7 +464,17 @@ func (np *NasshProxy) requestErrorStatus(counter *utils.Counter, w http.Response
 }
 
 func (np *NasshProxy) ServeCookie(w http.ResponseWriter, r *http.Request) {
-	relayHost := strings.TrimSpace(np.relayHost)
+	np.serveCookie(strings.TrimSpace(np.relayHost), w, r)
+}
+
+func (np *NasshProxy) ServeCookieForRelayHost(relayHost string) http.HandlerFunc {
+	relayHost = strings.TrimSpace(relayHost)
+	return func(w http.ResponseWriter, r *http.Request) {
+		np.serveCookie(relayHost, w, r)
+	}
+}
+
+func (np *NasshProxy) serveCookie(relayHost string, w http.ResponseWriter, r *http.Request) {
 	if relayHost == "" {
 		http.Error(w, "nassh relay host is not configured", http.StatusInternalServerError)
 		return

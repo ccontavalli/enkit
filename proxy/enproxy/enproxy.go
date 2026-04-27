@@ -52,12 +52,12 @@ import (
 	"github.com/ccontavalli/enkit/lib/khttp"
 	"github.com/ccontavalli/enkit/lib/logger"
 	"github.com/ccontavalli/enkit/lib/oauth"
+	ocookie "github.com/ccontavalli/enkit/lib/oauth/cookie"
 	"github.com/ccontavalli/enkit/proxy/amux/amuxie"
 	"github.com/ccontavalli/enkit/proxy/httpp"
 	"github.com/ccontavalli/enkit/proxy/nasshp"
 	"github.com/ccontavalli/enkit/proxy/utils"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type ProxyModule struct {
@@ -78,9 +78,16 @@ type NasshTarget struct {
 	RelayHost string
 }
 
+type MetricsModule struct {
+}
+
+type MetricsTarget struct {
+}
+
 type Target struct {
-	Proxy *ProxyTarget
-	Nassh *NasshTarget
+	Proxy   *ProxyTarget
+	Nassh   *NasshTarget
+	Metrics *MetricsTarget
 }
 
 type Mapping struct {
@@ -95,8 +102,9 @@ const defaultModuleName = "default"
 
 // Config is the content of the proxy configuration file.
 type Config struct {
-	ProxyModules map[string]ProxyModule
-	NasshModules map[string]NasshModule
+	ProxyModules   map[string]ProxyModule
+	NasshModules   map[string]NasshModule
+	MetricsModules map[string]MetricsModule
 
 	// Which URLs to map to which modules or targets.
 	Mapping []Mapping
@@ -125,17 +133,6 @@ func (m MissingConfigPolicy) Valid() bool {
 	}
 }
 
-func (t Target) kindCount() int {
-	total := 0
-	if t.Proxy != nil {
-		total++
-	}
-	if t.Nassh != nil {
-		total++
-	}
-	return total
-}
-
 func canonicalModuleName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -155,100 +152,109 @@ func validateModuleName(kind, name string) error {
 	return nil
 }
 
-func validateProxyModuleNames(modules map[string]ProxyModule) error {
+func validateModuleNames[T any](kind string, modules map[string]T) error {
 	for name := range modules {
-		if err := validateModuleName("proxy", name); err != nil {
+		if err := validateModuleName(kind, name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateNasshModuleNames(modules map[string]NasshModule) error {
-	for name := range modules {
-		if err := validateModuleName("nassh", name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func resolveProxyModule(modules map[string]ProxyModule, name string) (ProxyModule, error) {
+func resolveModule[T any](kind string, modules map[string]T, name string) (T, error) {
 	name = canonicalModuleName(name)
+	var zero T
 	if name == defaultModuleName {
 		if modules == nil {
-			return ProxyModule{}, nil
+			return zero, nil
 		}
 		return modules[defaultModuleName], nil
 	}
 
 	module, ok := modules[name]
 	if !ok {
-		return ProxyModule{}, fmt.Errorf("unknown proxy module %q", name)
+		return zero, fmt.Errorf("unknown %s module %q", kind, name)
 	}
 	return module, nil
 }
 
-func resolveNasshModule(modules map[string]NasshModule, name string) (NasshModule, error) {
-	name = canonicalModuleName(name)
-	if name == defaultModuleName {
-		if modules == nil {
-			return NasshModule{}, nil
-		}
-		return modules[defaultModuleName], nil
-	}
-
-	module, ok := modules[name]
-	if !ok {
-		return NasshModule{}, fmt.Errorf("unknown nassh module %q", name)
-	}
-	return module, nil
+// ConfigNormalizer materializes the effective config seen by CLI inspection
+// and runtime reload.
+//
+// NormalizeConfig applies representable target defaults and cross-cutting
+// policy rewrites that are part of the config enproxy will actually use. The
+// result is what Parse, ApplyConfigStruct, config check, and config print all
+// consume so those paths stay in sync.
+type ConfigNormalizer struct {
+	moduleKinds                []moduleKind
+	withoutAuthentication      bool
+	unsafeIgnoreAuthentication bool
 }
 
-func resolveProxyMapping(module ProxyModule, mapping Mapping) (httpp.Mapping, error) {
-	if mapping.Target.Proxy == nil {
-		return httpp.Mapping{}, fmt.Errorf("proxy target is missing")
+// NewConfigNormalizer returns a normalizer configured with the provided
+// runtime defaults and authentication policy.
+func NewConfigNormalizer(defaultNasshRelayHost string, withoutAuthentication, unsafeIgnoreAuthentication bool) (*ConfigNormalizer, error) {
+	if unsafeIgnoreAuthentication && !withoutAuthentication {
+		return nil, kflags.NewUsageErrorf("--unsafe-ignore-authentication requires --without-authentication")
 	}
-
-	to := strings.TrimSpace(module.To)
-	if targetTo := strings.TrimSpace(mapping.Target.Proxy.To); targetTo != "" {
-		to = targetTo
-	}
-	if to == "" {
-		return httpp.Mapping{}, fmt.Errorf("proxy target is missing a backend address")
-	}
-
-	transform := module.Transform
-	if mapping.Target.Proxy.Transform != nil {
-		transform = mapping.Target.Proxy.Transform
-	}
-
-	return httpp.Mapping{
-		Name: mapping.Name,
-		From: mapping.From,
-		Auth: mapping.Auth,
-		To:   to,
-
-		Transform: transform,
+	return &ConfigNormalizer{
+		moduleKinds:                newModuleKinds(defaultNasshRelayHost),
+		withoutAuthentication:      withoutAuthentication,
+		unsafeIgnoreAuthentication: unsafeIgnoreAuthentication,
 	}, nil
 }
 
-func resolveNasshRelayHost(defaultRelayHost string, module NasshModule, mapping Mapping) string {
-	if mapping.Target.Nassh != nil {
-		if relay := strings.TrimSpace(mapping.Target.Nassh.RelayHost); relay != "" {
-			return relay
+// NormalizeConfig returns a copy of config with representable runtime defaults
+// and policy rewrites applied explicitly.
+func (normalizer *ConfigNormalizer) NormalizeConfig(config Config) (Config, Warnings, error) {
+	normalized := config
+	normalized.Domains = normalizeDomains(config.Domains)
+	normalized.Mapping = make([]Mapping, len(config.Mapping))
+	var warnings Warnings
+
+	for ix, mapping := range config.Mapping {
+		normalizedMapping := mapping
+		normalizedMapping.From.Host = utils.NormalizeHost(mapping.From.Host)
+		if normalizedMapping.From.Path == "" {
+			normalizedMapping.From.Path = "/"
 		}
+
+		kind, err := moduleKindForTarget(normalizer.moduleKinds, normalizedMapping.Target)
+		if err != nil {
+			return Config{}, nil, fmt.Errorf("error in mapping entry %d - %w", ix, err)
+		}
+		target, err := kind.NormalizeTarget(&normalized, ix, normalizedMapping)
+		if err != nil {
+			return Config{}, nil, err
+		}
+		normalizedMapping.Target = target
+		if normalizedMapping.Auth != httpp.MappingPublic && normalizedMapping.Target.Nassh == nil && normalizer.withoutAuthentication {
+			if !normalizer.unsafeIgnoreAuthentication {
+				return Config{}, nil, fmt.Errorf("error in mapping entry %d - authentication was requested, but --without-authentication was specified; pass --unsafe-ignore-authentication to treat it as public for testing", ix)
+			}
+			warnings.Add(fmt.Sprintf("mapping entry %d requested authentication, but it is being treated as public due to --unsafe-ignore-authentication", ix))
+			normalizedMapping.Auth = httpp.MappingPublic
+		}
+		normalized.Mapping[ix] = normalizedMapping
 	}
-	if relay := strings.TrimSpace(module.RelayHost); relay != "" {
-		return relay
+
+	return normalized, warnings, nil
+}
+
+// NormalizeConfig returns a copy of config with representable runtime defaults
+// applied explicitly.
+func NormalizeConfig(config Config, defaultNasshRelayHost string) (Config, error) {
+	normalizer, err := NewConfigNormalizer(defaultNasshRelayHost, false, false)
+	if err != nil {
+		return Config{}, err
 	}
-	if relay := strings.TrimSpace(mapping.From.Host); relay != "" {
-		return relay
-	}
-	if relay := strings.TrimSpace(defaultRelayHost); relay != "" {
-		return relay
-	}
-	return ""
+	normalized, _, err := normalizer.NormalizeConfig(config)
+	return normalized, err
+}
+
+// EffectiveConfig returns NormalizeConfig for backward compatibility.
+func EffectiveConfig(config Config, defaultNasshRelayHost string) (Config, error) {
+	return NormalizeConfig(config, defaultNasshRelayHost)
 }
 
 // Warnings represents a list of warnings.
@@ -257,6 +263,15 @@ type Warnings []string
 // Add adds a new warning.
 func (w *Warnings) Add(warning string) {
 	(*w) = append(*w, warning)
+}
+
+func (w *Warnings) AddOnce(warning string) {
+	for _, existing := range *w {
+		if existing == warning {
+			return
+		}
+	}
+	w.Add(warning)
 }
 
 // Print prints the list of warnings.
@@ -283,49 +298,24 @@ func (config *Config) Parse() (utils.PatternList, Warnings, error) {
 	if len(config.Mapping) <= 0 {
 		return nil, warn, kflags.NewUsageErrorf("config file: has no Mapping(s) defined")
 	}
-	if err := validateProxyModuleNames(config.ProxyModules); err != nil {
-		return nil, warn, kflags.NewUsageErrorf("config file: %w", err)
-	}
-	if err := validateNasshModuleNames(config.NasshModules); err != nil {
-		return nil, warn, kflags.NewUsageErrorf("config file: %w", err)
+	for _, kind := range moduleKinds {
+		for _, name := range kind.ModuleNames(config) {
+			if err := validateModuleName(kind.Kind(), name); err != nil {
+				return nil, warn, kflags.NewUsageErrorf("config file: %w", err)
+			}
+		}
 	}
 
-	hasNassh := false
 	for ix, mapping := range config.Mapping {
-		if mapping.Target.kindCount() != 1 {
-			return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d must define exactly one target kind", ix)
+		kind, err := moduleKindForTarget(moduleKinds, mapping.Target)
+		if err != nil {
+			return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d %w", ix, err)
 		}
-
-		switch {
-		case mapping.Target.Proxy != nil:
-			module, err := resolveProxyModule(config.ProxyModules, mapping.Module)
-			if err != nil {
-				return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - %w", ix, err)
-			}
-			if _, err := resolveProxyMapping(module, mapping); err != nil {
-				return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - %w", ix, err)
-			}
-
-		case mapping.Target.Nassh != nil:
-			hasNassh = true
-			if _, err := resolveNasshModule(config.NasshModules, mapping.Module); err != nil {
-				return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - %w", ix, err)
-			}
-
-			path := strings.TrimSpace(mapping.From.Path)
-			if path == "" {
-				path = "/"
-			}
-			if path != "/" {
-				return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - nassh targets must be mounted on /", ix)
-			}
-
+		if err := kind.Check(config, ix, mapping, &warn); err != nil {
+			return nil, warn, kflags.NewUsageErrorf("config file: mapping entry %d - %w", ix, err)
 		}
 	}
 
-	if hasNassh && len(config.Tunnels) <= 0 {
-		warn.Add("config file: empty whitelist for tunnels - no tunnel will be allowed!")
-	}
 	wl, err := utils.NewPatternList(config.Tunnels)
 	if err != nil {
 		return nil, warn, kflags.NewUsageErrorf("config file: illegal patterns specified in tunnels: %s", err)
@@ -346,8 +336,9 @@ type Flags struct {
 	// ConfigPath identifies the config entry to read from ConfigStore.
 	ConfigPath string
 	// ConfigMissing controls what happens when the selected config is missing.
-	ConfigMissing          MissingConfigPolicy
-	DisabledAuthentication bool
+	ConfigMissing              MissingConfigPolicy
+	DisabledAuthentication     bool
+	UnsafeIgnoreAuthentication bool
 }
 
 // DefaultFlags returns the default flags.
@@ -380,7 +371,8 @@ func (fl *Flags) Register(set kflags.FlagSet, prefix string) *Flags {
 	set.StringVar(&fl.ConfigPath, prefix+"config", fl.ConfigPath,
 		"Path of the proxy config entry to load from the configured config store. Directory-backed stores accept filesystem paths; other backends typically use app/ns/key.")
 	set.StringVar((*string)(&fl.ConfigMissing), prefix+"config-missing", string(fl.ConfigMissing), "What to do when the selected config is missing: auto, embedded, or error.")
-	set.BoolVar(&fl.DisabledAuthentication, prefix+"without-authentication", false, "allow tunneling even without authentication")
+	set.BoolVar(&fl.DisabledAuthentication, prefix+"without-authentication", false, "disable authentication for all routes")
+	set.BoolVar(&fl.UnsafeIgnoreAuthentication, prefix+"unsafe-ignore-authentication", false, "testing only: with --without-authentication, treat proxy and metrics routes requesting authentication as public instead of rejecting the config")
 
 	return fl
 }
@@ -424,6 +416,8 @@ type Options struct {
 
 	authenticate               oauth.Authenticate
 	withoutNasshAuthentication bool
+	withoutAuthentication      bool
+	unsafeIgnoreAuthentication bool
 }
 
 // Modifier updates enproxy construction options.
@@ -586,9 +580,27 @@ func WithConfigMissing(policy MissingConfigPolicy) Modifier {
 	}
 }
 
+func WithDisabledAuthentication(disabled bool) Modifier {
+	return func(op *Options) error {
+		op.withoutAuthentication = disabled
+		if disabled {
+			op.authenticate = nil
+		}
+		return nil
+	}
+}
+
+// WithDisabledNasshAuthentication disables authentication only for NASSH routes.
 func WithDisabledNasshAuthentication(disabled bool) Modifier {
 	return func(op *Options) error {
 		op.withoutNasshAuthentication = disabled
+		return nil
+	}
+}
+
+func WithUnsafeIgnoreAuthentication(unsafe bool) Modifier {
+	return func(op *Options) error {
+		op.unsafeIgnoreAuthentication = unsafe
 		return nil
 	}
 }
@@ -657,13 +669,14 @@ func WithOauthRedirector(rflags *oauth.RedirectorFlags) Modifier {
 		if err := WithAuthenticator(redirector.Authenticate)(op); err != nil {
 			return err
 		}
-
-		pmods := []httpp.Modifier{
+		return WithProxyMods(
 			httpp.WithStripCookie([]string{redirector.CredentialsCookieName()}),
-		}
-		return WithProxyMods(pmods...)(op)
+		)(op)
 	}
+}
 
+func WithOauthCookieStripper(baseCookie string) Modifier {
+	return WithProxyMods(httpp.WithStripCookie([]string{ocookie.CredentialsCookieName(baseCookie)}))
 }
 
 func WithLogging(logger logger.Logger) Modifier {
@@ -671,6 +684,115 @@ func WithLogging(logger logger.Logger) Modifier {
 		op.log = logger
 		return nil
 	}
+}
+
+// OpenConfigBinding opens the config store entry selected by flags.
+//
+// The explicit return reports whether the caller selected an explicit --config
+// path instead of the implicit default config target.
+func OpenConfigBinding(rng *rand.Rand, flags *Flags) (config.StoreWorkspace, config.Store, config.Binding, bool, error) {
+	path := strings.TrimSpace(flags.ConfigPath)
+	storeFlags := flags.ConfigStore
+	if path != "" && storeFlags.Directory.Path == "" {
+		flagsClone := *storeFlags
+		dirClone := *storeFlags.Directory
+		dirClone.Path = "/"
+		flagsClone.Directory = &dirClone
+		storeFlags = &flagsClone
+	}
+
+	workspace, err := factory.NewStore(rng, factory.FromFlags(storeFlags))
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
+	explicit := path != ""
+	parsed := config.ParsedPath{}
+	if explicit {
+		parsed, err = config.ResolvePathNative(workspace, path)
+	} else {
+		parsed, err = config.ResolvePathWithinStore(config.StoreRoot{AppName: "enproxy"}, "enproxy")
+	}
+	if err != nil {
+		_ = workspace.Close()
+		return nil, nil, nil, false, err
+	}
+
+	store, err := parsed.OpenStore(workspace)
+	if err != nil {
+		_ = workspace.Close()
+		target := defaultConfigTargetLabel
+		if explicit {
+			target = path
+		}
+		return nil, nil, nil, false, fmt.Errorf("failed to open config namespace for %q: %w", target, err)
+	}
+
+	return workspace, store, parsed.Bind(store), explicit, nil
+}
+
+func normalizeAndParseConfig(config Config, normalizer *ConfigNormalizer) (Config, utils.PatternList, Warnings, error) {
+	normalized, warnings, err := normalizer.NormalizeConfig(config)
+	if err != nil {
+		return Config{}, nil, nil, err
+	}
+	wl, parseWarnings, err := normalized.Parse()
+	if err != nil {
+		return Config{}, nil, nil, err
+	}
+	warnings = append(warnings, parseWarnings...)
+	return normalized, wl, warnings, nil
+}
+
+// ParseConfigBinding loads the bound config as the current Config format,
+// normalizes representable defaults, and validates the resulting config.
+func (normalizer *ConfigNormalizer) ParseConfigBinding(binding config.Binding) (Config, Warnings, error) {
+	var loaded Config
+	if err := binding.Unmarshal(&loaded); err != nil {
+		return Config{}, nil, err
+	}
+	normalized, _, warnings, err := normalizeAndParseConfig(loaded, normalizer)
+	if err != nil {
+		return Config{}, nil, err
+	}
+	return normalized, warnings, nil
+}
+
+// ParseConfigBinding loads the bound config as the current Config format,
+// normalizes representable defaults, and validates the resulting config.
+func ParseConfigBinding(binding config.Binding, defaultNasshRelayHost string) (Config, Warnings, error) {
+	normalizer, err := NewConfigNormalizer(defaultNasshRelayHost, false, false)
+	if err != nil {
+		return Config{}, nil, err
+	}
+	return normalizer.ParseConfigBinding(binding)
+}
+
+// RuntimeModifiersFromFlags returns the non-config modifiers implied by flags.
+//
+// Callers that already hold a config snapshot can combine these with WithConfig
+// to validate or start enproxy without reopening the configured store.
+func RuntimeModifiersFromFlags(flags *Flags) (Modifiers, error) {
+	if flags.UnsafeIgnoreAuthentication && !flags.DisabledAuthentication {
+		return nil, kflags.NewUsageErrorf("--unsafe-ignore-authentication requires --without-authentication")
+	}
+
+	mods := Modifiers{
+		WithConfigMissing(flags.ConfigMissing),
+		WithDisabledAuthentication(flags.DisabledAuthentication),
+		WithUnsafeIgnoreAuthentication(flags.UnsafeIgnoreAuthentication),
+		WithNasshpMods(nasshp.FromFlags(flags.Nassh)),
+		WithHttpFlags(flags.Http),
+		WithMetricsFlags(flags.Prometheus),
+	}
+	if flags.Oauth.AuthURL != "" {
+		if flags.DisabledAuthentication {
+			mods = append(mods, WithOauthCookieStripper(flags.Oauth.BaseCookie))
+		} else {
+			mods = append(mods, WithOauthRedirector(flags.Oauth))
+		}
+	}
+	return mods, nil
 }
 
 // FromFlags applies the current CLI configuration to enproxy.
@@ -683,62 +805,27 @@ func WithLogging(logger logger.Logger) Modifier {
 // embedded fallback to participate in missing-config handling.
 func FromFlags(flags *Flags) Modifier {
 	return func(op *Options) error {
-		mods := Modifiers{
-			WithConfigMissing(flags.ConfigMissing),
-			WithDisabledNasshAuthentication(flags.DisabledAuthentication),
-			WithNasshpMods(nasshp.FromFlags(flags.Nassh)),
-			WithHttpFlags(flags.Http),
-			WithMetricsFlags(flags.Prometheus),
-		}
-		if flags.Oauth.AuthURL != "" && !flags.DisabledAuthentication {
-			mods = append(mods, WithOauthRedirector(flags.Oauth))
+		mods, err := RuntimeModifiersFromFlags(flags)
+		if err != nil {
+			return err
 		}
 		if err := mods.Apply(op); err != nil {
 			return err
 		}
 
-		path := strings.TrimSpace(flags.ConfigPath)
-		storeFlags := flags.ConfigStore
-		if path != "" && storeFlags.Directory.Path == "" {
-			flagsClone := *storeFlags
-			dirClone := *storeFlags.Directory
-			dirClone.Path = "/"
-			flagsClone.Directory = &dirClone
-			storeFlags = &flagsClone
-		}
-
-		workspace, err := factory.NewStore(op.rng, factory.FromFlags(storeFlags))
+		workspace, store, binding, explicit, err := OpenConfigBinding(op.rng, flags)
 		if err != nil {
 			return err
 		}
 
-		parsed := config.ParsedPath{}
-		explicit := false
-		if path != "" {
-			parsed, err = config.ResolvePathNative(workspace, path)
-			explicit = true
-		} else {
-			parsed, err = config.ResolvePathWithinStore(config.StoreRoot{AppName: "enproxy"}, "enproxy")
-		}
-		if err != nil {
-			_ = workspace.Close()
-			return err
-		}
-
-		store, err := parsed.OpenStore(workspace)
-		if err != nil {
-			_ = workspace.Close()
-			target := defaultConfigTargetLabel
-			if path != "" {
-				target = path
-			}
-			return fmt.Errorf("failed to open config namespace for %q: %w", target, err)
-		}
-
+		applyStore := WithDefaultConfigStore
 		if explicit {
-			return WithConfigStore(workspace, store, parsed.Bind(store))(op)
+			applyStore = WithConfigStore
 		}
-		return WithDefaultConfigStore(workspace, store, parsed.Bind(store))(op)
+		if err := applyStore(workspace, store, binding)(op); err != nil {
+			return err
+		}
+		return nil
 	}
 }
 
@@ -769,9 +856,11 @@ type Enproxy struct {
 
 	pmods                      []httpp.Modifier
 	nmods                      []nasshp.Modifier
-	defaultNasshRelayHost      string
+	normalizer                 *ConfigNormalizer
 	authenticate               oauth.Authenticate
 	withoutNasshAuthentication bool
+	withoutAuthentication      bool
+	unsafeIgnoreAuthentication bool
 }
 
 // New constructs an Enproxy by applying modifiers in order.
@@ -804,19 +893,25 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 		pmods:                      append([]httpp.Modifier{httpp.WithLogging(op.log), httpp.WithAuthenticator(op.authenticate)}, op.pmods...),
 		authenticate:               op.authenticate,
 		withoutNasshAuthentication: op.withoutNasshAuthentication,
+		withoutAuthentication:      op.withoutAuthentication,
+		unsafeIgnoreAuthentication: op.unsafeIgnoreAuthentication,
 	}
 	ep.nmods = append([]nasshp.Modifier{nasshp.WithFilter(ep.whitelist.Allow), nasshp.WithLogging(op.log)}, op.nmods...)
 	defaultRelayHost, err := nasshp.RelayHostFromModifiers(rng, ep.nmods...)
 	if err != nil {
 		return nil, err
 	}
-	ep.defaultNasshRelayHost = defaultRelayHost
-	if op.authenticate == nil && !op.withoutNasshAuthentication {
+	ep.normalizer, err = NewConfigNormalizer(defaultRelayHost, op.withoutAuthentication, op.unsafeIgnoreAuthentication)
+	if err != nil {
+		return nil, err
+	}
+	if op.authenticate == nil && !op.withoutAuthentication && !op.withoutNasshAuthentication {
 		op.log.Warnf("ssh gateway disabled as no authentication was configured")
 	}
-	if op.withoutNasshAuthentication {
-		op.log.Errorf("Watch out! The proxy is being started without authentication! SSH tunneling will rely entirely on a filmsy whitelist")
-		ep.authenticate = nil
+	if op.withoutAuthentication {
+		op.log.Errorf("Watch out! The proxy is being started without authentication!")
+	} else if op.withoutNasshAuthentication {
+		op.log.Errorf("Watch out! SSH tunneling is being started without authentication!")
 	}
 
 	cleanupConfig := true
@@ -826,12 +921,12 @@ func New(rng *rand.Rand, mods ...Modifier) (*Enproxy, error) {
 		}
 	}()
 
-	if op.metrics != nil {
-		if op.gatherer == nil || op.register == nil {
-			ep.gatherer = prometheus.DefaultGatherer
-			ep.register = prometheus.DefaultRegisterer
-		}
+	gatherer, register, err := resolvePrometheus(op.gatherer, op.register)
+	if err != nil {
+		return nil, err
 	}
+	ep.gatherer = gatherer
+	ep.register = register
 	ep.moduleMetrics = newModuleMetricsManager(ep.register)
 
 	ep.configWorkspace = op.configWorkspace
@@ -889,18 +984,42 @@ func sameDomains(one, two []string) bool {
 	return true
 }
 
-func collectDomains(desired *desiredState, modules map[string]runtimeModule) []string {
+func collectDomains(desired *desiredState, plans map[string]modulePlan) []string {
 	domains := append([]string{}, desired.Domains...)
 	for _, route := range desired.Routes {
-		if route.Mapping.Target.kindCount() > 0 {
-			domains = append(domains, route.Mapping.From.Host)
-		}
+		domains = append(domains, route.Target.From.Host)
 	}
 	for _, desiredModule := range desired.Modules {
-		module := modules[desiredModule.ID()]
-		domains = append(domains, module.Domains()...)
+		plan := plans[desiredModule.ID()]
+		domains = append(domains, plan.Domains()...)
 	}
 	return normalizeDomains(domains)
+}
+
+func routeRegistrar(target moduleTarget, index int, bindings *[]httpp.Binding, seenBindings map[string]int) RouteRegistrar {
+	return func(from *httpp.HostPath, label string, handler http.Handler) error {
+		mount := target.From
+		if from != nil {
+			mount = *from
+		}
+
+		expanded, _ := httpp.BindingsForMapping(httpp.Mapping{
+			From: mount,
+			To:   label,
+		}, handler)
+		for _, binding := range expanded {
+			bkey := binding.Host + "\x00" + binding.Path
+			if previous, found := seenBindings[bkey]; found {
+				return fmt.Errorf(
+					"duplicate route %q on host %q already defined by mapping entry %d",
+					binding.Path, binding.Host, previous,
+				)
+			}
+			seenBindings[bkey] = index
+			*bindings = append(*bindings, binding)
+		}
+		return nil
+	}
 }
 
 func (ep *Enproxy) ApplyConfigFile(name string, data []byte) error {
@@ -942,7 +1061,7 @@ func (ep *Enproxy) ReloadConfig() error {
 }
 
 func (ep *Enproxy) ApplyConfigStruct(config Config) error {
-	wl, warns, err := config.Parse()
+	normalized, wl, warns, err := normalizeAndParseConfig(config, ep.normalizer)
 	if err != nil {
 		return err
 	}
@@ -952,22 +1071,22 @@ func (ep *Enproxy) ApplyConfigStruct(config Config) error {
 		return err
 	}
 
-	desired, err := compileDesiredState(builder, ep, config, wl, warns)
+	ep.applyMu.Lock()
+	defer ep.applyMu.Unlock()
+
+	desired, err := compileDesiredState(builder, ep, normalized, wl, warns)
 	if err != nil {
 		return err
 	}
-
-	ep.applyMu.Lock()
-	defer ep.applyMu.Unlock()
 
 	modules, stale, err := reconcileModules(desired.Modules, ep.modules)
 	if err != nil {
 		return err
 	}
 
-	domains := collectDomains(desired, modules)
-	if ep.proxyStarted && !sameDomains(ep.domains, domains) {
-		return fmt.Errorf("cannot apply config changing listener domains after proxy start; restart required")
+	orderedPlans, plans, err := planModules(desired.Modules, modules)
+	if err != nil {
+		return err
 	}
 
 	mux := amuxie.New()
@@ -975,48 +1094,23 @@ func (ep *Enproxy) ApplyConfigStruct(config Config) error {
 	seenBindings := map[string]int{}
 
 	for _, route := range desired.Routes {
-		module := modules[route.ModuleID]
-		moduleBindings, err := module.BindingsForMapping(route.Mapping)
-		if err != nil {
+		plan := plans[route.ModuleID]
+		if err := plan.Map(route.Target, routeRegistrar(route.Target, route.Index, &bindings, seenBindings)); err != nil {
 			return fmt.Errorf("error in mapping entry %d - %w", route.Index, err)
 		}
-		for _, binding := range moduleBindings {
-			bkey := binding.Host + "\x00" + binding.Path
-			if previous, found := seenBindings[bkey]; found {
-				return fmt.Errorf(
-					"error in mapping entry %d - duplicate route %q on host %q already defined by mapping entry %d",
-					route.Index, binding.Path, binding.Host, previous,
-				)
-			}
-			seenBindings[bkey] = route.Index
-			bindings = append(bindings, binding)
-		}
+	}
+
+	domains := collectDomains(desired, plans)
+	if ep.proxyStarted && !sameDomains(ep.domains, domains) {
+		return fmt.Errorf("cannot apply config changing listener domains after proxy start; restart required")
 	}
 	httpp.InstallBindings(mux, ep.log, bindings)
 
-	activations := []moduleActivation{}
-	for _, desiredModule := range desired.Modules {
-		activation, err := modules[desiredModule.ID()].PrepareActivate()
-		if err != nil {
-			for i := len(activations) - 1; i >= 0; i-- {
-				activations[i].Rollback()
-			}
-			return err
-		}
-		activations = append(activations, activation)
-	}
-
-	metricsActivation := ep.moduleMetrics.Prepare(modules)
-	if err := metricsActivation.Commit(); err != nil {
-		for i := len(activations) - 1; i >= 0; i-- {
-			activations[i].Rollback()
-		}
+	if err := ep.moduleMetrics.Apply(modules); err != nil {
 		return err
 	}
 
-	for _, activation := range activations {
-		activation.Commit()
-	}
+	commitModulePlans(orderedPlans)
 	desired.Warnings.Print(ep.log.Warnf)
 	ep.modules = modules
 	ep.domains = domains
@@ -1043,12 +1137,6 @@ func (ep *Enproxy) Close() error {
 	return errors.Join(errs...)
 }
 
-func (ep *Enproxy) RunMetrics() error {
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(ep.gatherer, promhttp.HandlerOpts{}))
-	return ep.metrics(ep.log.Infof, mux)
-}
-
 func (ep *Enproxy) RunProxy() error {
 	ep.applyMu.Lock()
 	domains := append([]string{}, ep.domains...)
@@ -1066,6 +1154,9 @@ func (ep *Enproxy) RunProxy() error {
 
 func (ep *Enproxy) Run() error {
 	if ep.metrics != nil {
+		if ep.gatherer == nil {
+			return fmt.Errorf("metrics listener requires a prometheus gatherer")
+		}
 		go ep.RunMetrics()
 	}
 	return ep.RunProxy()

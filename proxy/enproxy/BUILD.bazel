@@ -5,6 +5,10 @@ go_library(
     srcs = [
         "enproxy.go",
         "metrics.go",
+        "module_adapter.go",
+        "module_metrics.go",
+        "module_nassh.go",
+        "module_proxy.go",
         "reconcile.go",
     ],
     importpath = "github.com/ccontavalli/enkit/proxy/enproxy",
@@ -17,6 +21,7 @@ go_library(
         "//lib/khttp",
         "//lib/logger",
         "//lib/oauth",
+        "//lib/oauth/cookie",
         "//proxy/amux",
         "//proxy/amux/amuxie",
         "//proxy/httpp",
@@ -47,5 +52,6 @@ go_test(
         "//proxy/utils",
         "@com_github_prometheus_client_golang//prometheus",
         "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
     ],
 )
