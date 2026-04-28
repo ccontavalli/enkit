@@ -51,6 +51,10 @@ import (
 // Mainly used for testing.
 type TimeSource func() time.Time
 
+// TimeSleep is a function sleeping for the given amount of time. It should be set to time.Sleep.
+// Mainly used for testing.
+type TimeSleep func(time.Duration)
+
 // Options are all the options that the Retry functions accept.
 type Options struct {
 	rng *rand.Rand
@@ -61,6 +65,8 @@ type Options struct {
 
 	// How to read time.
 	Now TimeSource
+	// How to sleep between attempts.
+	Sleep TimeSleep
 
 	Flags
 }
@@ -204,6 +210,13 @@ func WithTimeSource(ts TimeSource) Modifier {
 	}
 }
 
+// WithSleep configures how retries wait between attempts.
+func WithSleep(sleep TimeSleep) Modifier {
+	return func(o *Options) {
+		o.Sleep = sleep
+	}
+}
+
 // FromFlags configures a retry object from command line flags.
 func FromFlags(fl *Flags) Modifier {
 	return func(o *Options) {
@@ -220,6 +233,7 @@ func New(mods ...Modifier) *Options {
 	return Modifiers(mods).Apply(&Options{
 		Flags:  *DefaultFlags(),
 		Now:    time.Now,
+		Sleep:  time.Sleep,
 		logger: logger.Nil,
 	})
 }
@@ -259,7 +273,11 @@ func (o *Options) DelaySince(start time.Time) time.Duration {
 		return delay
 	}
 
-	elapsed := time.Now().Sub(start)
+	now := time.Now
+	if o.Now != nil {
+		now = o.Now
+	}
+	elapsed := now().Sub(start)
 	if elapsed >= delay {
 		return 0
 	}
@@ -396,7 +414,11 @@ func (o *Options) RunAttempt(runner func(attempt int) error) error {
 		}
 
 		if delay > 0 {
-			time.Sleep(delay)
+			sleep := time.Sleep
+			if o.Sleep != nil {
+				sleep = o.Sleep
+			}
+			sleep(delay)
 		}
 	}
 	err := multierror.New(errs)
