@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "dialer.go",
         "doc.go",
+        "shared_sender.go",
         "sender.go",
         "transactional.go",
     ],

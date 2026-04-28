@@ -108,7 +108,7 @@ func (f *Flags) Register(fs kflags.FlagSet, prefix string) *Flags {
 	fs.DurationVar(&f.Wait, prefix+"email-retry-wait", f.Wait, "How long to wait between connection attempts.")
 	fs.IntVar(&f.MaxAttempts, prefix+"email-max-attempts", f.MaxAttempts, "Max attempts per recipient (0 means unlimited).")
 	fs.BoolVar(&f.Shuffle, prefix+"email-shuffle", f.Shuffle, "Shuffle recipient list before sending.")
-	fs.StringVar(&f.Sender, prefix+"email-sender", f.Sender, "Email sender backend (smtp or fake).")
+	fs.StringVar(&f.Sender, prefix+"email-sender", f.Sender, "Email sender backend (smtp, smtp-shared, or fake).")
 	fs.DurationVar(&f.FakeDelay, prefix+"email-fake-delay", f.FakeDelay, "Delay between fake email sends.")
 	fs.DurationVar(&f.PreSendSleep, prefix+"email-pre-send-sleep", f.PreSendSleep, "Delay before sending each email.")
 	fs.StringVar(&f.OverrideRecipient, prefix+"email-override-recipient", f.OverrideRecipient, "Override SMTP recipient address for testing (smtp sender only).")
@@ -506,6 +506,12 @@ func (s *gomailSingleSender) Close() error {
 
 // SenderFactoryFromFlags returns a sender factory based on flags.
 func SenderFactoryFromFlags(dialer Dialer, flags *Flags, log logger.Logger, sleep Sleeper) (SingleSenderFactory, error) {
+	return SharedSenderFactoryFromFlags(nil, dialer, flags, log, sleep)
+}
+
+// SharedSenderFactoryFromFlags returns a sender factory based on flags, using a
+// shared SMTP session provider when smtp-shared mode is selected.
+func SharedSenderFactoryFromFlags(shared SharedProviderFunc, dialer Dialer, flags *Flags, log logger.Logger, sleep Sleeper) (SingleSenderFactory, error) {
 	sender := "smtp"
 	if flags != nil && flags.Sender != "" {
 		sender = flags.Sender
@@ -520,6 +526,25 @@ func SenderFactoryFromFlags(dialer Dialer, flags *Flags, log logger.Logger, slee
 			override = flags.OverrideRecipient
 		}
 		return &dialerSenderFactory{dialer: dialer, overrideRecipient: override}, nil
+	case "smtp-shared":
+		override := ""
+		if flags != nil {
+			override = flags.OverrideRecipient
+		}
+		var provider *SharedSenderProvider
+		if shared != nil {
+			provider = shared()
+		} else {
+			provider = DefaultSharedSenderProviderInstance()
+		}
+		if provider == nil {
+			return nil, fmt.Errorf("shared sender provider is required for smtp-shared sender")
+		}
+		wait := time.Duration(0)
+		if flags != nil {
+			wait = flags.Wait
+		}
+		return provider.factoryForDialer(dialer, override, wait, sleep)
 	case "fake":
 		delay := time.Duration(0)
 		if flags != nil {
