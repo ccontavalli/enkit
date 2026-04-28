@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ccontavalli/enkit/lib/logger"
 	"gopkg.in/gomail.v2"
 )
 
@@ -33,6 +34,7 @@ type SharedSenderProvider struct {
 	mu         sync.Mutex
 	workers    map[string]*sharedSenderWorker
 	generation uint64
+	nextID     uint64
 }
 
 // NewSharedSenderProvider creates a provider that keeps idle SMTP sessions open
@@ -72,13 +74,20 @@ func (p *SharedSenderProvider) Close() error {
 	return firstErr
 }
 
-func (p *SharedSenderProvider) factoryForDialer(dialer Dialer, overrideRecipient string, wait time.Duration, sleep Sleeper) (SingleSenderFactory, error) {
-	return p.factoryForDialerWithClock(dialer, overrideRecipient, wait, time.Now, sleep)
+func (p *SharedSenderProvider) factoryForDialer(dialer Dialer, overrideRecipient string, wait time.Duration, sleep Sleeper, log logger.Logger) (SingleSenderFactory, error) {
+	return p.factoryForDialerWithClockAndLogger(dialer, overrideRecipient, wait, time.Now, sleep, log)
 }
 
 func (p *SharedSenderProvider) factoryForDialerWithClock(dialer Dialer, overrideRecipient string, wait time.Duration, now TimeSource, sleep Sleeper) (SingleSenderFactory, error) {
+	return p.factoryForDialerWithClockAndLogger(dialer, overrideRecipient, wait, now, sleep, logger.Nil)
+}
+
+func (p *SharedSenderProvider) factoryForDialerWithClockAndLogger(dialer Dialer, overrideRecipient string, wait time.Duration, now TimeSource, sleep Sleeper, log logger.Logger) (SingleSenderFactory, error) {
 	if dialer == nil {
 		return nil, fmt.Errorf("dialer is required for smtp sender")
+	}
+	if log == nil {
+		log = logger.Nil
 	}
 
 	identity, err := sharedSenderIdentity(dialer)
@@ -99,6 +108,7 @@ func (p *SharedSenderProvider) factoryForDialerWithClock(dialer Dialer, override
 		wait:              wait,
 		now:               now,
 		sleep:             sleep,
+		log:               log,
 		overrideRecipient: overrideRecipient,
 	}, nil
 }
@@ -111,6 +121,7 @@ type sharedSenderFactory struct {
 	wait              time.Duration
 	now               TimeSource
 	sleep             Sleeper
+	log               logger.Logger
 	overrideRecipient string
 }
 
@@ -119,7 +130,7 @@ func (f *sharedSenderFactory) Open() (SingleSender, error) {
 		return nil, fmt.Errorf("shared sender provider is not configured")
 	}
 
-	worker, err := f.provider.workerFor(f.generation, f.identity, f.dialer, f.wait, f.now, f.sleep)
+	worker, err := f.provider.workerFor(f.generation, f.identity, f.dialer, f.wait, f.now, f.sleep, f.log)
 	if err != nil {
 		return nil, err
 	}
@@ -146,11 +157,13 @@ func (s *sharedSingleSender) Close() error {
 }
 
 type sharedSenderWorker struct {
+	id          uint64
 	dialer      Dialer
 	idleTimeout time.Duration
 	wait        time.Duration
 	now         TimeSource
 	sleep       Sleeper
+	log         logger.Logger
 
 	requests chan sharedSendRequest
 	done     chan struct{}
@@ -166,19 +179,24 @@ type sharedSendRequest struct {
 	reply             chan error
 }
 
-func newSharedSenderWorker(dialer Dialer, idleTimeout, wait time.Duration, now TimeSource, sleep Sleeper) *sharedSenderWorker {
+func newSharedSenderWorker(id uint64, dialer Dialer, idleTimeout, wait time.Duration, now TimeSource, sleep Sleeper, log logger.Logger) *sharedSenderWorker {
 	if now == nil {
 		now = time.Now
 	}
 	if sleep == nil {
 		sleep = time.Sleep
 	}
+	if log == nil {
+		log = logger.Nil
+	}
 	worker := &sharedSenderWorker{
+		id:          id,
 		dialer:      dialer,
 		idleTimeout: idleTimeout,
 		wait:        wait,
 		now:         now,
 		sleep:       sleep,
+		log:         log,
 		requests:    make(chan sharedSendRequest),
 		done:        make(chan struct{}),
 		exited:      make(chan struct{}),
@@ -188,6 +206,21 @@ func newSharedSenderWorker(dialer Dialer, idleTimeout, wait time.Duration, now T
 }
 
 var errSharedSenderProviderClosed = errors.New("shared sender provider is closed")
+
+func (w *sharedSenderWorker) infof(format string, args ...interface{}) {
+	args = append([]interface{}{w.id}, args...)
+	w.log.Infof("smtp-shared worker[%d] "+format, args...)
+}
+
+func (w *sharedSenderWorker) debugf(format string, args ...interface{}) {
+	args = append([]interface{}{w.id}, args...)
+	w.log.Debugf("smtp-shared worker[%d] "+format, args...)
+}
+
+func (w *sharedSenderWorker) warnf(format string, args ...interface{}) {
+	args = append([]interface{}{w.id}, args...)
+	w.log.Warnf("smtp-shared worker[%d] "+format, args...)
+}
 
 func (w *sharedSenderWorker) send(message *gomail.Message, overrideRecipient string) error {
 	reply := make(chan error, 1)
@@ -214,6 +247,8 @@ func (w *sharedSenderWorker) shutdown() error {
 
 func (w *sharedSenderWorker) run() {
 	defer close(w.exited)
+	w.infof("started - idle-timeout=%s wait=%s dialer=%T", w.idleTimeout, w.wait, w.dialer)
+	defer w.infof("stopped")
 
 	var sender gomail.SendCloser
 	var timer *time.Timer
@@ -265,51 +300,69 @@ func (w *sharedSenderWorker) run() {
 	for {
 		select {
 		case <-w.done:
+			w.infof("shutdown requested")
 			stopIdle()
 			if timer != nil {
 				timer.Stop()
 			}
 			w.closeErr = closeSender()
+			if w.closeErr != nil {
+				w.warnf("failed closing SMTP session during shutdown: %v", w.closeErr)
+			}
 			return
 
 		case <-idle:
 			idle = nil
-			_ = closeSender()
+			w.infof("idle timeout reached, closing SMTP session")
+			if err := closeSender(); err != nil {
+				w.warnf("failed closing idle SMTP session: %v", err)
+			}
 
 		case req := <-w.requests:
 			stopIdle()
+			w.infof("send requested")
 
 			if sender == nil {
 				if w.wait > 0 && !lastDialAttempt.IsZero() {
 					elapsed := w.now().Sub(lastDialAttempt)
 					if elapsed < w.wait {
+						w.infof("waiting %s before redial", w.wait-elapsed)
 						w.sleep(w.wait - elapsed)
 					}
 				}
 				lastDialAttempt = w.now()
+				w.infof("dialing SMTP server")
 
 				var err error
 				sender, err = w.dialer.Dial()
 				if err != nil {
+					w.warnf("dial failed: %v", err)
 					req.reply <- err
 					continue
 				}
+				w.infof("dial succeeded")
 			}
 
 			if req.overrideRecipient != "" {
+				w.debugf("overriding recipients for SMTP send")
 				req.message.SetHeader("To", req.overrideRecipient)
 				req.message.SetHeader("Cc")
 				req.message.SetHeader("Bcc")
 			}
 
+			w.infof("sending message")
 			err := gomail.Send(sender, req.message)
 			if err != nil {
-				_ = closeSender()
+				w.warnf("send failed: %v", err)
+				if closeErr := closeSender(); closeErr != nil {
+					w.warnf("failed closing SMTP session after send error: %v", closeErr)
+				}
 				req.reply <- err
 				continue
 			}
 
 			resetIdle()
+			w.infof("send completed")
 			req.reply <- nil
 		}
 	}
@@ -373,7 +426,7 @@ func DefaultSharedSenderProviderInstance() *SharedSenderProvider {
 	return defaultSharedSenderProvider
 }
 
-func (p *SharedSenderProvider) workerFor(generation uint64, identity string, dialer Dialer, wait time.Duration, now TimeSource, sleep Sleeper) (*sharedSenderWorker, error) {
+func (p *SharedSenderProvider) workerFor(generation uint64, identity string, dialer Dialer, wait time.Duration, now TimeSource, sleep Sleeper, log logger.Logger) (*sharedSenderWorker, error) {
 	if p == nil {
 		return nil, fmt.Errorf("shared sender provider is not configured")
 	}
@@ -386,7 +439,8 @@ func (p *SharedSenderProvider) workerFor(generation uint64, identity string, dia
 	}
 	worker := p.workers[identity]
 	if worker == nil {
-		worker = newSharedSenderWorker(dialer, p.idleTimeout, wait, now, sleep)
+		p.nextID++
+		worker = newSharedSenderWorker(p.nextID, dialer, p.idleTimeout, wait, now, sleep, log)
 		p.workers[identity] = worker
 	}
 	return worker, nil

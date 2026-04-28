@@ -544,7 +544,7 @@ func SharedSenderFactoryFromFlags(shared SharedProviderFunc, dialer Dialer, flag
 		if flags != nil {
 			wait = flags.Wait
 		}
-		return provider.factoryForDialer(dialer, override, wait, sleep)
+		return provider.factoryForDialer(dialer, override, wait, sleep, log)
 	case "fake":
 		delay := time.Duration(0)
 		if flags != nil {
