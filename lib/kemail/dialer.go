@@ -1,6 +1,7 @@
 package kemail
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"strings"
 
@@ -8,9 +9,29 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
-// Dialer establishes a connection for sending mail.
+// Dialer establishes SMTP connections for sending mail.
+//
+// Implementations are not required to be concurrency-safe. Callers must
+// serialize access to a given Dialer unless a higher-level abstraction such as
+// smtp-shared already does so.
+//
+// Implementations are expected to be stable for their lifetime. In particular,
+// when used with smtp-shared:
+//   - Identity() must remain stable and equal for dialers that should reuse the
+//     same shared SMTP worker/session.
+//   - LogID() should remain stable and human-readable so operators can identify
+//     the specific dialer configuration in logs.
 type Dialer interface {
+	// Dial establishes an SMTP session for sending mail.
 	Dial() (gomail.SendCloser, error)
+	// Identity returns the stable transport identity for this dialer.
+	// Dialers that return the same Identity are treated as the same shared SMTP
+	// transport and may reuse one shared worker/session.
+	Identity() string
+	// LogID returns a human-readable identifier for this specific dialer
+	// configuration. It is intended for logs and debugging, not for sharing
+	// decisions.
+	LogID() string
 }
 
 // DialerFlags defines SMTP configuration flags.
@@ -98,8 +119,26 @@ func WithLocalName(name string) DialerModifier {
 	}
 }
 
-// NewDialer creates a gomail dialer from modifiers.
-func NewDialer(mods ...DialerModifier) (*gomail.Dialer, error) {
+type smtpDialer struct {
+	dialer   *gomail.Dialer
+	identity string
+	logID    string
+}
+
+func (d *smtpDialer) Dial() (gomail.SendCloser, error) {
+	return d.dialer.Dial()
+}
+
+func (d *smtpDialer) Identity() string {
+	return d.identity
+}
+
+func (d *smtpDialer) LogID() string {
+	return d.logID
+}
+
+// NewDialer creates an immutable SMTP dialer from modifiers.
+func NewDialer(mods ...DialerModifier) (Dialer, error) {
 	opts := &DialerOptions{}
 	if err := DialerModifiers(mods).Apply(opts); err != nil {
 		return nil, err
@@ -110,9 +149,33 @@ func NewDialer(mods ...DialerModifier) (*gomail.Dialer, error) {
 	if opts.SmtpPort <= 0 || opts.SmtpPort > 65535 {
 		return nil, fmt.Errorf("smtp port must be a valid port number (1-65535)")
 	}
+
+	identity := fmt.Sprintf(
+		"smtp:%s:%d:%s:%s:%x",
+		opts.SmtpHost,
+		opts.SmtpPort,
+		opts.SmtpUser,
+		opts.LocalName,
+		sha256.Sum256([]byte(opts.SmtpPassword)),
+	)
+	logID := fmt.Sprintf("smtp %s@%s:%d", opts.SmtpUser, opts.SmtpHost, opts.SmtpPort)
+	if opts.SmtpUser == "" {
+		logID = fmt.Sprintf("smtp %s:%d", opts.SmtpHost, opts.SmtpPort)
+	}
+	if opts.LocalName != "" {
+		logID = fmt.Sprintf("%s local=%s", logID, opts.LocalName)
+	}
+	fingerprint := sha256.Sum256([]byte(identity))
+	logID = fmt.Sprintf("%s [%x]", logID, fingerprint[:4])
+
 	dialer := gomail.NewPlainDialer(opts.SmtpHost, opts.SmtpPort, opts.SmtpUser, opts.SmtpPassword)
 	if opts.LocalName != "" {
 		dialer.LocalName = opts.LocalName
 	}
-	return dialer, nil
+
+	return &smtpDialer{
+		dialer:   dialer,
+		identity: identity,
+		logID:    logID,
+	}, nil
 }

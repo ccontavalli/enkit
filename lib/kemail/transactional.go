@@ -12,9 +12,27 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
-// SendDialer sends a message via SMTP (gomail.Dialer implements this).
-type SendDialer interface {
-	DialAndSend(m ...*gomail.Message) error
+// DialAndSendFunc sends one or more messages using a one-shot SMTP session.
+type DialAndSendFunc func(m ...*gomail.Message) error
+
+// DialAndSend adapts a Dialer into a one-shot send function.
+func DialAndSend(dialer Dialer) DialAndSendFunc {
+	if dialer == nil {
+		return nil
+	}
+	return func(messages ...*gomail.Message) error {
+		sender, err := dialer.Dial()
+		if err != nil {
+			return err
+		}
+		defer sender.Close()
+		for _, message := range messages {
+			if err := gomail.Send(sender, message); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
 
 // TemplateFlags defines template file flags for transactional emails.
@@ -87,7 +105,7 @@ func ParseTemplates(subject, bodyHTML, bodyText []byte) (*Templates, error) {
 // TransactionalEmailer builds and sends templated emails.
 type TransactionalEmailer struct {
 	log           logger.Logger
-	dialer        SendDialer
+	dialAndSend   DialAndSendFunc
 	senderFactory SingleSenderFactory
 	fromAddress   string
 	templates     *Templates
@@ -96,7 +114,7 @@ type TransactionalEmailer struct {
 
 type transactionalOptions struct {
 	log           logger.Logger
-	dialer        SendDialer
+	dialAndSend   DialAndSendFunc
 	senderFactory SingleSenderFactory
 	fromAddress   string
 	templates     *Templates
@@ -122,9 +140,17 @@ func (mods TransactionalModifiers) Apply(o *transactionalOptions) error {
 }
 
 // WithDialer sets the dialer used to send emails.
-func WithDialer(dialer SendDialer) TransactionalModifier {
+func WithDialer(dialer Dialer) TransactionalModifier {
 	return func(o *transactionalOptions) error {
-		o.dialer = dialer
+		o.dialAndSend = DialAndSend(dialer)
+		return nil
+	}
+}
+
+// WithDialAndSend sets the one-shot SMTP send function used to send emails.
+func WithDialAndSend(fn DialAndSendFunc) TransactionalModifier {
+	return func(o *transactionalOptions) error {
+		o.dialAndSend = fn
 		return nil
 	}
 }
@@ -220,7 +246,7 @@ func NewTransactionalEmailer(mods ...TransactionalModifier) (*TransactionalEmail
 		}
 		opts.senderFactory = factory
 	}
-	if opts.dialer == nil && opts.senderFactory == nil {
+	if opts.dialAndSend == nil && opts.senderFactory == nil {
 		return nil, fmt.Errorf("dialer or sender factory is required")
 	}
 	if opts.fromAddress == "" {
@@ -232,7 +258,7 @@ func NewTransactionalEmailer(mods ...TransactionalModifier) (*TransactionalEmail
 
 	return &TransactionalEmailer{
 		log:           opts.log,
-		dialer:        opts.dialer,
+		dialAndSend:   opts.dialAndSend,
 		senderFactory: opts.senderFactory,
 		fromAddress:   opts.fromAddress,
 		templates:     opts.templates,
@@ -288,7 +314,7 @@ func (e *TransactionalEmailer) Send(to string, data map[string]interface{}) erro
 		}
 		return nil
 	}
-	if err := e.dialer.DialAndSend(message); err != nil {
+	if err := e.dialAndSend(message); err != nil {
 		e.log.Errorf("Failed to send email to %s: %v", to, err)
 		return fmt.Errorf("error sending email: %w", err)
 	}

@@ -1,12 +1,10 @@
 package kemail
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand"
-	"net/smtp"
 	"sync"
 	"testing"
 	"time"
@@ -44,16 +42,24 @@ type dialResult struct {
 
 type fakeDialer struct {
 	identity string
+	logID    string
 	results  []dialResult
 	calls    int
 	mu       sync.Mutex
 }
 
-func (d *fakeDialer) SharedSenderIdentity() string {
+func (d *fakeDialer) Identity() string {
 	if d.identity != "" {
 		return d.identity
 	}
 	return fmt.Sprintf("fake:%p", d)
+}
+
+func (d *fakeDialer) LogID() string {
+	if d.logID != "" {
+		return d.logID
+	}
+	return d.Identity()
 }
 
 func (d *fakeDialer) Dial() (gomail.SendCloser, error) {
@@ -568,10 +574,11 @@ func TestSharedSenderFactoryFromFlagsClosesIdleConnection(t *testing.T) {
 			{sender: sender2},
 		},
 	}
-	provider := NewSharedSenderProvider(20 * time.Millisecond)
+	provider := NewSharedSenderProvider(time.Hour)
 	flags := DefaultFlags()
 	flags.Sender = "smtp-shared"
 	flags.Wait = 0
+	flags.SharedIdleTimeout = 20 * time.Millisecond
 
 	factory, err := SharedSenderFactoryFromFlags(func() *SharedSenderProvider { return provider }, dialer, flags, logger.Nil, nil)
 	assert.NoError(t, err)
@@ -601,10 +608,11 @@ func TestSharedSenderFactoryFromFlagsAllowsIdleCloseWithCheckedOutHandle(t *test
 			{sender: sender2},
 		},
 	}
-	provider := NewSharedSenderProvider(20 * time.Millisecond)
+	provider := NewSharedSenderProvider(time.Hour)
 	flags := DefaultFlags()
 	flags.Sender = "smtp-shared"
 	flags.Wait = 0
+	flags.SharedIdleTimeout = 20 * time.Millisecond
 
 	factory, err := SharedSenderFactoryFromFlags(func() *SharedSenderProvider { return provider }, dialer, flags, logger.Nil, nil)
 	assert.NoError(t, err)
@@ -632,10 +640,11 @@ func TestSharedSenderFactoryFromFlagsReopenWithoutSendDoesNotAffectIdleTimer(t *
 			{sender: sender2},
 		},
 	}
-	provider := NewSharedSenderProvider(20 * time.Millisecond)
+	provider := NewSharedSenderProvider(time.Hour)
 	flags := DefaultFlags()
 	flags.Sender = "smtp-shared"
 	flags.Wait = 0
+	flags.SharedIdleTimeout = 20 * time.Millisecond
 
 	factory, err := SharedSenderFactoryFromFlags(func() *SharedSenderProvider { return provider }, dialer, flags, logger.Nil, nil)
 	assert.NoError(t, err)
@@ -835,6 +844,14 @@ func (d *unsupportedSharedDialer) Dial() (gomail.SendCloser, error) {
 	return &fakeSender{}, nil
 }
 
+func (d *unsupportedSharedDialer) Identity() string {
+	return ""
+}
+
+func (d *unsupportedSharedDialer) LogID() string {
+	return ""
+}
+
 func TestSharedSenderFactoryFromFlagsRequiresStableIdentity(t *testing.T) {
 	provider := NewSharedSenderProvider(time.Hour)
 	flags := DefaultFlags()
@@ -843,50 +860,32 @@ func TestSharedSenderFactoryFromFlagsRequiresStableIdentity(t *testing.T) {
 	factory, err := SharedSenderFactoryFromFlags(func() *SharedSenderProvider { return provider }, &unsupportedSharedDialer{}, flags, logger.Nil, nil)
 	assert.Nil(t, factory)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "SharedSenderIdentityProvider")
+	assert.Contains(t, err.Error(), "Dialer.Identity()")
 }
 
-func TestSharedSenderIdentityIncludesSMTPSettings(t *testing.T) {
-	base := gomail.NewPlainDialer("smtp.example.com", 587, "user", "password-one")
-	base.LocalName = "local"
-
-	differentPassword := gomail.NewPlainDialer("smtp.example.com", 587, "user", "password-two")
-	differentPassword.LocalName = "local"
-
-	differentTLS := gomail.NewPlainDialer("smtp.example.com", 587, "user", "password-one")
-	differentTLS.LocalName = "local"
-	differentTLS.TLSConfig = &tls.Config{ServerName: "smtp.example.com"}
-
-	differentSSL := gomail.NewPlainDialer("smtp.example.com", 587, "user", "password-one")
-	differentSSL.LocalName = "local"
-	differentSSL.SSL = true
-
-	withExplicitCram := gomail.NewPlainDialer("smtp.example.com", 587, "user", "password-one")
-	withExplicitCram.LocalName = "local"
-	withExplicitCram.Auth = smtp.CRAMMD5Auth("user", "password-one")
-
-	withExplicitPlainIdentity := gomail.NewPlainDialer("smtp.example.com", 587, "user", "password-one")
-	withExplicitPlainIdentity.LocalName = "local"
-	withExplicitPlainIdentity.Auth = smtp.PlainAuth("identity", "user", "password-one", "smtp.example.com")
-
-	baseID, err := sharedSenderIdentity(base)
+func TestNewDialerIdentityIncludesSMTPSettings(t *testing.T) {
+	base, err := NewDialer(
+		FromDialerFlags(&DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587, SmtpUser: "user", SmtpPassword: "password-one", LocalName: "local"}),
+	)
 	assert.NoError(t, err)
-	differentPasswordID, err := sharedSenderIdentity(differentPassword)
+	differentPassword, err := NewDialer(
+		FromDialerFlags(&DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587, SmtpUser: "user", SmtpPassword: "password-two", LocalName: "local"}),
+	)
 	assert.NoError(t, err)
-	differentTLSID, err := sharedSenderIdentity(differentTLS)
+	differentHost, err := NewDialer(
+		FromDialerFlags(&DialerFlags{SmtpHost: "other.example.com", SmtpPort: 587, SmtpUser: "user", SmtpPassword: "password-one", LocalName: "local"}),
+	)
 	assert.NoError(t, err)
-	differentSSLID, err := sharedSenderIdentity(differentSSL)
-	assert.NoError(t, err)
-	withExplicitCramID, err := sharedSenderIdentity(withExplicitCram)
-	assert.NoError(t, err)
-	withExplicitPlainIdentityID, err := sharedSenderIdentity(withExplicitPlainIdentity)
+	differentLocalName, err := NewDialer(
+		FromDialerFlags(&DialerFlags{SmtpHost: "smtp.example.com", SmtpPort: 587, SmtpUser: "user", SmtpPassword: "password-one", LocalName: "other"}),
+	)
 	assert.NoError(t, err)
 
-	assert.NotEqual(t, baseID, differentPasswordID)
-	assert.NotEqual(t, baseID, differentTLSID)
-	assert.NotEqual(t, baseID, differentSSLID)
-	assert.NotEqual(t, baseID, withExplicitCramID)
-	assert.NotEqual(t, baseID, withExplicitPlainIdentityID)
+	assert.NotEqual(t, base.Identity(), differentPassword.Identity())
+	assert.NotEqual(t, base.Identity(), differentHost.Identity())
+	assert.NotEqual(t, base.Identity(), differentLocalName.Identity())
+	assert.NotEmpty(t, base.LogID())
+	assert.Contains(t, base.LogID(), "smtp user@smtp.example.com:587")
 }
 
 func TestSharedSenderFactorySeparatesWorkersByWait(t *testing.T) {
@@ -932,33 +931,55 @@ func TestSharedSenderFactorySeparatesWorkersByWait(t *testing.T) {
 	assert.NoError(t, single2.Close())
 }
 
-func TestSharedSenderFactorySnapshotsGomailDialer(t *testing.T) {
-	dialer := gomail.NewPlainDialer("smtp.example.com", 587, "user", "password-one")
-	dialer.LocalName = "local"
-	dialer.TLSConfig = &tls.Config{ServerName: "smtp.example.com"}
-
+func TestSharedSenderFactorySeparatesWorkersByIdleTimeout(t *testing.T) {
+	sender1 := &fakeSender{}
+	sender2 := &fakeSender{}
+	dialer := &fakeDialer{
+		results: []dialResult{
+			{sender: sender1},
+			{sender: sender2},
+		},
+	}
 	provider := NewSharedSenderProvider(time.Hour)
-	factory, err := provider.factoryForDialerWithClock(dialer, "", 0, time.Now, nil)
+	flags1 := DefaultFlags()
+	flags1.Sender = "smtp-shared"
+	flags1.Wait = 5 * time.Second
+	flags1.SharedIdleTimeout = 20 * time.Millisecond
+	flags2 := DefaultFlags()
+	flags2.Sender = "smtp-shared"
+	flags2.Wait = 5 * time.Second
+	flags2.SharedIdleTimeout = 30 * time.Millisecond
+
+	factory1, err := SharedSenderFactoryFromFlags(func() *SharedSenderProvider { return provider }, dialer, flags1, logger.Nil, nil)
 	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	factory2, err := SharedSenderFactoryFromFlags(func() *SharedSenderProvider { return provider }, dialer, flags2, logger.Nil, nil)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
 
-	sharedFactory, ok := factory.(*sharedSenderFactory)
-	assert.True(t, ok)
-	frozen, ok := sharedFactory.dialer.(*gomail.Dialer)
-	assert.True(t, ok)
-	assert.NotSame(t, dialer, frozen)
-	assert.NotSame(t, dialer.TLSConfig, frozen.TLSConfig)
+	single1, err := factory1.Open()
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	assert.NoError(t, single1.Send(buildMessage("a@example.com")))
 
-	dialer.Host = "changed.example.com"
-	dialer.Password = "password-two"
-	dialer.LocalName = "changed"
-	dialer.SSL = true
-	dialer.TLSConfig.ServerName = "changed.example.com"
+	single2, err := factory2.Open()
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	assert.NoError(t, single2.Send(buildMessage("b@example.com")))
 
-	assert.Equal(t, "smtp.example.com", frozen.Host)
-	assert.Equal(t, "password-one", frozen.Password)
-	assert.Equal(t, "local", frozen.LocalName)
-	assert.False(t, frozen.SSL)
-	assert.Equal(t, "smtp.example.com", frozen.TLSConfig.ServerName)
+	assert.Equal(t, 2, dialer.calls)
+	assert.Equal(t, 1, sender1.sendCalls)
+	assert.Equal(t, 1, sender2.sendCalls)
+	assert.NoError(t, single1.Close())
+	assert.NoError(t, single2.Close())
 }
 
 func TestSharedSenderFactoryFromFlagsDoesNotBlockOtherIdentitiesOnSlowDial(t *testing.T) {
@@ -1032,12 +1053,20 @@ func (s *blockingFakeSender) Send(from string, to []string, msg io.WriterTo) err
 
 type blockingDialer struct {
 	identity string
+	logID    string
 	start    chan struct{}
 	release  chan struct{}
 	sender   gomail.SendCloser
 }
 
-func (d *blockingDialer) SharedSenderIdentity() string {
+func (d *blockingDialer) Identity() string {
+	return d.identity
+}
+
+func (d *blockingDialer) LogID() string {
+	if d.logID != "" {
+		return d.logID
+	}
 	return d.identity
 }
 

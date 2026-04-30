@@ -1,7 +1,6 @@
 package kemail
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sync"
@@ -17,11 +16,6 @@ const DefaultSharedSenderIdleTimeout = 3 * time.Minute
 
 // SharedProviderFunc returns the shared provider to use for smtp-shared mode.
 type SharedProviderFunc func() *SharedSenderProvider
-
-// SharedSenderIdentityProvider can override how shared SMTP workers are keyed.
-type SharedSenderIdentityProvider interface {
-	SharedSenderIdentity() string
-}
 
 // SharedSenderProvider manages shared SMTP sessions keyed by transport identity.
 //
@@ -74,15 +68,15 @@ func (p *SharedSenderProvider) Close() error {
 	return firstErr
 }
 
-func (p *SharedSenderProvider) factoryForDialer(dialer Dialer, overrideRecipient string, wait time.Duration, sleep Sleeper, log logger.Logger) (SingleSenderFactory, error) {
-	return p.factoryForDialerWithClockAndLogger(dialer, overrideRecipient, wait, time.Now, sleep, log)
+func (p *SharedSenderProvider) factoryForDialer(dialer Dialer, overrideRecipient string, wait, idleTimeout time.Duration, sleep Sleeper, log logger.Logger) (SingleSenderFactory, error) {
+	return p.factoryForDialerWithClockAndLogger(dialer, overrideRecipient, wait, idleTimeout, time.Now, sleep, log)
 }
 
 func (p *SharedSenderProvider) factoryForDialerWithClock(dialer Dialer, overrideRecipient string, wait time.Duration, now TimeSource, sleep Sleeper) (SingleSenderFactory, error) {
-	return p.factoryForDialerWithClockAndLogger(dialer, overrideRecipient, wait, now, sleep, logger.Nil)
+	return p.factoryForDialerWithClockAndLogger(dialer, overrideRecipient, wait, 0, now, sleep, logger.Nil)
 }
 
-func (p *SharedSenderProvider) factoryForDialerWithClockAndLogger(dialer Dialer, overrideRecipient string, wait time.Duration, now TimeSource, sleep Sleeper, log logger.Logger) (SingleSenderFactory, error) {
+func (p *SharedSenderProvider) factoryForDialerWithClockAndLogger(dialer Dialer, overrideRecipient string, wait, idleTimeout time.Duration, now TimeSource, sleep Sleeper, log logger.Logger) (SingleSenderFactory, error) {
 	if dialer == nil {
 		return nil, fmt.Errorf("dialer is required for smtp sender")
 	}
@@ -94,7 +88,11 @@ func (p *SharedSenderProvider) factoryForDialerWithClockAndLogger(dialer Dialer,
 	if err != nil {
 		return nil, err
 	}
-	frozen := freezeSharedDialer(dialer)
+	logID := dialer.LogID()
+	if logID == "" {
+		return nil, fmt.Errorf("smtp-shared requires Dialer.LogID() to return a non-empty value")
+	}
+	effectiveIdleTimeout := p.effectiveIdleTimeout(idleTimeout)
 
 	p.mu.Lock()
 	generation := p.generation
@@ -103,9 +101,10 @@ func (p *SharedSenderProvider) factoryForDialerWithClockAndLogger(dialer Dialer,
 	return &sharedSenderFactory{
 		provider:          p,
 		generation:        generation,
-		identity:          fmt.Sprintf("%s|wait=%d", identity, wait),
-		dialer:            frozen,
+		identity:          fmt.Sprintf("%s|wait=%d|idle-timeout=%d", identity, wait, effectiveIdleTimeout),
+		dialer:            dialer,
 		wait:              wait,
+		idleTimeout:       effectiveIdleTimeout,
 		now:               now,
 		sleep:             sleep,
 		log:               log,
@@ -119,6 +118,7 @@ type sharedSenderFactory struct {
 	identity          string
 	dialer            Dialer
 	wait              time.Duration
+	idleTimeout       time.Duration
 	now               TimeSource
 	sleep             Sleeper
 	log               logger.Logger
@@ -130,7 +130,7 @@ func (f *sharedSenderFactory) Open() (SingleSender, error) {
 		return nil, fmt.Errorf("shared sender provider is not configured")
 	}
 
-	worker, err := f.provider.workerFor(f.generation, f.identity, f.dialer, f.wait, f.now, f.sleep, f.log)
+	worker, err := f.provider.workerFor(f.generation, f.identity, f.dialer, f.wait, f.idleTimeout, f.now, f.sleep, f.log)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func (w *sharedSenderWorker) shutdown() error {
 
 func (w *sharedSenderWorker) run() {
 	defer close(w.exited)
-	w.infof("started - idle-timeout=%s wait=%s dialer=%T", w.idleTimeout, w.wait, w.dialer)
+	w.infof("started - idle-timeout=%s wait=%s dialer=%s", w.idleTimeout, w.wait, w.dialer.LogID())
 	defer w.infof("stopped")
 
 	var sender gomail.SendCloser
@@ -370,48 +370,13 @@ func (w *sharedSenderWorker) run() {
 
 func sharedSenderIdentity(dialer Dialer) (string, error) {
 	if dialer == nil {
-		return "", nil
+		return "", fmt.Errorf("dialer is required for smtp sender")
 	}
-	if provider, ok := dialer.(SharedSenderIdentityProvider); ok {
-		identity := provider.SharedSenderIdentity()
-		if identity != "" {
-			return identity, nil
-		}
+	identity := dialer.Identity()
+	if identity == "" {
+		return "", fmt.Errorf("smtp-shared requires Dialer.Identity() to return a non-empty value")
 	}
-	if smtpDialer, ok := dialer.(*gomail.Dialer); ok {
-		return fmt.Sprintf(
-			"smtp:%s:%d:%s:%s:%t:%x:%x:%x",
-			smtpDialer.Host,
-			smtpDialer.Port,
-			smtpDialer.Username,
-			smtpDialer.LocalName,
-			smtpDialer.SSL,
-			sha256.Sum256([]byte(smtpDialer.Password)),
-			sha256.Sum256([]byte(fmt.Sprintf("%#v", smtpDialer.TLSConfig))),
-			sha256.Sum256([]byte(sharedSenderAuthFingerprint(smtpDialer))),
-		), nil
-	}
-	return "", fmt.Errorf("smtp-shared requires *gomail.Dialer or SharedSenderIdentityProvider, got %T", dialer)
-}
-
-func sharedSenderAuthFingerprint(dialer *gomail.Dialer) string {
-	if dialer == nil || dialer.Auth == nil {
-		return ""
-	}
-	return fmt.Sprintf("%T:%#v", dialer.Auth, dialer.Auth)
-}
-
-func freezeSharedDialer(dialer Dialer) Dialer {
-	smtpDialer, ok := dialer.(*gomail.Dialer)
-	if !ok || smtpDialer == nil {
-		return dialer
-	}
-
-	clone := *smtpDialer
-	if smtpDialer.TLSConfig != nil {
-		clone.TLSConfig = smtpDialer.TLSConfig.Clone()
-	}
-	return &clone
+	return identity, nil
 }
 
 var (
@@ -426,7 +391,17 @@ func DefaultSharedSenderProviderInstance() *SharedSenderProvider {
 	return defaultSharedSenderProvider
 }
 
-func (p *SharedSenderProvider) workerFor(generation uint64, identity string, dialer Dialer, wait time.Duration, now TimeSource, sleep Sleeper, log logger.Logger) (*sharedSenderWorker, error) {
+func (p *SharedSenderProvider) effectiveIdleTimeout(idleTimeout time.Duration) time.Duration {
+	if idleTimeout > 0 {
+		return idleTimeout
+	}
+	if p == nil || p.idleTimeout <= 0 {
+		return DefaultSharedSenderIdleTimeout
+	}
+	return p.idleTimeout
+}
+
+func (p *SharedSenderProvider) workerFor(generation uint64, identity string, dialer Dialer, wait, idleTimeout time.Duration, now TimeSource, sleep Sleeper, log logger.Logger) (*sharedSenderWorker, error) {
 	if p == nil {
 		return nil, fmt.Errorf("shared sender provider is not configured")
 	}
@@ -440,7 +415,7 @@ func (p *SharedSenderProvider) workerFor(generation uint64, identity string, dia
 	worker := p.workers[identity]
 	if worker == nil {
 		p.nextID++
-		worker = newSharedSenderWorker(p.nextID, dialer, p.idleTimeout, wait, now, sleep, log)
+		worker = newSharedSenderWorker(p.nextID, dialer, idleTimeout, wait, now, sleep, log)
 		p.workers[identity] = worker
 	}
 	return worker, nil

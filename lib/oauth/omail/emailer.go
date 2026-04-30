@@ -35,7 +35,7 @@ type EmailTokenPayload struct {
 type emailerOptions struct {
 	rng             *rand.Rand
 	log             logger.Logger
-	Dialer          kemail.SendDialer
+	Dialer          kemail.Dialer
 	SmtpHost        string
 	SmtpPort        int
 	SmtpUser        string
@@ -208,7 +208,7 @@ func WithEmailerLogger(log logger.Logger) EmailerModifier {
 }
 
 // WithEmailerDialer overrides the SMTP dialer used for sending emails.
-func WithEmailerDialer(dialer kemail.SendDialer) EmailerModifier {
+func WithEmailerDialer(dialer kemail.Dialer) EmailerModifier {
 	return func(o *emailerOptions) error {
 		o.Dialer = dialer
 		return nil

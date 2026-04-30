@@ -82,6 +82,7 @@ type ProgressCallback func(Progress) ProgressAction
 // Flags configures the sender behavior.
 type Flags struct {
 	Wait              time.Duration
+	SharedIdleTimeout time.Duration
 	MaxAttempts       int
 	Shuffle           bool
 	Sender            string
@@ -94,6 +95,7 @@ type Flags struct {
 func DefaultFlags() *Flags {
 	return &Flags{
 		Wait:              10 * time.Second,
+		SharedIdleTimeout: 0,
 		MaxAttempts:       0,
 		Shuffle:           true,
 		Sender:            "smtp",
@@ -106,6 +108,7 @@ func DefaultFlags() *Flags {
 // Register registers sender flags.
 func (f *Flags) Register(fs kflags.FlagSet, prefix string) *Flags {
 	fs.DurationVar(&f.Wait, prefix+"email-retry-wait", f.Wait, "How long to wait between connection attempts.")
+	fs.DurationVar(&f.SharedIdleTimeout, prefix+"email-shared-idle-timeout", f.SharedIdleTimeout, "How long smtp-shared keeps an idle SMTP session open; 0 uses the provider default.")
 	fs.IntVar(&f.MaxAttempts, prefix+"email-max-attempts", f.MaxAttempts, "Max attempts per recipient (0 means unlimited).")
 	fs.BoolVar(&f.Shuffle, prefix+"email-shuffle", f.Shuffle, "Shuffle recipient list before sending.")
 	fs.StringVar(&f.Sender, prefix+"email-sender", f.Sender, "Email sender backend (smtp, smtp-shared, or fake).")
@@ -183,6 +186,14 @@ func WithRng(rng *rand.Rand) Modifier {
 func WithWait(wait time.Duration) Modifier {
 	return func(o *Options) {
 		o.Wait = wait
+	}
+}
+
+// WithSharedIdleTimeout overrides how long smtp-shared keeps idle sessions open.
+// A value of 0 uses the shared provider default.
+func WithSharedIdleTimeout(timeout time.Duration) Modifier {
+	return func(o *Options) {
+		o.SharedIdleTimeout = timeout
 	}
 }
 
@@ -541,10 +552,12 @@ func SharedSenderFactoryFromFlags(shared SharedProviderFunc, dialer Dialer, flag
 			return nil, fmt.Errorf("shared sender provider is required for smtp-shared sender")
 		}
 		wait := time.Duration(0)
+		idleTimeout := time.Duration(0)
 		if flags != nil {
 			wait = flags.Wait
+			idleTimeout = flags.SharedIdleTimeout
 		}
-		return provider.factoryForDialer(dialer, override, wait, sleep, log)
+		return provider.factoryForDialer(dialer, override, wait, idleTimeout, sleep, log)
 	case "fake":
 		delay := time.Duration(0)
 		if flags != nil {

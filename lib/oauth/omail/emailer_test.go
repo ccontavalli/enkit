@@ -1,6 +1,7 @@
 package omail
 
 import (
+	"io"
 	"math/rand"
 	"net/url"
 	"testing"
@@ -18,10 +19,34 @@ type mockDialer struct {
 	send func(m *gomail.Message) error
 }
 
-func (d *mockDialer) DialAndSend(m ...*gomail.Message) error {
-	if d.send != nil {
-		return d.send(m[0])
+func (d *mockDialer) Dial() (gomail.SendCloser, error) {
+	return mockSendCloser{send: d.send}, nil
+}
+
+func (d *mockDialer) Identity() string {
+	return "mock-emailer"
+}
+
+func (d *mockDialer) LogID() string {
+	return "mock-emailer"
+}
+
+type mockSendCloser struct {
+	send func(m *gomail.Message) error
+}
+
+func (s mockSendCloser) Send(from string, to []string, msg io.WriterTo) error {
+	if s.send == nil {
+		return nil
 	}
+	message, ok := msg.(*gomail.Message)
+	if !ok {
+		return nil
+	}
+	return s.send(message)
+}
+
+func (s mockSendCloser) Close() error {
 	return nil
 }
 

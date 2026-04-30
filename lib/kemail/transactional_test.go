@@ -52,7 +52,7 @@ func TestTransactionalEmailerSend(t *testing.T) {
 	}
 
 	emailer, err := NewTransactionalEmailer(
-		WithDialer(dialer),
+		WithDialAndSend(dialer.DialAndSend),
 		WithFromAddress("noreply@example.com"),
 		WithTemplates(templates),
 	)
@@ -83,9 +83,9 @@ func TestTransactionalEmailerSendError(t *testing.T) {
 
 	sendErr := errors.New("send failed")
 	emailer, err := NewTransactionalEmailer(
-		WithDialer(&fakeSendDialer{send: func(m *gomail.Message) error {
+		WithDialAndSend((&fakeSendDialer{send: func(m *gomail.Message) error {
 			return sendErr
-		}}),
+		}}).DialAndSend),
 		WithFromAddress("noreply@example.com"),
 		WithTemplates(templates),
 	)
