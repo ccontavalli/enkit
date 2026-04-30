@@ -19,6 +19,7 @@ import (
 	"github.com/ccontavalli/enkit/lib/config"
 	"github.com/ccontavalli/enkit/lib/config/directory"
 	"github.com/ccontavalli/enkit/lib/kflags"
+	"github.com/ccontavalli/enkit/lib/multierror"
 	_ "modernc.org/sqlite"
 )
 
@@ -421,7 +422,22 @@ func (l *Loader) Delete(name string) error {
 }
 
 func (l *Loader) Close() error {
-	return nil
+	return multierror.New([]error{
+		closeStmt(l.listStmtLimit),
+		closeStmt(l.listStmtStartLimit),
+		closeStmt(l.listDataStmtLimit),
+		closeStmt(l.listDataStmtStartLimit),
+		closeStmt(l.readStmt),
+		closeStmt(l.writeStmt),
+		closeStmt(l.deleteStmt),
+	})
+}
+
+func closeStmt(stmt *sql.Stmt) error {
+	if stmt == nil {
+		return nil
+	}
+	return stmt.Close()
 }
 
 func openDB(mods ...Modifier) (*sql.DB, error) {

@@ -89,6 +89,26 @@ func TestSQLiteStoreJSON(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestSQLiteLoaderCloseClosesPreparedStatements(t *testing.T) {
+	tmp, err := os.CreateTemp("", "config-sqlite-close-*.db")
+	assert.NoError(t, err)
+	path := tmp.Name()
+	assert.NoError(t, tmp.Close())
+	defer os.Remove(path)
+
+	db, err := New(WithPath(path))
+	assert.NoError(t, err)
+	defer db.Close()
+
+	loader, err := db.Open("myapp", "close")
+	assert.NoError(t, err)
+	assert.NoError(t, loader.Write("config.json", []byte(`{"value":"hello"}`)))
+	assert.NoError(t, loader.Close())
+
+	_, err = loader.Read("config.json")
+	assert.Error(t, err)
+}
+
 func descriptorListContains(descs []config.Descriptor, name string) bool {
 	for _, desc := range descs {
 		if desc != nil && desc.Key() == name {
