@@ -26,6 +26,18 @@ import (
 type Descriptor = config.Descriptor
 type Key = config.Key
 
+// Workspace opens namespace-scoped blob stores.
+type Workspace interface {
+	Open(name string, namespace ...string) (Store, error)
+	Close() error
+}
+
+// StreamWorkspace opens namespace-scoped blob stream loaders.
+type StreamWorkspace interface {
+	Open(name string, namespace ...string) (StreamLoader, error)
+	Close() error
+}
+
 // Store is a URL-first interface for large blobs.
 type Store interface {
 	List() ([]Descriptor, error)

@@ -161,6 +161,15 @@ func New(mods ...Option) (*Store, error) {
 	}, nil
 }
 
+// NewWorkspace creates a namespace-opening blob workspace backed by S3.
+func NewWorkspace(mods ...Option) (blob.Workspace, error) {
+	store, err := New(mods...)
+	if err != nil {
+		return nil, err
+	}
+	return blob.NewWorkspace(store), nil
+}
+
 func (s *Store) List() ([]blob.Descriptor, error) {
 	ctx := context.Background()
 	input := &s3.ListObjectsV2Input{
