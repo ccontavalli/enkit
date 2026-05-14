@@ -298,9 +298,17 @@ func (e *Emailer) CreateEmailToken(params url.Values, lm ...oauth.LoginModifier)
 
 // SendLoginEmail generates and sends a login email to the user.
 func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth.LoginModifier) error {
+	return e.SendLoginEmailWithCallbackURL(params, location, e.callbackURL, lm...)
+}
+
+// SendLoginEmailWithCallbackURL generates and sends a login email using a per-message callback URL.
+func (e *Emailer) SendLoginEmailWithCallbackURL(params url.Values, location string, callbackURL *url.URL, lm ...oauth.LoginModifier) error {
 	email := params.Get("email")
 	if email == "" {
 		return fmt.Errorf("email parameter is required")
+	}
+	if callbackURL == nil {
+		return fmt.Errorf("callback URL is required")
 	}
 
 	encodedToken, err := e.CreateEmailToken(params, lm...)
@@ -310,7 +318,7 @@ func (e *Emailer) SendLoginEmail(params url.Values, location string, lm ...oauth
 
 	loginOptions := oauth.LoginModifiers(lm).Apply(&oauth.LoginOptions{})
 
-	destinationURL := *e.callbackURL
+	destinationURL := *callbackURL
 	q := destinationURL.Query()
 	q.Set("token", encodedToken)
 	destinationURL.RawQuery = q.Encode()

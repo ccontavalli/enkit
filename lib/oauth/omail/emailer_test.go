@@ -4,6 +4,7 @@ import (
 	"io"
 	"math/rand"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,6 +126,17 @@ func TestEmailer(t *testing.T) {
 
 	// Check Content-Type is multipart/alternative
 	assert.Contains(t, bodyStr, "Content-Type: multipart/alternative")
+
+	customCallbackURL, err := url.Parse("https://example.com/p/owner/g/gallery")
+	assert.NoError(t, err)
+	err = emailer.SendLoginEmailWithCallbackURL(params, "test-location", customCallbackURL, oauth.WithTarget("/p/owner/g/gallery"))
+	assert.NoError(t, err)
+	assert.NotNil(t, sentMessage)
+	body.Reset()
+	_, err = sentMessage.WriteTo(body)
+	assert.NoError(t, err)
+	decodedBody := strings.NewReplacer("=\r\n", "", "=3D", "=").Replace(body.String())
+	assert.Contains(t, decodedBody, `https://example.com/p/owner/g/gallery?token=`)
 }
 
 func TestFlagsValidation(t *testing.T) {
